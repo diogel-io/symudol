@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dart_nostr/dart_nostr.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,21 +14,6 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Android Diogel',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.orangeAccent),
       ),
       home: const MyHomePage(title: 'Android Diogel'),
@@ -54,16 +40,20 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  String _privateKey = '';
+  String _publicKey = '';
+  String _nsecKey = '';
+  String _npubKey = '';
+  final nostr = Nostr.instance;
 
-  void _incrementCounter() {
+  void _generateKeys() {
+    final keyPair = nostr.services.keys.generateKeyPair();
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _privateKey = keyPair.private;
+      _publicKey = keyPair.public;
+      _nsecKey = nostr.services.bech32.encodePrivateKeyToNsec(_privateKey);
+      _npubKey = nostr.services.bech32.encodePublicKeyToNpub(_publicKey);
     });
   }
 
@@ -104,20 +94,41 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'You have pushsdfsdafasdfed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            if (_nsecKey.isNotEmpty) ...[
+              const Text('Private Key (nsec):'),
+              SelectableText(
+                _nsecKey,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 20),
+              const Text('Public Key (npub):'),
+              SelectableText(
+                _npubKey,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 20),
+              const Text('Hex Private Key:'),
+              SelectableText(
+                _privateKey,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 20),
+              const Text('Hex Public Key:'),
+              SelectableText(
+                _publicKey,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ] else
+              const Text(
+                'Press the button to generate Nostr keys',
+              ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+        onPressed: _generateKeys,
+        tooltip: 'Generate Keys',
+        child: const Icon(Icons.vpn_key),
       ),
     );
   }
