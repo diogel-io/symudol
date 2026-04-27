@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../navigation/presentation/main_navigation_screen.dart';
+import '../../navigation/presentation/main_navigation_screen.dart';
 import '../../../theme/tokens.dart';
 import 'widgets/pin_button.dart';
 
