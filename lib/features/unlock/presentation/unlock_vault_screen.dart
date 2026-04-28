@@ -128,8 +128,8 @@ class _UnlockVaultScreenState extends State<UnlockVaultScreen> {
                       boxShadow: isFilled
                           ? [
                               BoxShadow(
-                                color: DiogelColors.actionPrimary.withOpacity(
-                                  0.4,
+                                color: DiogelColors.actionPrimary.withValues(
+                                  alpha: 0.4,
                                 ),
                                 blurRadius: 8,
                               ),

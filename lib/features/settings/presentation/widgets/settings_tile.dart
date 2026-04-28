@@ -26,7 +26,7 @@ class SettingsTile extends StatelessWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: color.withOpacity(0.7)),
+      leading: Icon(icon, color: color.withValues(alpha: 0.7)),
       title: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color),

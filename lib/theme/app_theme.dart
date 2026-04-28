@@ -17,7 +17,7 @@ class DiogelTheme {
         error: DiogelColors.stateError,
         onError: DiogelColors.textInverse,
         outline: DiogelColors.borderStrong,
-        surfaceVariant: DiogelColors.surfaceContainer,
+        surfaceContainerHighest: DiogelColors.surfaceContainer,
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(

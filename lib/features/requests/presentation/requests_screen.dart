@@ -23,10 +23,10 @@ class RequestsScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(DiogelSpacing.space4),
               decoration: BoxDecoration(
-                color: DiogelColors.stateError.withOpacity(0.1),
+                color: DiogelColors.stateError.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(DiogelRadius.medium),
                 border: Border.all(
-                  color: DiogelColors.stateError.withOpacity(0.3),
+                  color: DiogelColors.stateError.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -197,7 +197,7 @@ class RequestsScreen extends StatelessWidget {
                       color: DiogelColors.surfaceBase,
                       borderRadius: BorderRadius.circular(DiogelRadius.small),
                       border: Border.all(
-                        color: DiogelColors.borderSubtle.withOpacity(0.5),
+                        color: DiogelColors.borderSubtle.withValues(alpha: 0.5),
                       ),
                     ),
                     child: Text(
@@ -253,7 +253,7 @@ class RequestsScreen extends StatelessWidget {
       bottomSheet: Container(
         padding: const EdgeInsets.all(DiogelSpacing.space4),
         decoration: BoxDecoration(
-          color: DiogelColors.surfaceBackground.withOpacity(0.8),
+          color: DiogelColors.surfaceBackground.withValues(alpha: 0.8),
           border: const Border(
             top: BorderSide(color: DiogelColors.borderSubtle),
           ),

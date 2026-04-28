@@ -31,7 +31,7 @@ class RequestDetailItem extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.2),
+              color: iconColor.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(DiogelRadius.small),
             ),
             child: Icon(icon, color: iconColor),

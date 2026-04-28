@@ -1,6 +1,5 @@
-
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/app/app.dart';
+import 'package:android_diogel/app/app.dart';
 
 void main() {
   testWidgets('app smoke test renders Android Diogel unlock screen', (
