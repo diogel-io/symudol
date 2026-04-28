@@ -75,7 +75,7 @@ Android Diogel is not currently trying to be:
 - Flutter
 - Dart
 - Material 3
-- `dart_nostr`
+- `dart_nostr` (Verified: sufficient for key generation, derivation, nsec/npub encoding/decoding, and Schnorr signing)
 
 ## Development stance
 
