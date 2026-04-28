@@ -2,7 +2,7 @@
 
 Android Diogel is the mobile app codebase for Diogel.
 
-Its role is to become a privacy-first Nostr signer and identity-security companion app, with Android as the immediate primary target.
+A privacy-first Nostr signer and identity-security companion app, with Android as the immediate primary target.
 
 ## Product intent
 
