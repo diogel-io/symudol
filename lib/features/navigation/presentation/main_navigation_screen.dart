@@ -51,7 +51,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: DiogelColors.actionPrimary),
+            selectedIcon: Icon(
+              Icons.settings,
+              color: DiogelColors.actionPrimary,
+            ),
             label: 'Settings',
           ),
         ],

@@ -185,7 +185,10 @@ class RequestsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('CONTENT', style: Theme.of(context).textTheme.labelSmall),
+                  Text(
+                    'CONTENT',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                   const SizedBox(height: DiogelSpacing.space2),
                   Container(
                     width: double.infinity,

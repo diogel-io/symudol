@@ -140,8 +140,7 @@ class AccountsScreen extends StatelessWidget {
                               children: [
                                 Text(
                                   'satoshi_vision',
-                                  style:
-                                      Theme.of(context).textTheme.titleLarge,
+                                  style: Theme.of(context).textTheme.titleLarge,
                                 ),
                                 Row(
                                   children: [
@@ -159,12 +158,13 @@ class AccountsScreen extends StatelessWidget {
                                       ),
                                       child: Text(
                                         'npub1...7jk9',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.labelMedium?.copyWith(
-                                          color: DiogelColors.actionPrimary,
-                                          fontFamily: 'monospace',
-                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelMedium
+                                            ?.copyWith(
+                                              color: DiogelColors.actionPrimary,
+                                              fontFamily: 'monospace',
+                                            ),
                                       ),
                                     ),
                                     const SizedBox(width: DiogelSpacing.space2),
@@ -198,13 +198,15 @@ class AccountsScreen extends StatelessWidget {
                                 children: [
                                   Text(
                                     'Followers',
-                                    style:
-                                        Theme.of(context).textTheme.labelSmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelSmall,
                                   ),
                                   Text(
                                     '12.4K',
-                                    style:
-                                        Theme.of(context).textTheme.titleMedium,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
                                   ),
                                 ],
                               ),
@@ -226,13 +228,15 @@ class AccountsScreen extends StatelessWidget {
                                 children: [
                                   Text(
                                     'Posts',
-                                    style:
-                                        Theme.of(context).textTheme.labelSmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelSmall,
                                   ),
                                   Text(
                                     '842',
-                                    style:
-                                        Theme.of(context).textTheme.titleMedium,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
                                   ),
                                 ],
                               ),
@@ -247,10 +251,7 @@ class AccountsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: DiogelSpacing.space4),
-          const InactiveAccountTile(
-            name: 'dev_mainnet',
-            npub: 'npub1...a2x4',
-          ),
+          const InactiveAccountTile(name: 'dev_mainnet', npub: 'npub1...a2x4'),
           const SizedBox(height: DiogelSpacing.space4),
           const InactiveAccountTile(
             name: 'creative_soul',
@@ -295,10 +296,7 @@ class AccountsScreen extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.verified_user,
-                  color: DiogelColors.stateInfo,
-                ),
+                const Icon(Icons.verified_user, color: DiogelColors.stateInfo),
                 const SizedBox(width: DiogelSpacing.space4),
                 Expanded(
                   child: Column(

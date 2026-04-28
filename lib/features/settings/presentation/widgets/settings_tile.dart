@@ -20,8 +20,9 @@ class SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        isDestructive ? DiogelColors.stateError : DiogelColors.textPrimary;
+    final color = isDestructive
+        ? DiogelColors.stateError
+        : DiogelColors.textPrimary;
 
     return ListTile(
       contentPadding: EdgeInsets.zero,

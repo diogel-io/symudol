@@ -115,28 +115,25 @@ class _UnlockVaultScreenState extends State<UnlockVaultScreen> {
                   height: 12,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color:
-                        isFilled
-                            ? DiogelColors.actionPrimary
-                            : Colors.transparent,
+                    color: isFilled
+                        ? DiogelColors.actionPrimary
+                        : Colors.transparent,
                     border: Border.all(
-                      color:
-                          isFilled
-                              ? DiogelColors.actionPrimary
-                              : DiogelColors.borderStrong,
+                      color: isFilled
+                          ? DiogelColors.actionPrimary
+                          : DiogelColors.borderStrong,
                       width: 2,
                     ),
-                    boxShadow:
-                        isFilled
-                            ? [
-                              BoxShadow(
-                                color: DiogelColors.actionPrimary.withOpacity(
-                                  0.4,
-                                ),
-                                blurRadius: 8,
+                    boxShadow: isFilled
+                        ? [
+                            BoxShadow(
+                              color: DiogelColors.actionPrimary.withOpacity(
+                                0.4,
                               ),
-                            ]
-                            : null,
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : null,
                   ),
                 );
               }),
@@ -172,7 +169,9 @@ class _UnlockVaultScreenState extends State<UnlockVaultScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: _pin.length == 6 ? _navigateToMainNavigation : null,
+                      onPressed: _pin.length == 6
+                          ? _navigateToMainNavigation
+                          : null,
                       icon: const Icon(Icons.lock_open),
                       label: const Text('Unlock Vault'),
                     ),
