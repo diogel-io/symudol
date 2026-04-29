@@ -1,29 +1,28 @@
 sealed class VaultFailure {
-  const VaultFailure();
+  final String message;
+  const VaultFailure(this.message);
 }
 
 class VaultLockedFailure extends VaultFailure {
-  const VaultLockedFailure();
+  const VaultLockedFailure() : super('Vault is locked');
 }
 
 class InvalidPrivateKeyFailure extends VaultFailure {
-  const InvalidPrivateKeyFailure();
+  const InvalidPrivateKeyFailure() : super('Invalid private key');
 }
 
 class UnsupportedKeyFormatFailure extends VaultFailure {
-  const UnsupportedKeyFormatFailure();
+  const UnsupportedKeyFormatFailure() : super('Unsupported key format');
 }
 
 class DuplicateIdentityFailure extends VaultFailure {
-  const DuplicateIdentityFailure();
+  const DuplicateIdentityFailure() : super('Identity already exists in vault');
 }
 
 class SecureStorageFailure extends VaultFailure {
-  final String message;
-  const SecureStorageFailure(this.message);
+  const SecureStorageFailure(super.message);
 }
 
 class CryptoFailure extends VaultFailure {
-  final String message;
-  const CryptoFailure(this.message);
+  const CryptoFailure(super.message);
 }

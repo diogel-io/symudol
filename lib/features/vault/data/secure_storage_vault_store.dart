@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 

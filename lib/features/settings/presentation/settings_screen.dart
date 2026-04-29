@@ -117,10 +117,15 @@ class _TimeoutPickerDialog extends StatelessWidget {
   }
 
   Widget _buildOption(BuildContext context, int value, String label) {
+    // RadioListTile currently reports deprecation for groupValue/onChanged in some Flutter versions 
+    // but the suggested RadioGroup alternative is not yet standard in many projects.
+    // ignore: deprecated_member_use
     return RadioListTile<int>(
       title: Text(label),
       value: value,
+      // ignore: deprecated_member_use
       groupValue: initialValue,
+      // ignore: deprecated_member_use
       onChanged: (newValue) {
         if (newValue != null) {
           Navigator.of(context).pop(newValue);

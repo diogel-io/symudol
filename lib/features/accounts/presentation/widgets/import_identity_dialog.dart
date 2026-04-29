@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/vault/domain/vault_failure.dart';
+import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
 import 'package:android_diogel/theme/tokens.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 
@@ -61,7 +61,7 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
     if (state.failure != null) {
       if (mounted) {
         setState(() {
-          _error = _mapFailureToMessage(state.failure!);
+          _error = vaultFailureMessage(state.failure!);
           _isLoading = false;
         });
       }
@@ -76,21 +76,6 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
     }
   }
 
-  String _mapFailureToMessage(VaultFailure failure) {
-    if (failure is VaultLockedFailure) {
-      return 'Vault is locked';
-    }
-    if (failure is UnsupportedKeyFormatFailure) {
-      return 'Invalid private key format';
-    }
-    if (failure is DuplicateIdentityFailure) {
-      return 'Identity already exists';
-    }
-    if (failure is SecureStorageFailure) {
-      return 'Storage error: ${failure.message}';
-    }
-    return 'An unexpected error occurred';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +136,7 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
             ),
             const SizedBox(height: DiogelSpacing.space4),
             const Text(
-              'Your key will be encrypted and stored securely in the device\'s hardware-backed vault.',
+              'Your key will be stored locally using the device platform secure-storage backend. Diogel never syncs or uploads it.',
               textAlign: TextAlign.center,
             ),
           ],

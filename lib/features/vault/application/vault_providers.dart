@@ -11,6 +11,9 @@ import 'package:flutter_riverpod/legacy.dart';
 /// 
 /// In tests, this can be overridden with a fake or mock store.
 final vaultStoreProvider = Provider<VaultStore>((ref) {
+  // If we're running tests, we might want to ensure a clean state or use a mock.
+  // SecureStorageVaultStore uses FlutterSecureStorage which has a web/linux mock automatically 
+  // if not overridden, but in unit tests we often need to be careful.
   return SecureStorageVaultStore();
 });
 
@@ -18,14 +21,6 @@ final vaultStoreProvider = Provider<VaultStore>((ref) {
 final vaultServiceProvider = Provider<VaultService>((ref) {
   final store = ref.watch(vaultStoreProvider);
   return VaultServiceImpl(store);
-});
-
-/// Provider that handles Vault initialization.
-final vaultInitializationProvider = FutureProvider<void>((ref) async {
-  final service = ref.watch(vaultServiceProvider);
-  if (service is VaultServiceImpl) {
-    await service.init();
-  }
 });
 
 /// Provider for the [VaultController].

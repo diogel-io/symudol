@@ -28,9 +28,8 @@ class AccountsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final vaultState = ref.watch(vaultControllerProvider);
-    final identities = vaultState.identities;
-    final activeIdentity = vaultState.activeIdentity;
+    final vaultControllerState = ref.watch(vaultControllerProvider);
+    final identities = vaultControllerState.identities;
 
     return Scaffold(
       appBar: AppBar(
@@ -156,12 +155,12 @@ class AccountsScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'End-to-End Encryption',
+                        'Secure Local Storage',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       const SizedBox(height: DiogelSpacing.space1),
                       Text(
-                        'All private keys are encrypted on-device with AES-256 and never leave your secure hardware element.',
+                        'All private keys are stored locally using the device platform secure-storage backend and never leave your device.',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],

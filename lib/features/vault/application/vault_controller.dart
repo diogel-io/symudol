@@ -3,8 +3,6 @@ import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_failure.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 class VaultControllerState {
@@ -32,11 +30,12 @@ class VaultControllerState {
     bool? isLoading,
     VaultFailure? failure,
     bool clearFailure = false,
+    bool clearActiveIdentity = false,
   }) {
     return VaultControllerState(
       vaultState: vaultState ?? this.vaultState,
       identities: identities ?? this.identities,
-      activeIdentity: activeIdentity ?? this.activeIdentity,
+      activeIdentity: clearActiveIdentity ? null : (activeIdentity ?? this.activeIdentity),
       inactivityTimeoutMinutes: inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
@@ -48,16 +47,26 @@ class VaultController extends StateNotifier<VaultControllerState> {
   final VaultService _vaultService;
 
   VaultController(this._vaultService)
-      : super(VaultControllerState(vaultState: _vaultService.state)) {
+      : super(const VaultControllerState(vaultState: NoVault())) {
     _init();
   }
 
   Future<void> _init() async {
-    state = state.copyWith(isLoading: true);
-    // VaultService.init() is called by vaultInitializationProvider, 
-    // but we ensure we have the latest state here.
+    // Start with whatever state the service already has
+    await _vaultService.init();
     await _refreshState();
-    state = state.copyWith(isLoading: false);
+  }
+
+  Future<void> initialize() async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      await _vaultService.init();
+      await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> _refreshState() async {
@@ -70,8 +79,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
       identities = await _vaultService.listIdentities();
       activeIdentity = _vaultService.activeIdentity;
       timeout = await _vaultService.getInactivityTimeout();
-    } else if (vaultState is VaultLocked) {
-      activeIdentity = _vaultService.activeIdentity;
+    } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
+      identities = [];
+      activeIdentity = null;
       // In locked state we might not be able to get the timeout if it requires KEK, 
       // but getInactivityTimeout is just a simple read from store for now.
       timeout = await _vaultService.getInactivityTimeout();
@@ -85,6 +95,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       vaultState: vaultState,
       identities: identities,
       activeIdentity: activeIdentity,
+      clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
     );
   }
@@ -212,6 +223,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
       final msg = e.message.toLowerCase();
       if (msg.contains('already exists')) {
         return const DuplicateIdentityFailure();
+      }
+      if (msg.contains('invalid nsec')) {
+        return const InvalidPrivateKeyFailure();
       }
       if (msg.contains('invalid') || msg.contains('format')) {
         return const UnsupportedKeyFormatFailure();

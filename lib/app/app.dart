@@ -57,10 +57,9 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    // Initialize vault
-    ref.watch(vaultInitializationProvider);
-    
-    final vaultState = ref.watch(vaultStateProvider);
+    final controllerState = ref.watch(vaultControllerProvider);
+    final vaultState = controllerState.vaultState;
+    final isLoading = controllerState.isLoading;
 
     // Reset timer on any state change that leads to Unlocked
     if (vaultState is VaultUnlocked) {
@@ -75,7 +74,9 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
       child: MaterialApp(
         title: 'Android Diogel',
         theme: DiogelTheme.darkTheme,
-        home: _getHome(vaultState),
+        home: isLoading 
+            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+            : _getHome(vaultState),
       ),
     );
   }

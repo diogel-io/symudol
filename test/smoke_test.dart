@@ -1,4 +1,3 @@
-import 'package:android_diogel/app/app.dart';
 import 'package:android_diogel/features/accounts/presentation/accounts_screen.dart';
 import 'package:android_diogel/features/accounts/presentation/widgets/identity_tile.dart';
 import 'package:android_diogel/features/accounts/presentation/widgets/import_identity_dialog.dart';
@@ -40,7 +39,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Welcome to Diogel'), findsOneWidget);
-      expect(find.text('Local Encryption'), findsOneWidget);
+      expect(find.text('Local Access PIN'), findsOneWidget);
       expect(find.text('Create a security PIN'), findsOneWidget);
     });
 
@@ -49,6 +48,7 @@ void main() {
       await service.init();
       
       await tester.pumpWidget(createTestWidget(child: const UnlockVaultScreen()));
+      await tester.pump(); // Start initialization
       await tester.pumpAndSettle();
 
       expect(find.text('Unlock Vault'), findsAtLeastNWidgets(1));
@@ -60,7 +60,18 @@ void main() {
       await service.createIdentity(displayName: 'Account 1');
       await service.createIdentity(displayName: 'Account 2');
       
-      await tester.pumpWidget(createTestWidget(child: const AccountsScreen()));
+      final controller = VaultController(service);
+      await controller.initialize();
+      await controller.unlock('1234'); // Must unlock to see identities
+      
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          vaultServiceProvider.overrideWithValue(service),
+          vaultControllerProvider.overrideWith((ref) => controller),
+        ],
+        child: const MaterialApp(home: AccountsScreen()),
+      ));
+      
       await tester.pumpAndSettle();
 
       expect(find.text('Accounts'), findsOneWidget);

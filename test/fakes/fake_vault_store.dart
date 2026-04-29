@@ -1,5 +1,4 @@
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 
@@ -90,7 +89,7 @@ class FakeVaultStore implements VaultStore {
   Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
     _checkError();
     if (shouldThrowDuplicateIdentityError && _identities.containsKey(record.identityId)) {
-      throw const VaultStorageException('Simulated duplicate identity error');
+      throw const VaultStorageException('Already exists: Simulated duplicate identity error');
     }
     _identities[record.identityId] = record;
   }

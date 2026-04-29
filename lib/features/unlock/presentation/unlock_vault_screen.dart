@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import '../../navigation/presentation/main_navigation_screen.dart';
+import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
 import 'widgets/pin_button.dart';
 
@@ -16,18 +16,14 @@ class UnlockVaultScreen extends ConsumerStatefulWidget {
 class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
   String _pin = '';
 
-  void _navigateToMainNavigation() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
-    );
-  }
-
   Future<void> _unlockVault() async {
     final notifier = ref.read(vaultControllerProvider.notifier);
-    try {
-      await notifier.unlock(_pin);
-    } catch (e) {
-      // In a real app, show error message.
+    await notifier.unlock(_pin);
+    
+    if (!mounted) return;
+    
+    final state = ref.read(vaultControllerProvider);
+    if (state.failure != null) {
       setState(() {
         _pin = '';
       });
@@ -55,9 +51,9 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Initialize vault service
-    ref.watch(vaultInitializationProvider);
     final vaultState = ref.watch(vaultStateProvider);
+    final controllerState = ref.watch(vaultControllerProvider);
+    final failure = controllerState.failure;
 
     return Scaffold(
       appBar: AppBar(
@@ -112,6 +108,14 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     vaultState is SessionExpired ? 'Session Expired' : 'Unlock Vault',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
+                  if (failure != null) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Text(
+                      vaultFailureMessage(failure),
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                   const SizedBox(height: DiogelSpacing.space1),
                   Text(
                     vaultState is SessionExpired 

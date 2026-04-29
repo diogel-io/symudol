@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/theme/tokens.dart';
+import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
 import '../../unlock/presentation/widgets/pin_button.dart';
 
 class SetupVaultScreen extends ConsumerStatefulWidget {
@@ -67,11 +68,14 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
       return;
     }
 
-    try {
-      await ref.read(vaultControllerProvider.notifier).createVault(_pin);
-    } catch (e) {
+    await ref.read(vaultControllerProvider.notifier).createVault(_pin);
+    
+    if (!mounted) return;
+
+    final controllerState = ref.read(vaultControllerProvider);
+    if (controllerState.failure != null) {
       setState(() {
-        _error = 'Failed to create vault. Please try again.';
+        _error = vaultFailureMessage(controllerState.failure!);
         _pin = '';
         _confirmPin = '';
         _isConfirming = false;
@@ -104,7 +108,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
                 ),
                 const SizedBox(height: DiogelSpacing.space4),
                 Text(
-                  'Secure your digital identity with a local encrypted vault.',
+                  'Private keys are stored locally using the device platform secure-storage backend. Diogel never syncs or uploads them.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: DiogelColors.textSecondary,
@@ -151,8 +155,8 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
         children: [
           _buildInfoItem(
             Icons.lock_outline,
-            'Local Encryption',
-            'Your keys are stored only on this device, encrypted with your PIN.',
+            'Local Access PIN',
+            'Create a local access PIN for this app session. Stronger PIN-derived vault encryption is planned for a later hardening milestone.',
           ),
           const SizedBox(height: DiogelSpacing.space3),
           _buildInfoItem(

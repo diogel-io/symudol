@@ -10,7 +10,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Welcome to Diogel'), findsOneWidget);
-    expect(find.text('Local Encryption'), findsOneWidget);
+    expect(find.text('Local Access PIN'), findsOneWidget);
     expect(find.text('No Cloud Sync'), findsOneWidget);
     expect(find.text('Create a security PIN'), findsOneWidget);
   });

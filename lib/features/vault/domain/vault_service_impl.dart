@@ -10,7 +10,6 @@ import 'package:dart_nostr/dart_nostr.dart';
 class VaultServiceImpl implements VaultService {
   final VaultStore _store;
   VaultState _state = const NoVault();
-  String? _sessionPin;
   VaultIdentity? _activeIdentity;
 
   VaultServiceImpl(this._store);
@@ -21,18 +20,15 @@ class VaultServiceImpl implements VaultService {
   @override
   VaultIdentity? get activeIdentity => _activeIdentity;
 
-  /// Initializes the vault state by checking for an existing sentinel.
+  @override
   Future<void> init() async {
     final sentinel = await _store.getSentinel();
     if (sentinel == null) {
       _state = const NoVault();
+      _activeIdentity = null;
     } else {
       _state = const VaultLocked();
-      final activeId = await _store.getActiveIdentityId();
-      if (activeId != null) {
-        final record = await _store.getIdentityRecord(activeId);
-        _activeIdentity = record?.toVaultIdentity(isActive: true);
-      }
+      _activeIdentity = null;
     }
   }
 
@@ -46,7 +42,6 @@ class VaultServiceImpl implements VaultService {
     // In a real implementation, we might derive a key from the pin.
     // For now, we use the pin as a sentinel (placeholder).
     await _store.setSentinel('vault_exists');
-    _sessionPin = pin;
     _state = const VaultUnlocked();
   }
 
@@ -63,13 +58,19 @@ class VaultServiceImpl implements VaultService {
     // For this task, let's assume '1234' for simplicity or just transition to Unlocked.
     // The requirement says "unlock placeholder/session transition".
     
-    _sessionPin = pin;
     _state = const VaultUnlocked();
+
+    // Restore active identity from store
+    final activeId = await _store.getActiveIdentityId();
+    if (activeId != null) {
+      final record = await _store.getIdentityRecord(activeId);
+      _activeIdentity = record?.toVaultIdentity(isActive: true);
+    }
   }
 
   @override
   Future<void> lock() async {
-    _sessionPin = null;
+    _activeIdentity = null;
     final sentinel = await _store.getSentinel();
     if (sentinel == null) {
       _state = const NoVault();
@@ -80,7 +81,7 @@ class VaultServiceImpl implements VaultService {
 
   @override
   Future<void> expireSession() async {
-    _sessionPin = null;
+    _activeIdentity = null;
     final sentinel = await _store.getSentinel();
     if (sentinel == null) {
       _state = const NoVault();

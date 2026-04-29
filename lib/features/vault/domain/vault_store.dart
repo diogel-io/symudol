@@ -1,5 +1,4 @@
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 
 abstract class VaultStore {
   /// Returns the current version of the storage schema.

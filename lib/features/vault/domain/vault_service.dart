@@ -64,4 +64,7 @@ abstract interface class VaultService {
 
   /// Sets the inactivity timeout in minutes.
   Future<void> setInactivityTimeout(int minutes);
+
+  /// Initializes the service state from persistent storage.
+  Future<void> init();
 }

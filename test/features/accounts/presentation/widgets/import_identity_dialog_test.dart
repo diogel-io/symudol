@@ -38,7 +38,16 @@ void main() {
 
   group('ImportIdentityDialog', () {
     testWidgets('should follow the import flow', (WidgetTester tester) async {
+      await store.setSentinel('vault_exists');
+      await service.init();
+      await service.unlock('1234');
+      
       await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle(); // Wait for any initial microtasks
+      
+      final controller = ProviderScope.containerOf(tester.element(find.byType(ImportIdentityDialog))).read(vaultControllerProvider.notifier);
+      await controller.unlock('1234'); // Explicitly unlock the controller
+      await tester.pumpAndSettle();
 
       // Step 1: Warning
       expect(find.text('Import Identity'), findsOneWidget);
@@ -80,7 +89,15 @@ void main() {
     });
 
     testWidgets('should show error for invalid key', (WidgetTester tester) async {
+      await store.setSentinel('vault_exists');
+      await service.init();
+      await service.unlock('1234');
       await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      final controller = ProviderScope.containerOf(tester.element(find.byType(ImportIdentityDialog))).read(vaultControllerProvider.notifier);
+      await controller.unlock('1234');
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('I Understand'));
       await tester.pumpAndSettle();
@@ -99,10 +116,18 @@ void main() {
     });
 
     testWidgets('should show error for duplicate key', (WidgetTester tester) async {
+      await store.setSentinel('vault_exists');
+      await service.init();
+      await service.unlock('1234');
       final hexKey = '0000000000000000000000000000000000000000000000000000000000000001';
       await service.importIdentity(hexKey);
       
       await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      final controller = ProviderScope.containerOf(tester.element(find.byType(ImportIdentityDialog))).read(vaultControllerProvider.notifier);
+      await controller.unlock('1234');
+      await tester.pumpAndSettle();
 
       await tester.tap(find.text('I Understand'));
       await tester.pumpAndSettle();
@@ -120,6 +145,7 @@ void main() {
 
     testWidgets('should allow toggling key visibility', (WidgetTester tester) async {
       await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle(); // Wait for any initial microtasks
 
       await tester.tap(find.text('I Understand'));
       await tester.pumpAndSettle();

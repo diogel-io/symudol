@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
 import 'package:android_diogel/theme/tokens.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 
@@ -27,22 +28,23 @@ class _CreateIdentityDialogState extends ConsumerState<CreateIdentityDialog> {
       _error = null;
     });
 
-    try {
-      final name = _nameController.text.trim();
-      await ref.read(vaultControllerProvider.notifier).createIdentity(
-        displayName: name.isEmpty ? null : name,
-      );
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _isCreating = false;
-        });
-      }
+    final name = _nameController.text.trim();
+    await ref.read(vaultControllerProvider.notifier).createIdentity(
+      displayName: name.isEmpty ? null : name,
+    );
+    
+    if (!mounted) return;
+
+    final state = ref.read(vaultControllerProvider);
+    if (state.failure != null) {
+      setState(() {
+        _error = vaultFailureMessage(state.failure!);
+        _isCreating = false;
+      });
+      return;
     }
+
+    Navigator.of(context).pop(true);
   }
 
   @override

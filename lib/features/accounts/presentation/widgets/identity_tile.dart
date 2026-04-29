@@ -74,7 +74,7 @@ class IdentityTile extends StatelessWidget {
                       context,
                     ).textTheme.bodySmall?.copyWith(
                       fontFamily: 'monospace',
-                      color: isActive ? DiogelColors.actionPrimary.withOpacity(0.8) : DiogelColors.textTertiary,
+                      color: isActive ? DiogelColors.actionPrimary.withValues(alpha: 0.8) : DiogelColors.textTertiary,
                     ),
                   ),
                 ],
