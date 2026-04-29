@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import '../../navigation/presentation/main_navigation_screen.dart';
 import '../../../theme/tokens.dart';
 import 'widgets/pin_button.dart';
@@ -56,6 +57,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
   Widget build(BuildContext context) {
     // Initialize vault service
     ref.watch(vaultInitializationProvider);
+    final vaultState = ref.watch(vaultStateProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -107,12 +109,14 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                   ),
                   const SizedBox(height: DiogelSpacing.space6),
                   Text(
-                    'Unlock Vault',
+                    vaultState is SessionExpired ? 'Session Expired' : 'Unlock Vault',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
                   const SizedBox(height: DiogelSpacing.space1),
                   Text(
-                    'Enter security PIN to continue',
+                    vaultState is SessionExpired 
+                        ? 'Your session has timed out due to inactivity' 
+                        : 'Enter security PIN to continue',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: DiogelColors.textSecondary,
                     ),

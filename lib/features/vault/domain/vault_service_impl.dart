@@ -79,6 +79,17 @@ class VaultServiceImpl implements VaultService {
   }
 
   @override
+  Future<void> expireSession() async {
+    _sessionPin = null;
+    final sentinel = await _store.getSentinel();
+    if (sentinel == null) {
+      _state = const NoVault();
+    } else {
+      _state = const SessionExpired();
+    }
+  }
+
+  @override
   Future<VaultIdentity> createIdentity({String? displayName}) async {
     _checkUnlocked();
 
@@ -197,6 +208,17 @@ class VaultServiceImpl implements VaultService {
     );
     await _store.setActiveIdentityId(localId);
     _activeIdentity = record.toVaultIdentity(isActive: true);
+  }
+
+  @override
+  Future<int> getInactivityTimeout() async {
+    final timeout = await _store.getInactivityTimeout();
+    return timeout ?? 5; // Default 5 minutes
+  }
+
+  @override
+  Future<void> setInactivityTimeout(int minutes) async {
+    await _store.setInactivityTimeout(minutes);
   }
 
   void _checkUnlocked() {

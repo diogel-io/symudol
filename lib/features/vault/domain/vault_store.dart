@@ -23,6 +23,12 @@ abstract class VaultStore {
   /// Reads all identity records.
   Future<List<VaultIdentityRecord>> getIdentities();
 
+  /// Reads the inactivity timeout in minutes.
+  Future<int?> getInactivityTimeout();
+
+  /// Sets the inactivity timeout in minutes.
+  Future<void> setInactivityTimeout(int minutes);
+
   /// Reads a full identity record including secret.
   Future<VaultIdentityRecord?> getIdentityRecord(String localId);
 

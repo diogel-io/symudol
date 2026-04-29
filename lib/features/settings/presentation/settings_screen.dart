@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../vault/application/vault_providers.dart';
 import 'widgets/settings_tile.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final vaultControllerState = ref.watch(vaultControllerProvider);
+    final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -32,6 +37,28 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Use fingerprint for faster access',
             trailing: Switch(value: true, onChanged: (value) {}),
           ),
+          SettingsTile(
+            icon: Icons.timer_outlined,
+            title: 'Inactivity Timeout',
+            subtitle: timeoutMinutes == 0 ? 'Never' : '$timeoutMinutes minutes',
+            onTap: () async {
+              final newValue = await showDialog<int>(
+                context: context,
+                builder: (context) => _TimeoutPickerDialog(initialValue: timeoutMinutes),
+              );
+              if (newValue != null) {
+                ref.read(vaultControllerProvider.notifier).setInactivityTimeout(newValue);
+              }
+            },
+          ),
+          SettingsTile(
+            icon: Icons.lock_open,
+            title: 'Lock Vault',
+            subtitle: 'Secure your vault immediately',
+            onTap: () {
+              ref.read(vaultControllerProvider.notifier).lock();
+            },
+          ),
           const SizedBox(height: DiogelSpacing.space6),
           Text(
             'VAULT',
@@ -54,6 +81,52 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TimeoutPickerDialog extends StatelessWidget {
+  final int initialValue;
+
+  const _TimeoutPickerDialog({required this.initialValue});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Inactivity Timeout'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildOption(context, 0, 'Never'),
+            _buildOption(context, 1, '1 minute'),
+            _buildOption(context, 5, '5 minutes'),
+            _buildOption(context, 15, '15 minutes'),
+            _buildOption(context, 30, '30 minutes'),
+            _buildOption(context, 60, '1 hour'),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOption(BuildContext context, int value, String label) {
+    return RadioListTile<int>(
+      title: Text(label),
+      value: value,
+      groupValue: initialValue,
+      onChanged: (newValue) {
+        if (newValue != null) {
+          Navigator.of(context).pop(newValue);
+        }
+      },
+      contentPadding: EdgeInsets.zero,
     );
   }
 }

@@ -9,12 +9,14 @@ class VaultControllerState {
   final VaultState vaultState;
   final List<VaultIdentity> identities;
   final VaultIdentity? activeIdentity;
+  final int inactivityTimeoutMinutes;
   final bool isLoading;
 
   const VaultControllerState({
     required this.vaultState,
     this.identities = const [],
     this.activeIdentity,
+    this.inactivityTimeoutMinutes = 5,
     this.isLoading = false,
   });
 
@@ -22,12 +24,14 @@ class VaultControllerState {
     VaultState? vaultState,
     List<VaultIdentity>? identities,
     VaultIdentity? activeIdentity,
+    int? inactivityTimeoutMinutes,
     bool? isLoading,
   }) {
     return VaultControllerState(
       vaultState: vaultState ?? this.vaultState,
       identities: identities ?? this.identities,
       activeIdentity: activeIdentity ?? this.activeIdentity,
+      inactivityTimeoutMinutes: inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -53,19 +57,35 @@ class VaultController extends StateNotifier<VaultControllerState> {
     final vaultState = _vaultService.state;
     List<VaultIdentity> identities = [];
     VaultIdentity? activeIdentity;
+    int timeout = 5;
 
     if (vaultState is VaultUnlocked) {
       identities = await _vaultService.listIdentities();
       activeIdentity = _vaultService.activeIdentity;
+      timeout = await _vaultService.getInactivityTimeout();
     } else if (vaultState is VaultLocked) {
       activeIdentity = _vaultService.activeIdentity;
+      // In locked state we might not be able to get the timeout if it requires KEK, 
+      // but getInactivityTimeout is just a simple read from store for now.
+      timeout = await _vaultService.getInactivityTimeout();
     }
 
     state = state.copyWith(
       vaultState: vaultState,
       identities: identities,
       activeIdentity: activeIdentity,
+      inactivityTimeoutMinutes: timeout,
     );
+  }
+
+  Future<void> setInactivityTimeout(int minutes) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _vaultService.setInactivityTimeout(minutes);
+      await _refreshState();
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   Future<void> createVault(String pin) async {
@@ -92,6 +112,16 @@ class VaultController extends StateNotifier<VaultControllerState> {
     state = state.copyWith(isLoading: true);
     try {
       await _vaultService.lock();
+      await _refreshState();
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> expireSession() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await _vaultService.expireSession();
       await _refreshState();
     } finally {
       state = state.copyWith(isLoading: false);

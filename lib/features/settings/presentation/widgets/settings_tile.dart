@@ -8,6 +8,7 @@ class SettingsTile extends StatelessWidget {
   final String subtitle;
   final Widget? trailing;
   final bool isDestructive;
+  final VoidCallback? onTap;
 
   const SettingsTile({
     super.key,
@@ -16,6 +17,7 @@ class SettingsTile extends StatelessWidget {
     required this.subtitle,
     this.trailing,
     this.isDestructive = false,
+    this.onTap,
   });
 
   @override
@@ -26,6 +28,7 @@ class SettingsTile extends StatelessWidget {
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      onTap: onTap,
       leading: Icon(icon, color: color.withValues(alpha: 0.7)),
       title: Text(
         title,

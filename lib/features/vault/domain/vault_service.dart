@@ -29,6 +29,9 @@ abstract interface class VaultService {
   /// Locks the vault.
   Future<void> lock();
 
+  /// Expires the session due to inactivity.
+  Future<void> expireSession();
+
   /// Creates a new identity in the vault.
   /// 
   /// [displayName] is an optional name for the identity.
@@ -55,4 +58,10 @@ abstract interface class VaultService {
   /// Throws [VaultLockedException] if the vault is locked.
   /// Throws [IdentityNotFoundException] if the identity does not exist.
   Future<void> setActiveIdentity(String localId);
+
+  /// Gets the inactivity timeout in minutes.
+  Future<int> getInactivityTimeout();
+
+  /// Sets the inactivity timeout in minutes.
+  Future<void> setInactivityTimeout(int minutes);
 }

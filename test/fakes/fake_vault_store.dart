@@ -7,6 +7,7 @@ class FakeVaultStore implements VaultStore {
   String? _version;
   String? _sentinel;
   String? _activeIdentityId;
+  int? _inactivityTimeout;
   final Map<String, VaultIdentityRecord> _identities = {};
 
   /// Simulates a storage error when set to true.
@@ -59,6 +60,18 @@ class FakeVaultStore implements VaultStore {
   Future<void> setActiveIdentityId(String id) async {
     _checkError();
     _activeIdentityId = id;
+  }
+
+  @override
+  Future<int?> getInactivityTimeout() async {
+    _checkError();
+    return _inactivityTimeout;
+  }
+
+  @override
+  Future<void> setInactivityTimeout(int minutes) async {
+    _checkError();
+    _inactivityTimeout = minutes;
   }
 
   @override
