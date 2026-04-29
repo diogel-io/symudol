@@ -5,6 +5,7 @@ class VaultIdentityRecord {
   final String identityId;
   final String publicKey;
   final String secretPayload;
+  final String? displayName;
   final IdentityOrigin origin;
   final DateTime createdAt;
 
@@ -13,6 +14,7 @@ class VaultIdentityRecord {
     required this.identityId,
     required this.publicKey,
     required this.secretPayload,
+    this.displayName,
     required this.origin,
     required this.createdAt,
   });
@@ -23,6 +25,7 @@ class VaultIdentityRecord {
       'identityId': identityId,
       'publicKey': publicKey,
       'secretPayload': secretPayload,
+      'displayName': displayName,
       'origin': origin.name,
       'createdAt': createdAt.toIso8601String(),
     };
@@ -34,6 +37,7 @@ class VaultIdentityRecord {
       identityId: json['identityId'] as String,
       publicKey: json['publicKey'] as String,
       secretPayload: json['secretPayload'] as String,
+      displayName: json['displayName'] as String?,
       origin: IdentityOrigin.values.byName(json['origin'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
@@ -43,6 +47,7 @@ class VaultIdentityRecord {
     return VaultIdentity(
       localId: identityId,
       publicKey: publicKey,
+      displayName: displayName,
       createdAt: createdAt,
       origin: origin,
     );

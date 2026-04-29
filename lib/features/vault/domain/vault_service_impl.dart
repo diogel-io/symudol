@@ -101,14 +101,16 @@ class VaultServiceImpl implements VaultService {
       identityId: localId,
       publicKey: publicKey,
       secretPayload: privateKey,
+      displayName: displayName,
       origin: IdentityOrigin.generated,
       createdAt: now,
     );
 
     await _store.saveIdentityRecord(record);
 
-    final identity = record.toVaultIdentity().copyWith(displayName: displayName);
+    final identity = record.toVaultIdentity();
     
+    // Refresh identities from store if needed, but here we just need to update _activeIdentity if it's the first one
     if (_activeIdentity == null) {
       await setActiveIdentity(identity.localId);
     }
@@ -160,13 +162,14 @@ class VaultServiceImpl implements VaultService {
       identityId: localId,
       publicKey: publicKey,
       secretPayload: hexPrivateKey,
+      displayName: displayName,
       origin: IdentityOrigin.imported,
       createdAt: now,
     );
 
     await _store.saveIdentityRecord(record);
 
-    final identity = record.toVaultIdentity().copyWith(displayName: displayName);
+    final identity = record.toVaultIdentity();
 
     if (_activeIdentity == null) {
       await setActiveIdentity(identity.localId);
