@@ -1,4 +1,6 @@
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
+import 'package:android_diogel/features/vault/domain/vault_failure.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +13,7 @@ class VaultControllerState {
   final VaultIdentity? activeIdentity;
   final int inactivityTimeoutMinutes;
   final bool isLoading;
+  final VaultFailure? failure;
 
   const VaultControllerState({
     required this.vaultState,
@@ -18,6 +21,7 @@ class VaultControllerState {
     this.activeIdentity,
     this.inactivityTimeoutMinutes = 5,
     this.isLoading = false,
+    this.failure,
   });
 
   VaultControllerState copyWith({
@@ -26,6 +30,8 @@ class VaultControllerState {
     VaultIdentity? activeIdentity,
     int? inactivityTimeoutMinutes,
     bool? isLoading,
+    VaultFailure? failure,
+    bool clearFailure = false,
   }) {
     return VaultControllerState(
       vaultState: vaultState ?? this.vaultState,
@@ -33,6 +39,7 @@ class VaultControllerState {
       activeIdentity: activeIdentity ?? this.activeIdentity,
       inactivityTimeoutMinutes: inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
       isLoading: isLoading ?? this.isLoading,
+      failure: clearFailure ? null : (failure ?? this.failure),
     );
   }
 }
@@ -68,6 +75,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
       // In locked state we might not be able to get the timeout if it requires KEK, 
       // but getInactivityTimeout is just a simple read from store for now.
       timeout = await _vaultService.getInactivityTimeout();
+    } else if (vaultState is NoVault) {
+      // Ensure everything is cleared
+      identities = [];
+      activeIdentity = null;
     }
 
     state = state.copyWith(
@@ -78,89 +89,135 @@ class VaultController extends StateNotifier<VaultControllerState> {
     );
   }
 
+  void clearFailure() {
+    state = state.copyWith(clearFailure: true);
+  }
+
   Future<void> setInactivityTimeout(int minutes) async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.setInactivityTimeout(minutes);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> createVault(String pin) async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.createVault(pin);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> unlock(String pin) async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.unlock(pin);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> lock() async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.lock();
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> expireSession() async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.expireSession();
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> createIdentity({String? displayName}) async {
-    if (state.vaultState is! VaultUnlocked) return;
+    if (state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(failure: const VaultLockedFailure());
+      return;
+    }
     
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.createIdentity(displayName: displayName);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> importIdentity(String keyInput, {String? displayName}) async {
-    if (state.vaultState is! VaultUnlocked) return;
+    if (state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(failure: const VaultLockedFailure());
+      return;
+    }
 
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.importIdentity(keyInput, displayName: displayName);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> setActiveIdentity(String localId) async {
-    if (state.vaultState is! VaultUnlocked) return;
+    if (state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(failure: const VaultLockedFailure());
+      return;
+    }
 
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.setActiveIdentity(localId);
       await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  VaultFailure _mapExceptionToFailure(Object e) {
+    if (e is VaultLockedException) {
+      return const VaultLockedFailure();
+    }
+    if (e is VaultStorageException) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('already exists')) {
+        return const DuplicateIdentityFailure();
+      }
+      if (msg.contains('invalid') || msg.contains('format')) {
+        return const UnsupportedKeyFormatFailure();
+      }
+      return SecureStorageFailure(e.message);
+    }
+    return SecureStorageFailure(e.toString());
   }
 }

@@ -1,4 +1,5 @@
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
+import 'package:android_diogel/features/vault/domain/vault_failure.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,15 +31,19 @@ void main() {
       expect(await store.getSentinel(), isNotNull);
     });
 
-    test('lock and unlock should update state correctly', () async {
+    test('lock and unlock should update state correctly and lock should clear identities', () async {
       await controller.createVault('1234');
+      await controller.createIdentity(displayName: 'Test');
       expect(controller.debugState.vaultState, isA<VaultUnlocked>());
+      expect(controller.debugState.identities, isNotEmpty);
 
       await controller.lock();
       expect(controller.debugState.vaultState, isA<VaultLocked>());
+      expect(controller.debugState.identities, isEmpty);
 
       await controller.unlock('1234');
       expect(controller.debugState.vaultState, isA<VaultUnlocked>());
+      expect(controller.debugState.identities, isNotEmpty);
     });
 
     test('createIdentity should update identities list and activeIdentity', () async {
@@ -95,7 +100,7 @@ void main() {
       expect(updatedId2.isActive, isTrue);
     });
 
-    test('mutation operations should be blocked when locked', () async {
+    test('mutation operations should be blocked when locked and set failure', () async {
       await controller.createVault('1234');
       await controller.lock();
       
@@ -103,9 +108,35 @@ void main() {
       
       await controller.createIdentity(displayName: 'Should fail');
       expect(controller.debugState.identities, isEmpty);
+      expect(controller.debugState.failure, isA<VaultLockedFailure>());
       
+      controller.clearFailure();
+      expect(controller.debugState.failure, isNull);
+
       await controller.importIdentity('nsec1...', displayName: 'Should fail');
       expect(controller.debugState.identities, isEmpty);
+      expect(controller.debugState.failure, isA<VaultLockedFailure>());
+    });
+
+    test('importIdentity should map VaultStorageException to UI-safe failure', () async {
+      await controller.createVault('1234');
+      
+      // Attempt to import an invalid key
+      await controller.importIdentity('invalid-key');
+      
+      expect(controller.debugState.failure, isA<UnsupportedKeyFormatFailure>());
+      
+      // Create an identity then try to import it again (duplicate)
+      final identity = await service.createIdentity();
+      // We need a real private key for a successful import first to then fail on duplicate,
+      // but VaultServiceImpl.createIdentity doesn't expose the private key easily here.
+      // Let's use a known private key.
+      const privateKey = '0000000000000000000000000000000000000000000000000000000000000001';
+      await controller.importIdentity(privateKey);
+      expect(controller.debugState.failure, isNull);
+      
+      await controller.importIdentity(privateKey);
+      expect(controller.debugState.failure, isA<DuplicateIdentityFailure>());
     });
   });
 }

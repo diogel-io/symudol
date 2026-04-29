@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:android_diogel/features/vault/domain/vault_failure.dart';
 import 'package:android_diogel/theme/tokens.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 
@@ -45,29 +46,50 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
       _error = null;
     });
 
-    try {
-      final name = _nameController.text.trim();
-      
-      final controller = ref.read(vaultControllerProvider.notifier);
-      await controller.importIdentity(
-        keyInput,
-        displayName: name.isEmpty ? null : name,
-      );
-      
-      _keyController.clear();
-      _nameController.clear();
-
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
-    } catch (e) {
+    final name = _nameController.text.trim();
+    
+    final controller = ref.read(vaultControllerProvider.notifier);
+    await controller.importIdentity(
+      keyInput,
+      displayName: name.isEmpty ? null : name,
+    );
+    
+    // The controller update is async, and it updates the state.
+    // We should check the state for failures.
+    final state = ref.read(vaultControllerProvider);
+    
+    if (state.failure != null) {
       if (mounted) {
         setState(() {
-          _error = e.toString().replaceFirst('VaultStorageException: ', '');
+          _error = _mapFailureToMessage(state.failure!);
           _isLoading = false;
         });
       }
+      return;
     }
+
+    _keyController.clear();
+    _nameController.clear();
+
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  String _mapFailureToMessage(VaultFailure failure) {
+    if (failure is VaultLockedFailure) {
+      return 'Vault is locked';
+    }
+    if (failure is UnsupportedKeyFormatFailure) {
+      return 'Invalid private key format';
+    }
+    if (failure is DuplicateIdentityFailure) {
+      return 'Identity already exists';
+    }
+    if (failure is SecureStorageFailure) {
+      return 'Storage error: ${failure.message}';
+    }
+    return 'An unexpected error occurred';
   }
 
   @override
