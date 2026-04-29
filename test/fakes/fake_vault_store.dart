@@ -62,9 +62,9 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
-  Future<List<VaultIdentity>> getIdentities() async {
+  Future<List<VaultIdentityRecord>> getIdentities() async {
     _checkError();
-    return _identities.values.map((r) => r.toVaultIdentity()).toList();
+    return _identities.values.toList();
   }
 
   @override

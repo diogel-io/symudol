@@ -41,7 +41,7 @@ void main() {
       final identities = await store.getIdentities();
       
       expect(identities, hasLength(1));
-      expect(identities.first.localId, 'id1');
+      expect(identities.first.identityId, 'id1');
       
       final retrievedRecord = await store.getIdentityRecord('id1');
       expect(retrievedRecord?.secretPayload, 'secret1');

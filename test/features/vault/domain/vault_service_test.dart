@@ -283,5 +283,23 @@ void main() {
       
       expect(vaultService.activeIdentity?.localId, equals(identity.localId));
     });
+
+    test('listIdentities should return identities with correct isActive flag', () async {
+      await vaultService.createVault('1234');
+      final identity1 = await vaultService.createIdentity(displayName: 'ID 1');
+      final identity2 = await vaultService.createIdentity(displayName: 'ID 2');
+      
+      // Initially, identity1 is active (first created)
+      var identities = await vaultService.listIdentities();
+      expect(identities.firstWhere((i) => i.localId == identity1.localId).isActive, isTrue);
+      expect(identities.firstWhere((i) => i.localId == identity2.localId).isActive, isFalse);
+      
+      // Switch to identity2
+      await vaultService.setActiveIdentity(identity2.localId);
+      
+      identities = await vaultService.listIdentities();
+      expect(identities.firstWhere((i) => i.localId == identity1.localId).isActive, isFalse);
+      expect(identities.firstWhere((i) => i.localId == identity2.localId).isActive, isTrue);
+    });
   });
 }

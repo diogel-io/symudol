@@ -79,7 +79,7 @@ void main() {
           )).called(1);
     });
 
-    test('getIdentities should return list of identities (safe summaries)', () async {
+    test('getIdentities should return list of identities', () async {
       final record = VaultIdentityRecord(
         identityId: 'id1',
         publicKey: 'pub1',
@@ -103,9 +103,8 @@ void main() {
       final identities = await vaultStore.getIdentities();
 
       expect(identities.length, 1);
-      expect(identities.first.localId, 'id1');
-      // Verify it's a VaultIdentity and doesn't have secretPayload
-      expect(identities.first, isA<VaultIdentity>());
+      expect(identities.first.identityId, 'id1');
+      expect(identities.first, isA<VaultIdentityRecord>());
     });
 
     test('deleteIdentity should delete from storage', () async {

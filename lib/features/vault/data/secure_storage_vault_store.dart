@@ -38,11 +38,11 @@ class SecureStorageVaultStore implements VaultStore {
       _storage.write(key: _keyActiveIdentityId, value: id);
 
   @override
-  Future<List<VaultIdentity>> getIdentities() async {
+  Future<List<VaultIdentityRecord>> getIdentities() async {
     final all = await _storage.readAll();
     return all.entries
         .where((e) => e.key.startsWith(_keyIdentitiesPrefix))
-        .map((e) => VaultIdentityRecord.fromJson(jsonDecode(e.value)).toVaultIdentity())
+        .map((e) => VaultIdentityRecord.fromJson(jsonDecode(e.value)))
         .toList();
   }
 

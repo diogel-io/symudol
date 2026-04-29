@@ -1,13 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
-import 'widgets/inactive_account_tile.dart';
+import '../../vault/application/vault_providers.dart';
+import 'widgets/identity_tile.dart';
+import 'widgets/create_identity_dialog.dart';
+import 'widgets/import_identity_dialog.dart';
 
-class AccountsScreen extends StatelessWidget {
+class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
 
+  Future<void> _showImportIdentityDialog(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const ImportIdentityDialog(),
+    );
+
+    if (result == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Identity imported successfully'),
+          backgroundColor: DiogelColors.stateSuccess,
+        ),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final vaultState = ref.watch(vaultControllerProvider);
+    final identities = vaultState.identities;
+    final activeIdentity = vaultState.activeIdentity;
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -55,7 +79,7 @@ class AccountsScreen extends StatelessWidget {
                 ],
               ),
               FilledButton.icon(
-                onPressed: () {},
+                onPressed: () => _showCreateIdentityDialog(context),
                 icon: const Icon(Icons.add, size: 20),
                 label: const Text('Add New'),
                 style: FilledButton.styleFrom(
@@ -69,220 +93,49 @@ class AccountsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: DiogelSpacing.space8),
-          Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DiogelRadius.large),
-              side: const BorderSide(
-                color: DiogelColors.actionPrimary,
-                width: 0.5,
+          
+          if (identities.isEmpty)
+            _buildEmptyState(context)
+          else
+            ...identities.map((identity) => Padding(
+              padding: const EdgeInsets.only(bottom: DiogelSpacing.space4),
+              child: IdentityTile(
+                identity: identity,
+                onTap: identity.isActive 
+                  ? null 
+                  : () => ref.read(vaultControllerProvider.notifier).setActiveIdentity(identity.localId),
               ),
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: DiogelSpacing.space3,
-                      vertical: DiogelSpacing.space1,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: DiogelColors.actionPrimary,
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(DiogelRadius.medium),
-                        topRight: Radius.circular(DiogelRadius.large),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          size: 12,
-                          color: DiogelColors.textInverse,
-                        ),
-                        const SizedBox(width: DiogelSpacing.space1),
-                        Text(
-                          'Active',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(color: DiogelColors.textInverse),
-                        ),
-                      ],
-                    ),
-                  ),
+            )),
+
+          const SizedBox(height: DiogelSpacing.space4),
+          InkWell(
+            onTap: () => _showImportIdentityDialog(context),
+            child: Container(
+              padding: const EdgeInsets.all(DiogelSpacing.space6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(DiogelRadius.large),
+                border: Border.all(
+                  color: DiogelColors.borderSubtle,
+                  width: 2,
+                  style: BorderStyle.solid,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(DiogelSpacing.space4),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: DiogelColors.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(
-                                DiogelRadius.medium,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.person,
-                              size: 40,
-                              color: DiogelColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: DiogelSpacing.space4),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'satoshi_vision',
-                                  style: Theme.of(context).textTheme.titleLarge,
-                                ),
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: DiogelSpacing.space2,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            DiogelColors.surfaceContainerHigh,
-                                        borderRadius: BorderRadius.circular(
-                                          DiogelRadius.small,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'npub1...7jk9',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelMedium
-                                            ?.copyWith(
-                                              color: DiogelColors.actionPrimary,
-                                              fontFamily: 'monospace',
-                                            ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: DiogelSpacing.space2),
-                                    const Icon(
-                                      Icons.content_copy,
-                                      size: 16,
-                                      color: DiogelColors.textTertiary,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: DiogelSpacing.space4),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(
-                                DiogelSpacing.space3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: DiogelColors.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(
-                                  DiogelRadius.medium,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'Followers',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
-                                  ),
-                                  Text(
-                                    '12.4K',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: DiogelSpacing.space2),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(
-                                DiogelSpacing.space3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: DiogelColors.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(
-                                  DiogelRadius.medium,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'Posts',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
-                                  ),
-                                  Text(
-                                    '842',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: DiogelSpacing.space4),
-          const InactiveAccountTile(name: 'dev_mainnet', npub: 'npub1...a2x4'),
-          const SizedBox(height: DiogelSpacing.space4),
-          const InactiveAccountTile(
-            name: 'creative_soul',
-            npub: 'npub1...q9w1',
-          ),
-          const SizedBox(height: DiogelSpacing.space4),
-          Container(
-            padding: const EdgeInsets.all(DiogelSpacing.space6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(DiogelRadius.large),
-              border: Border.all(
-                color: DiogelColors.borderSubtle,
-                width: 2,
-                style: BorderStyle.solid,
               ),
-            ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.add_circle_outline,
-                  size: 32,
-                  color: DiogelColors.textTertiary,
-                ),
-                const SizedBox(height: DiogelSpacing.space2),
-                Text(
-                  'Import Private Key',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.add_circle_outline,
+                    size: 32,
                     color: DiogelColors.textTertiary,
                   ),
-                ),
-              ],
+                  const SizedBox(height: DiogelSpacing.space2),
+                  Text(
+                    'Import Private Key',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: DiogelColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: DiogelSpacing.space8),
@@ -320,5 +173,53 @@ class AccountsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(DiogelSpacing.space6),
+      decoration: BoxDecoration(
+        color: DiogelColors.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(DiogelRadius.large),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.account_balance_wallet_outlined,
+            size: 48,
+            color: DiogelColors.textTertiary,
+          ),
+          const SizedBox(height: DiogelSpacing.space4),
+          Text(
+            'No Identities Found',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: DiogelSpacing.space2),
+          Text(
+            'Create or import your first Nostr identity to get started.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: DiogelColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCreateIdentityDialog(BuildContext context) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const CreateIdentityDialog(),
+    );
+
+    if (result == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Identity created successfully'),
+          backgroundColor: DiogelColors.stateSuccess,
+        ),
+      );
+    }
   }
 }

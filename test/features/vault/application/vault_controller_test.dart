@@ -73,6 +73,28 @@ void main() {
       expect(controller.debugState.activeIdentity?.displayName, equals('Id 1'));
     });
 
+    test('active identity flag in identities list should be correct in controller state', () async {
+      await controller.createVault('1234');
+      await controller.createIdentity(displayName: 'Id 1');
+      await controller.createIdentity(displayName: 'Id 2');
+      
+      final id1 = controller.debugState.identities.firstWhere((i) => i.displayName == 'Id 1');
+      final id2 = controller.debugState.identities.firstWhere((i) => i.displayName == 'Id 2');
+      
+      // Id 1 should be active (first created)
+      expect(id1.isActive, isTrue);
+      expect(id2.isActive, isFalse);
+      
+      // Switch to Id 2
+      await controller.setActiveIdentity(id2.localId);
+      
+      final updatedId1 = controller.debugState.identities.firstWhere((i) => i.displayName == 'Id 1');
+      final updatedId2 = controller.debugState.identities.firstWhere((i) => i.displayName == 'Id 2');
+      
+      expect(updatedId1.isActive, isFalse);
+      expect(updatedId2.isActive, isTrue);
+    });
+
     test('mutation operations should be blocked when locked', () async {
       await controller.createVault('1234');
       await controller.lock();

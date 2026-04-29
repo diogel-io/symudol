@@ -25,4 +25,7 @@ class IdentityNotFoundException extends VaultException {
 
 class VaultStorageException extends VaultException {
   const VaultStorageException(super.message);
+
+  @override
+  String toString() => 'VaultStorageException: $message';
 }

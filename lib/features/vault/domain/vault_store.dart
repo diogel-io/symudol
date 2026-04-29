@@ -20,8 +20,8 @@ abstract class VaultStore {
   /// Sets the active identity ID.
   Future<void> setActiveIdentityId(String id);
 
-  /// Reads all identity records (safe summaries).
-  Future<List<VaultIdentity>> getIdentities();
+  /// Reads all identity records.
+  Future<List<VaultIdentityRecord>> getIdentities();
 
   /// Reads a full identity record including secret.
   Future<VaultIdentityRecord?> getIdentityRecord(String localId);

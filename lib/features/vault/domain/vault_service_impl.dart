@@ -31,7 +31,7 @@ class VaultServiceImpl implements VaultService {
       final activeId = await _store.getActiveIdentityId();
       if (activeId != null) {
         final record = await _store.getIdentityRecord(activeId);
-        _activeIdentity = record?.toVaultIdentity();
+        _activeIdentity = record?.toVaultIdentity(isActive: true);
       }
     }
   }
@@ -108,7 +108,7 @@ class VaultServiceImpl implements VaultService {
 
     await _store.saveIdentityRecord(record);
 
-    final identity = record.toVaultIdentity();
+    final identity = record.toVaultIdentity(isActive: _activeIdentity == null);
     
     // Refresh identities from store if needed, but here we just need to update _activeIdentity if it's the first one
     if (_activeIdentity == null) {
@@ -169,7 +169,7 @@ class VaultServiceImpl implements VaultService {
 
     await _store.saveIdentityRecord(record);
 
-    final identity = record.toVaultIdentity();
+    final identity = record.toVaultIdentity(isActive: _activeIdentity == null);
 
     if (_activeIdentity == null) {
       await setActiveIdentity(identity.localId);
@@ -181,19 +181,22 @@ class VaultServiceImpl implements VaultService {
   @override
   Future<List<VaultIdentity>> listIdentities() async {
     _checkUnlocked();
-    return await _store.getIdentities();
+    final records = await _store.getIdentities();
+    return records.map((r) => r.toVaultIdentity(
+      isActive: _activeIdentity?.localId == r.identityId,
+    )).toList();
   }
 
   @override
   Future<void> setActiveIdentity(String localId) async {
     _checkUnlocked();
-    final identities = await _store.getIdentities();
-    final identity = identities.firstWhere(
-      (i) => i.localId == localId,
+    final records = await _store.getIdentities();
+    final record = records.firstWhere(
+      (r) => r.identityId == localId,
       orElse: () => throw const IdentityNotFoundException(),
     );
     await _store.setActiveIdentityId(localId);
-    _activeIdentity = identity;
+    _activeIdentity = record.toVaultIdentity(isActive: true);
   }
 
   void _checkUnlocked() {

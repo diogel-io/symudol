@@ -22,15 +22,14 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
   }
 
   Future<void> _unlockVault() async {
-    final service = ref.read(vaultServiceProvider);
+    final notifier = ref.read(vaultControllerProvider.notifier);
     try {
-      await service.unlock(_pin);
-      _navigateToMainNavigation();
+      await notifier.unlock(_pin);
     } catch (e) {
-      // For now, just navigate anyway as the current implementation might not be fully functional
-      // and we want to keep the UI flow working.
       // In a real app, show error message.
-      _navigateToMainNavigation();
+      setState(() {
+        _pin = '';
+      });
     }
   }
 
@@ -189,7 +188,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: _pin.length == 6
-                            ? _navigateToMainNavigation
+                            ? _unlockVault
                             : null,
                         icon: const Icon(Icons.lock_open),
                         label: const Text('Unlock Vault'),

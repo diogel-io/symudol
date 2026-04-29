@@ -43,13 +43,14 @@ class VaultIdentityRecord {
     );
   }
 
-  VaultIdentity toVaultIdentity() {
+  VaultIdentity toVaultIdentity({bool isActive = false}) {
     return VaultIdentity(
       localId: identityId,
       publicKey: publicKey,
       displayName: displayName,
       createdAt: createdAt,
       origin: origin,
+      isActive: isActive,
     );
   }
 }
