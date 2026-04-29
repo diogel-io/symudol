@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
+import 'package:dart_nostr/dart_nostr.dart';
 
 class VaultServiceImpl implements VaultService {
   final VaultStore _store;
@@ -70,29 +72,83 @@ class VaultServiceImpl implements VaultService {
   @override
   Future<VaultIdentity> createIdentity({String? displayName}) async {
     _checkUnlocked();
-    // Implementation for later tasks
-    throw UnimplementedError();
+
+    final nostr = Nostr.instance;
+    final keyPair = nostr.services.keys.generateKeyPair();
+    final privateKey = keyPair.private;
+    final publicKey = keyPair.public;
+
+    // Duplicate check
+    final existing = await _store.getIdentities();
+    if (existing.any((i) => i.publicKey == publicKey)) {
+      // Practically unlikely, but handled
+      throw const VaultStorageException('Identity with this public key already exists');
+    }
+
+    final now = DateTime.now();
+    final localId = publicKey; // Using publicKey as localId for now, or could use UUID
+
+    final record = VaultIdentityRecord(
+      identityId: localId,
+      publicKey: publicKey,
+      secretPayload: privateKey,
+      origin: IdentityOrigin.generated,
+      createdAt: now,
+    );
+
+    await _store.saveIdentityRecord(record);
+
+    return record.toVaultIdentity().copyWith(displayName: displayName);
   }
 
   @override
   Future<VaultIdentity> importIdentity(String privateKey, {String? displayName}) async {
     _checkUnlocked();
-    // Implementation for later tasks
-    throw UnimplementedError();
+
+    final nostr = Nostr.instance;
+    late final String publicKey;
+    try {
+      publicKey = nostr.services.keys.generateKeyPairFromExistingPrivateKey(privateKey).public;
+    } catch (e) {
+      throw VaultStorageException('Invalid private key: $e');
+    }
+
+    // Duplicate check
+    final existing = await _store.getIdentities();
+    if (existing.any((i) => i.publicKey == publicKey)) {
+      throw const VaultStorageException('Identity with this public key already exists');
+    }
+
+    final now = DateTime.now();
+    final localId = publicKey;
+
+    final record = VaultIdentityRecord(
+      identityId: localId,
+      publicKey: publicKey,
+      secretPayload: privateKey,
+      origin: IdentityOrigin.imported,
+      createdAt: now,
+    );
+
+    await _store.saveIdentityRecord(record);
+
+    return record.toVaultIdentity().copyWith(displayName: displayName);
   }
 
   @override
   Future<List<VaultIdentity>> listIdentities() async {
     _checkUnlocked();
-    // Implementation for later tasks
-    throw UnimplementedError();
+    return await _store.getIdentities();
   }
 
   @override
   Future<void> setActiveIdentity(String localId) async {
     _checkUnlocked();
-    // Implementation for later tasks
-    throw UnimplementedError();
+    final identities = await _store.getIdentities();
+    if (!identities.any((i) => i.localId == localId)) {
+      throw const IdentityNotFoundException();
+    }
+    await _store.setActiveIdentityId(localId);
   }
 
   void _checkUnlocked() {

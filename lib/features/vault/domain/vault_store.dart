@@ -1,3 +1,4 @@
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 
 abstract class VaultStore {
@@ -19,11 +20,14 @@ abstract class VaultStore {
   /// Sets the active identity ID.
   Future<void> setActiveIdentityId(String id);
 
-  /// Reads all identity records.
+  /// Reads all identity records (safe summaries).
   Future<List<VaultIdentity>> getIdentities();
 
+  /// Reads a full identity record including secret.
+  Future<VaultIdentityRecord?> getIdentityRecord(String localId);
+
   /// Saves an identity record.
-  Future<void> saveIdentity(VaultIdentity identity);
+  Future<void> saveIdentityRecord(VaultIdentityRecord record);
 
   /// Deletes an identity record by its local ID.
   Future<void> deleteIdentity(String localId);

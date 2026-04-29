@@ -1,4 +1,5 @@
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'fake_vault_store.dart';
@@ -28,18 +29,22 @@ void main() {
     });
 
     test('should store and retrieve identities', () async {
-      final identity = VaultIdentity(
-        localId: 'id1',
+      final record = VaultIdentityRecord(
+        identityId: 'id1',
         publicKey: 'pub1',
+        secretPayload: 'secret1',
         createdAt: DateTime.now(),
         origin: IdentityOrigin.generated,
       );
 
-      await store.saveIdentity(identity);
+      await store.saveIdentityRecord(record);
       final identities = await store.getIdentities();
       
       expect(identities, hasLength(1));
       expect(identities.first.localId, 'id1');
+      
+      final retrievedRecord = await store.getIdentityRecord('id1');
+      expect(retrievedRecord?.secretPayload, 'secret1');
     });
 
     test('should throw storage error when requested', () async {
@@ -48,25 +53,27 @@ void main() {
     });
 
     test('should throw duplicate identity error when requested', () async {
-      final identity = VaultIdentity(
-        localId: 'id1',
+      final record = VaultIdentityRecord(
+        identityId: 'id1',
         publicKey: 'pub1',
+        secretPayload: 'secret1',
         createdAt: DateTime.now(),
         origin: IdentityOrigin.generated,
       );
 
-      await store.saveIdentity(identity);
+      await store.saveIdentityRecord(record);
       store.shouldThrowDuplicateIdentityError = true;
       
-      expect(() => store.saveIdentity(identity), throwsA(isA<VaultStorageException>()));
+      expect(() => store.saveIdentityRecord(record), throwsA(isA<VaultStorageException>()));
     });
 
     test('clearAll should reset everything', () async {
       await store.setVersion('1.0');
       await store.setSentinel('sentinel');
-      await store.saveIdentity(VaultIdentity(
-        localId: 'id1',
+      await store.saveIdentityRecord(VaultIdentityRecord(
+        identityId: 'id1',
         publicKey: 'pub1',
+        secretPayload: 'secret1',
         createdAt: DateTime.now(),
         origin: IdentityOrigin.generated,
       ));

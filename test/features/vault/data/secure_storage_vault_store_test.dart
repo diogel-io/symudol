@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/data/secure_storage_vault_store.dart';
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -56,10 +57,11 @@ void main() {
       expect(id, 'id_123');
     });
 
-    test('saveIdentity should serialize and write to storage', () async {
-      final identity = VaultIdentity(
-        localId: 'id1',
+    test('saveIdentityRecord should serialize and write to storage', () async {
+      final record = VaultIdentityRecord(
+        identityId: 'id1',
         publicKey: 'pub1',
+        secretPayload: 'secret1',
         createdAt: DateTime(2023),
         origin: IdentityOrigin.generated,
       );
@@ -69,18 +71,19 @@ void main() {
             value: any(named: 'value'),
           )).thenAnswer((_) async {});
 
-      await vaultStore.saveIdentity(identity);
+      await vaultStore.saveIdentityRecord(record);
 
       verify(() => mockStorage.write(
             key: 'identity_id1',
-            value: any(named: 'value', that: contains('"localId":"id1"')),
+            value: any(named: 'value', that: contains('"identityId":"id1"')),
           )).called(1);
     });
 
-    test('getIdentities should return list of identities', () async {
-      final identity = VaultIdentity(
-        localId: 'id1',
+    test('getIdentities should return list of identities (safe summaries)', () async {
+      final record = VaultIdentityRecord(
+        identityId: 'id1',
         publicKey: 'pub1',
+        secretPayload: 'secret1',
         createdAt: DateTime(2023),
         origin: IdentityOrigin.generated,
       );
@@ -93,7 +96,7 @@ void main() {
             wOptions: any(named: 'wOptions'),
             webOptions: any(named: 'webOptions'),
           )).thenAnswer((_) async => {
-            'identity_id1': jsonEncode(identity.toJson()),
+            'identity_id1': jsonEncode(record.toJson()),
             'some_other_key': 'value',
           });
 
@@ -101,6 +104,8 @@ void main() {
 
       expect(identities.length, 1);
       expect(identities.first.localId, 'id1');
+      // Verify it's a VaultIdentity and doesn't have secretPayload
+      expect(identities.first, isA<VaultIdentity>());
     });
 
     test('deleteIdentity should delete from storage', () async {

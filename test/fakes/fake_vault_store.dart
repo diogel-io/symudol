@@ -1,3 +1,4 @@
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
@@ -6,7 +7,7 @@ class FakeVaultStore implements VaultStore {
   String? _version;
   String? _sentinel;
   String? _activeIdentityId;
-  final Map<String, VaultIdentity> _identities = {};
+  final Map<String, VaultIdentityRecord> _identities = {};
 
   /// Simulates a storage error when set to true.
   bool shouldThrowStorageError = false;
@@ -63,16 +64,22 @@ class FakeVaultStore implements VaultStore {
   @override
   Future<List<VaultIdentity>> getIdentities() async {
     _checkError();
-    return _identities.values.toList();
+    return _identities.values.map((r) => r.toVaultIdentity()).toList();
   }
 
   @override
-  Future<void> saveIdentity(VaultIdentity identity) async {
+  Future<VaultIdentityRecord?> getIdentityRecord(String localId) async {
     _checkError();
-    if (shouldThrowDuplicateIdentityError && _identities.containsKey(identity.localId)) {
+    return _identities[localId];
+  }
+
+  @override
+  Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
+    _checkError();
+    if (shouldThrowDuplicateIdentityError && _identities.containsKey(record.identityId)) {
       throw const VaultStorageException('Simulated duplicate identity error');
     }
-    _identities[identity.localId] = identity;
+    _identities[record.identityId] = record;
   }
 
   @override

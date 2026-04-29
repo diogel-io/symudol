@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -41,16 +42,23 @@ class SecureStorageVaultStore implements VaultStore {
     final all = await _storage.readAll();
     return all.entries
         .where((e) => e.key.startsWith(_keyIdentitiesPrefix))
-        .map((e) => VaultIdentity.fromJson(jsonDecode(e.value)))
+        .map((e) => VaultIdentityRecord.fromJson(jsonDecode(e.value)).toVaultIdentity())
         .toList();
   }
 
   @override
-  Future<void> saveIdentity(VaultIdentity identity) async {
-    final key = '$_keyIdentitiesPrefix${identity.localId}';
+  Future<VaultIdentityRecord?> getIdentityRecord(String localId) async {
+    final data = await _storage.read(key: '$_keyIdentitiesPrefix$localId');
+    if (data == null) return null;
+    return VaultIdentityRecord.fromJson(jsonDecode(data));
+  }
+
+  @override
+  Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
+    final key = '$_keyIdentitiesPrefix${record.identityId}';
     await _storage.write(
       key: key,
-      value: jsonEncode(identity.toJson()),
+      value: jsonEncode(record.toJson()),
     );
   }
 
