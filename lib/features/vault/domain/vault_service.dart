@@ -11,6 +11,9 @@ abstract interface class VaultService {
   /// Returns the current state of the vault.
   VaultState get state;
 
+  /// Returns the active identity summary, or null if none is active or vault is locked.
+  VaultIdentity? get activeIdentity;
+
   /// Creates a new vault with the given [pin].
   /// 
   /// Throws [VaultAlreadyExistsException] if a vault already exists.

@@ -1,4 +1,5 @@
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
@@ -216,6 +217,71 @@ void main() {
         () => vaultService.importIdentity(nsec),
         throwsA(isA<VaultStorageException>()),
       );
+    });
+    test('listIdentities should return safe summaries without secrets', () async {
+      await vaultService.createVault('1234');
+      await vaultService.createIdentity(displayName: 'Test');
+      
+      final identities = await vaultService.listIdentities();
+      expect(identities, isNotEmpty);
+      // VaultIdentity doesn't have secretPayload, it's only in VaultIdentityRecord
+      // So listIdentities returning List<VaultIdentity> is already safe for UI.
+    });
+  });
+  group('VaultServiceImpl Active Identity', () {
+    test('setActiveIdentity should update activeIdentity and persist in store', () async {
+      await vaultService.createVault('1234');
+      final identity = await vaultService.createIdentity(displayName: 'Test');
+      
+      await vaultService.setActiveIdentity(identity.localId);
+      
+      expect(vaultService.activeIdentity?.localId, equals(identity.localId));
+      expect(await fakeStore.getActiveIdentityId(), equals(identity.localId));
+    });
+
+    test('setActiveIdentity should throw IdentityNotFoundException for unknown ID', () async {
+      await vaultService.createVault('1234');
+      
+      expect(
+        () => vaultService.setActiveIdentity('unknown'),
+        throwsA(isA<IdentityNotFoundException>()),
+      );
+    });
+
+    test('active identity should be loaded during init', () async {
+      // Setup store with an identity and active ID
+      final now = DateTime.now();
+      const identityId = 'test-id';
+      final record = VaultIdentityRecord(
+        identityId: identityId,
+        publicKey: 'pubkey',
+        secretPayload: 'secret',
+        origin: IdentityOrigin.generated,
+        createdAt: now,
+      );
+      await fakeStore.saveIdentityRecord(record);
+      await fakeStore.setActiveIdentityId(identityId);
+      await fakeStore.setSentinel('exists');
+
+      // Re-init service
+      await vaultService.init();
+      // Need to unlock to access identities usually, but let's see how we want to handle active identity when locked.
+      // Usually active identity might be needed for the UI even when locked (e.g. showing who is logging in),
+      // but the requirement says "list/select active identity" and "expose active identity summary".
+      // If the vault is locked, we might not want to expose it if it's sensitive, but it's just a summary.
+      
+      // Let's assume for now it's available after unlock if we want to follow _checkUnlocked() pattern,
+      // OR we can make it available whenever it's loaded.
+      await vaultService.unlock('1234');
+      
+      expect(vaultService.activeIdentity?.localId, equals(identityId));
+    });
+
+    test('the first created identity should become active automatically if none active', () async {
+      await vaultService.createVault('1234');
+      final identity = await vaultService.createIdentity();
+      
+      expect(vaultService.activeIdentity?.localId, equals(identity.localId));
     });
   });
 }

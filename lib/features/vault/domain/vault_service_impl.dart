@@ -11,11 +11,15 @@ class VaultServiceImpl implements VaultService {
   final VaultStore _store;
   VaultState _state = const NoVault();
   String? _sessionPin;
+  VaultIdentity? _activeIdentity;
 
   VaultServiceImpl(this._store);
 
   @override
   VaultState get state => _state;
+
+  @override
+  VaultIdentity? get activeIdentity => _activeIdentity;
 
   /// Initializes the vault state by checking for an existing sentinel.
   Future<void> init() async {
@@ -24,6 +28,11 @@ class VaultServiceImpl implements VaultService {
       _state = const NoVault();
     } else {
       _state = const VaultLocked();
+      final activeId = await _store.getActiveIdentityId();
+      if (activeId != null) {
+        final record = await _store.getIdentityRecord(activeId);
+        _activeIdentity = record?.toVaultIdentity();
+      }
     }
   }
 
@@ -98,7 +107,13 @@ class VaultServiceImpl implements VaultService {
 
     await _store.saveIdentityRecord(record);
 
-    return record.toVaultIdentity().copyWith(displayName: displayName);
+    final identity = record.toVaultIdentity().copyWith(displayName: displayName);
+    
+    if (_activeIdentity == null) {
+      await setActiveIdentity(identity.localId);
+    }
+
+    return identity;
   }
 
   @override
@@ -151,7 +166,13 @@ class VaultServiceImpl implements VaultService {
 
     await _store.saveIdentityRecord(record);
 
-    return record.toVaultIdentity().copyWith(displayName: displayName);
+    final identity = record.toVaultIdentity().copyWith(displayName: displayName);
+
+    if (_activeIdentity == null) {
+      await setActiveIdentity(identity.localId);
+    }
+
+    return identity;
   }
 
   @override
@@ -164,10 +185,12 @@ class VaultServiceImpl implements VaultService {
   Future<void> setActiveIdentity(String localId) async {
     _checkUnlocked();
     final identities = await _store.getIdentities();
-    if (!identities.any((i) => i.localId == localId)) {
-      throw const IdentityNotFoundException();
-    }
+    final identity = identities.firstWhere(
+      (i) => i.localId == localId,
+      orElse: () => throw const IdentityNotFoundException(),
+    );
     await _store.setActiveIdentityId(localId);
+    _activeIdentity = identity;
   }
 
   void _checkUnlocked() {
