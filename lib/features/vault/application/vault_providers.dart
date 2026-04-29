@@ -5,6 +5,7 @@ import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 /// Provider for the vault storage backend.
 /// 

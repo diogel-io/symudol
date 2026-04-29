@@ -2,6 +2,7 @@ import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 class VaultControllerState {
