@@ -34,13 +34,13 @@ abstract interface class VaultService {
   /// Throws [VaultStorageException] if there is an error during creation.
   Future<VaultIdentity> createIdentity({String? displayName});
 
-  /// Imports an existing identity into the vault using its [privateKey].
+  /// Imports an existing identity into the vault using its [keyInput] (nsec or hex).
   /// 
   /// [displayName] is an optional name for the identity.
   /// 
   /// Throws [VaultLockedException] if the vault is locked.
-  /// Throws [VaultStorageException] if there is an error during import.
-  Future<VaultIdentity> importIdentity(String privateKey, {String? displayName});
+  /// Throws [VaultStorageException] if the key is invalid or a duplicate.
+  Future<VaultIdentity> importIdentity(String keyInput, {String? displayName});
 
   /// Lists all identities stored in the vault.
   /// 

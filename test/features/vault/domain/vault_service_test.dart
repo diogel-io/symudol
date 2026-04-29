@@ -139,15 +139,16 @@ void main() {
       expect(() => (identity as dynamic).secretPayload, throwsNoSuchMethodError);
     });
 
-    test('importIdentity should derive public key from private key and store it', () async {
+    test('importIdentity should derive public key from nsec and store it', () async {
       await vaultService.createVault('1234');
       
       final nostr = Nostr.instance;
       final keyPair = nostr.services.keys.generateKeyPair();
       final privateKey = keyPair.private;
+      final nsec = nostr.services.bech32.encodePrivateKeyToNsec(privateKey);
       final expectedPublicKey = keyPair.public;
       
-      final identity = await vaultService.importIdentity(privateKey, displayName: 'Imported');
+      final identity = await vaultService.importIdentity(nsec, displayName: 'Imported');
       
       expect(identity.publicKey, equals(expectedPublicKey));
       expect(identity.origin, equals(IdentityOrigin.imported));
@@ -156,16 +157,63 @@ void main() {
       expect(record?.secretPayload, equals(privateKey));
     });
 
-    test('should handle duplicate public keys', () async {
+    test('importIdentity should derive public key from hex private key and store it', () async {
+      await vaultService.createVault('1234');
+      
+      final nostr = Nostr.instance;
+      final keyPair = nostr.services.keys.generateKeyPair();
+      final privateKey = keyPair.private;
+      final expectedPublicKey = keyPair.public;
+      
+      final identity = await vaultService.importIdentity(privateKey, displayName: 'Imported Hex');
+      
+      expect(identity.publicKey, equals(expectedPublicKey));
+      expect(identity.origin, equals(IdentityOrigin.imported));
+      
+      final record = await fakeStore.getIdentityRecord(identity.localId);
+      expect(record?.secretPayload, equals(privateKey));
+    });
+
+    test('importIdentity should reject invalid key formats', () async {
+      await vaultService.createVault('1234');
+      
+      // Invalid nsec (wrong prefix/checksum)
+      expect(
+        () => vaultService.importIdentity('nsec1invalid'),
+        throwsA(isA<VaultStorageException>()),
+      );
+      
+      // Invalid hex (too short)
+      expect(
+        () => vaultService.importIdentity('abc123'),
+        throwsA(isA<VaultStorageException>()),
+      );
+
+      // Invalid hex (not hex)
+      expect(
+        () => vaultService.importIdentity('g' * 64),
+        throwsA(isA<VaultStorageException>()),
+      );
+    });
+
+    test('should handle duplicate public keys for both nsec and hex', () async {
       await vaultService.createVault('1234');
       
       final nostr = Nostr.instance;
       final privateKey = nostr.services.keys.generateKeyPair().private;
+      final nsec = nostr.services.bech32.encodePrivateKeyToNsec(privateKey);
       
       await vaultService.importIdentity(privateKey);
       
+      // Duplicate hex
       expect(
         () => vaultService.importIdentity(privateKey),
+        throwsA(isA<VaultStorageException>()),
+      );
+
+      // Duplicate nsec
+      expect(
+        () => vaultService.importIdentity(nsec),
         throwsA(isA<VaultStorageException>()),
       );
     });

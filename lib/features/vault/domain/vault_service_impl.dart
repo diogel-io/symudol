@@ -102,15 +102,34 @@ class VaultServiceImpl implements VaultService {
   }
 
   @override
-  Future<VaultIdentity> importIdentity(String privateKey, {String? displayName}) async {
+  Future<VaultIdentity> importIdentity(String keyInput, {String? displayName}) async {
     _checkUnlocked();
 
     final nostr = Nostr.instance;
+    String hexPrivateKey;
+    
+    // Normalize input
+    final trimmedInput = keyInput.trim();
+    if (trimmedInput.startsWith('nsec1')) {
+      try {
+        hexPrivateKey = nostr.services.bech32.decodeNsecKeyToPrivateKey(trimmedInput);
+      } catch (e) {
+        throw const VaultStorageException('Invalid nsec key format');
+      }
+    } else {
+      // Assume hex
+      if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(trimmedInput)) {
+        throw const VaultStorageException('Invalid private key format: expected 64 hex characters');
+      }
+      hexPrivateKey = trimmedInput.toLowerCase();
+    }
+
     late final String publicKey;
     try {
-      publicKey = nostr.services.keys.generateKeyPairFromExistingPrivateKey(privateKey).public;
+      publicKey = nostr.services.keys.generateKeyPairFromExistingPrivateKey(hexPrivateKey).public;
     } catch (e) {
-      throw VaultStorageException('Invalid private key: $e');
+      // This should ideally be caught by normalization, but as a safety measure:
+      throw VaultStorageException('Failed to derive public key: $e');
     }
 
     // Duplicate check
@@ -125,7 +144,7 @@ class VaultServiceImpl implements VaultService {
     final record = VaultIdentityRecord(
       identityId: localId,
       publicKey: publicKey,
-      secretPayload: privateKey,
+      secretPayload: hexPrivateKey,
       origin: IdentityOrigin.imported,
       createdAt: now,
     );
