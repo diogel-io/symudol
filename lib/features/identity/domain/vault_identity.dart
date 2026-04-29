@@ -20,6 +20,28 @@ class VaultIdentity {
     required this.origin,
   });
 
+  Map<String, dynamic> toJson() {
+    return {
+      'localId': localId,
+      'publicKey': publicKey,
+      'displayName': displayName,
+      'isActive': isActive,
+      'createdAt': createdAt.toIso8601String(),
+      'origin': origin.name,
+    };
+  }
+
+  factory VaultIdentity.fromJson(Map<String, dynamic> json) {
+    return VaultIdentity(
+      localId: json['localId'] as String,
+      publicKey: json['publicKey'] as String,
+      displayName: json['displayName'] as String?,
+      isActive: json['isActive'] as bool? ?? true,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      origin: IdentityOrigin.values.byName(json['origin'] as String),
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
