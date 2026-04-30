@@ -22,8 +22,11 @@ final requestControllerProvider = StateNotifierProvider<RequestController, Reque
   return RequestController(vaultController, signerService);
 });
 
-/// Provider for the current pending request.
-final pendingRequestProvider = Provider<SigningRequest?>((ref) {
+/// Provider for the current active request (pending or failed).
+///
+/// Failed requests are kept active so that the user can see the error
+/// and either retry or dismiss them.
+final activeRequestProvider = Provider<SigningRequest?>((ref) {
   final state = ref.watch(requestControllerProvider);
   try {
     return state.requests.firstWhere(

@@ -46,11 +46,11 @@ void main() {
   }
 
   group('RequestsScreen', () {
-    testWidgets('shows empty state when no pending requests', (tester) async {
+    testWidgets('shows empty state when no active requests', (tester) async {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('No pending requests'), findsOneWidget);
+      expect(find.text('No active requests'), findsOneWidget);
       expect(find.text('Load Demo Request (Dev)'), findsOneWidget);
     });
 
@@ -148,7 +148,7 @@ void main() {
       await tester.tap(find.text('Reject'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No pending requests'), findsOneWidget);
+      expect(find.text('No active requests'), findsOneWidget);
     });
 
     testWidgets('approving a request calls signer and clears pending on success', (tester) async {
@@ -183,7 +183,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pumpAndSettle();
 
-      expect(find.text('No pending requests'), findsOneWidget);
+      expect(find.text('No active requests'), findsOneWidget);
     });
 
     testWidgets('approving while locked fails safely', (tester) async {

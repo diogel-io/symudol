@@ -22,7 +22,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pendingRequest = ref.watch(pendingRequestProvider);
+    final activeRequest = ref.watch(activeRequestProvider);
     final requestState = ref.watch(requestControllerProvider);
     final isLoading = requestState.isLoading;
     final failure = requestState.failure;
@@ -30,7 +30,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final vaultState = ref.watch(vaultControllerProvider);
     final activeIdentity = vaultState.activeIdentity;
 
-    if (pendingRequest == null) {
+    if (activeRequest == null) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -43,7 +43,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               ),
               const SizedBox(height: DiogelSpacing.space4),
               Text(
-                'No pending requests',
+                'No active requests',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: DiogelColors.textSecondary,
                     ),
@@ -92,15 +92,15 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               _buildFailureMessage(context, failure.message),
               const SizedBox(height: DiogelSpacing.space4),
             ],
-            _buildProvenanceWarning(context, pendingRequest.provenance.trustStatus),
+            _buildProvenanceWarning(context, activeRequest.provenance.trustStatus),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'REQUEST SOURCE'),
             const SizedBox(height: DiogelSpacing.space2),
             RequestDetailItem(
               icon: Icons.apps,
               iconColor: DiogelColors.actionPrimary,
-              title: pendingRequest.provenance.sourceDisplayName,
-              subtitle: pendingRequest.provenance.sourceIdentifier ?? 'Unknown Source',
+              title: activeRequest.provenance.sourceDisplayName,
+              subtitle: activeRequest.provenance.sourceIdentifier ?? 'Unknown Source',
             ),
             const SizedBox(height: DiogelSpacing.space4),
             _buildSectionHeader(context, 'ACTION TYPE'),
@@ -109,8 +109,8 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               key: const ValueKey('action_type'),
               icon: Icons.edit_note,
               iconColor: DiogelColors.nostrAccentMuted,
-              title: 'Sign Kind ${pendingRequest.eventKind} Event',
-              subtitle: pendingRequest.actionType.name,
+              title: 'Sign Kind ${activeRequest.eventKind} Event',
+              subtitle: activeRequest.actionType.name,
             ),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'SIGNING WITH ACCOUNT'),
@@ -139,14 +139,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               ],
             ),
             if (_showRawJson) ...[
-              _buildRawJsonDisclosure(pendingRequest),
+              _buildRawJsonDisclosure(activeRequest),
               const SizedBox(height: DiogelSpacing.space4),
             ],
-            _buildEventSummary(context, pendingRequest),
+            _buildEventSummary(context, activeRequest),
           ],
         ),
       ),
-      bottomSheet: _buildActionButtons(context, pendingRequest, isLoading),
+      bottomSheet: _buildActionButtons(context, activeRequest, isLoading),
     );
   }
 
