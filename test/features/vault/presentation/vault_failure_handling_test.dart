@@ -52,7 +52,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Storage error'), findsOneWidget);
+      expect(find.textContaining('A storage error occurred'), findsOneWidget);
       expect(find.byType(SetupVaultScreen), findsOneWidget);
     });
 
@@ -88,7 +88,7 @@ void main() {
       
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Storage error'), findsOneWidget);
+      expect(find.textContaining('A storage error occurred'), findsOneWidget);
     });
 
     testWidgets('Import identity dialog displays duplicate message', (WidgetTester tester) async {

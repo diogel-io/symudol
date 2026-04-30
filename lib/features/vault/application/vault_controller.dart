@@ -18,7 +18,7 @@ class VaultControllerState {
     this.identities = const [],
     this.activeIdentity,
     this.inactivityTimeoutMinutes = 5,
-    this.isLoading = false,
+    this.isLoading = true,
     this.failure,
   });
 
@@ -47,14 +47,8 @@ class VaultController extends StateNotifier<VaultControllerState> {
   final VaultService _vaultService;
 
   VaultController(this._vaultService)
-      : super(const VaultControllerState(vaultState: NoVault())) {
-    _init();
-  }
-
-  Future<void> _init() async {
-    // Start with whatever state the service already has
-    await _vaultService.init();
-    await _refreshState();
+      : super(const VaultControllerState(vaultState: NoVault(), isLoading: true)) {
+    initialize();
   }
 
   Future<void> initialize() async {
@@ -218,6 +212,18 @@ class VaultController extends StateNotifier<VaultControllerState> {
   VaultFailure _mapExceptionToFailure(Object e) {
     if (e is VaultLockedException) {
       return const VaultLockedFailure();
+    }
+    if (e is VaultNotFoundException) {
+      return const VaultNotFoundFailure();
+    }
+    if (e is VaultAlreadyExistsException) {
+      return const VaultAlreadyExistsFailure();
+    }
+    if (e is InvalidPinException) {
+      return const InvalidPinFailure();
+    }
+    if (e is IdentityNotFoundException) {
+      return const IdentityNotFoundFailure();
     }
     if (e is VaultStorageException) {
       final msg = e.message.toLowerCase();

@@ -13,11 +13,23 @@ String vaultFailureMessage(VaultFailure failure) {
   if (failure is DuplicateIdentityFailure) {
     return 'This identity already exists in your vault.';
   }
+  if (failure is VaultNotFoundFailure) {
+    return 'Vault not found.';
+  }
+  if (failure is VaultAlreadyExistsFailure) {
+    return 'A vault already exists on this device.';
+  }
+  if (failure is InvalidPinFailure) {
+    return 'Invalid PIN. Please try again.';
+  }
+  if (failure is IdentityNotFoundFailure) {
+    return 'The requested identity was not found.';
+  }
   if (failure is SecureStorageFailure) {
-    return 'Storage error: ${failure.message}';
+    return 'A storage error occurred. Please try again.';
   }
   if (failure is CryptoFailure) {
-    return 'Encryption error: ${failure.message}';
+    return 'An encryption error occurred.';
   }
   
   return failure.message;
