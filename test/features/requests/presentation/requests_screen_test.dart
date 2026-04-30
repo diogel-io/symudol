@@ -61,6 +61,7 @@ void main() {
 
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'Test User');
+      final activeIdentity = vaultController.state.activeIdentity!;
 
       final request = SigningRequest(
         id: 'req1',
@@ -76,8 +77,8 @@ void main() {
           'created_at': 1234567890,
           'tags': [],
         },
-        targetIdentityPublicKey: 'pubkey',
-        targetIdentityLocalId: 'localId',
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
         createdAt: DateTime.now(),
         status: SigningRequestStatus.pending,
       );
@@ -153,6 +154,7 @@ void main() {
     testWidgets('approving a request calls signer and clears pending on success', (tester) async {
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'User');
+      final activeIdentity = vaultController.state.activeIdentity!;
 
       final request = SigningRequest(
         id: 'req1',
@@ -163,8 +165,8 @@ void main() {
         actionType: SigningActionType.signEvent,
         eventKind: 1,
         eventPayload: {'content': 'test'},
-        targetIdentityPublicKey: 'pubkey',
-        targetIdentityLocalId: 'localId',
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
         createdAt: DateTime.now(),
         status: SigningRequestStatus.pending,
       );
@@ -227,6 +229,7 @@ void main() {
 
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'User');
+      final activeIdentity = vaultController.state.activeIdentity!;
 
       // Setup failing signer
       final failingSigner = FakeSignerService(shouldFail: true);
@@ -242,8 +245,8 @@ void main() {
         actionType: SigningActionType.signEvent,
         eventKind: 1,
         eventPayload: {'content': 'test'},
-        targetIdentityPublicKey: 'pubkey',
-        targetIdentityLocalId: 'localId',
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
         createdAt: DateTime.now(),
         status: SigningRequestStatus.pending,
       );

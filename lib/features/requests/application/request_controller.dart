@@ -85,6 +85,15 @@ class RequestController extends StateNotifier<RequestState> {
       return;
     }
 
+    if (request.targetIdentityPublicKey != activeIdentity.publicKey ||
+        request.targetIdentityLocalId != activeIdentity.localId) {
+      state = state.copyWith(
+        isLoading: false,
+        failure: const RequestFailure('Approval blocked: Identity mismatch'),
+      );
+      return;
+    }
+
     final result = await _signerService.sign(request);
 
     if (result is SignedRequestFailure) {

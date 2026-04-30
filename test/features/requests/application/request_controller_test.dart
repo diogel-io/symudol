@@ -26,22 +26,27 @@ void main() {
     requestController = RequestController(vaultController, signerService);
   });
 
-  SigningRequest createSampleRequest({String id = '1', SigningRequestStatus status = SigningRequestStatus.pending}) {
-    return SigningRequest(
-      id: id,
-      provenance: const RequestProvenance(
-        sourceDisplayName: 'Test App',
-        trustStatus: RequestTrustStatus.unknown,
-      ),
-      actionType: SigningActionType.signEvent,
-      eventKind: 1,
-      eventPayload: {'content': 'hello'},
-      targetIdentityPublicKey: 'pub1',
-      targetIdentityLocalId: 'local1',
-      createdAt: DateTime.now(),
-      status: status,
-    );
-  }
+SigningRequest createSampleRequest({
+  String id = '1',
+  SigningRequestStatus status = SigningRequestStatus.pending,
+  String targetPublicKey = 'pub1',
+  String targetLocalId = 'local1',
+}) {
+  return SigningRequest(
+    id: id,
+    provenance: const RequestProvenance(
+      sourceDisplayName: 'Test App',
+      trustStatus: RequestTrustStatus.unknown,
+    ),
+    actionType: SigningActionType.signEvent,
+    eventKind: 1,
+    eventPayload: {'content': 'hello'},
+    targetIdentityPublicKey: targetPublicKey,
+    targetIdentityLocalId: targetLocalId,
+    createdAt: DateTime.now(),
+    status: status,
+  );
+}
 
   group('RequestController', () {
     test('initial state should have no requests', () {
@@ -97,8 +102,12 @@ void main() {
     test('approveRequest should succeed when vault is unlocked and identity exists', () async {
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'Test');
+      final activeIdentity = vaultController.state.activeIdentity!;
       
-      final request = createSampleRequest();
+      final request = createSampleRequest(
+        targetPublicKey: activeIdentity.publicKey,
+        targetLocalId: activeIdentity.localId,
+      );
       await requestController.acceptRequest(request);
 
       await requestController.approveRequest(request.id);
@@ -110,12 +119,16 @@ void main() {
     test('approveRequest should fail when signer service fails', () async {
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'Test');
+      final activeIdentity = vaultController.state.activeIdentity!;
       
       // Setup failing signer
       signerService = FakeSignerService(shouldFail: true);
       requestController = RequestController(vaultController, signerService);
       
-      final request = createSampleRequest();
+      final request = createSampleRequest(
+        targetPublicKey: activeIdentity.publicKey,
+        targetLocalId: activeIdentity.localId,
+      );
       await requestController.acceptRequest(request);
 
       await requestController.approveRequest(request.id);
@@ -144,6 +157,25 @@ void main() {
       expect(requestController.state.requests, isEmpty);
       expect(requestController.failure, isNotNull);
       expect(requestController.failure!.message, contains('No active identity'));
+    });
+
+    test('approveRequest should fail when identity mismatch occurs', () async {
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test');
+      // activeIdentity will have some publicKey and localId
+
+      final request = createSampleRequest(
+        id: 'wrong-id',
+        targetPublicKey: 'mismatch-pubkey',
+        targetLocalId: 'mismatch-localid',
+      );
+      await requestController.acceptRequest(request);
+
+      await requestController.approveRequest(request.id);
+
+      expect(requestController.failure, isNotNull);
+      expect(requestController.failure!.message, contains('Identity mismatch'));
+      expect(requestController.state.requests.first.status, SigningRequestStatus.pending);
     });
   });
 }
