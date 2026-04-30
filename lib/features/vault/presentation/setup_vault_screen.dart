@@ -75,7 +75,6 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
     final controllerState = ref.read(vaultControllerProvider);
     if (controllerState.failure != null) {
       setState(() {
-        _error = vaultFailureMessage(controllerState.failure!);
         _pin = '';
         _confirmPin = '';
         _isConfirming = false;
@@ -123,10 +122,10 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
                 ),
                 const SizedBox(height: DiogelSpacing.space4),
                 _buildPinDots(),
-                if (_error != null) ...[
+                if (_error != null || ref.watch(vaultControllerProvider).failure != null) ...[
                   const SizedBox(height: DiogelSpacing.space4),
                   Text(
-                    _error!,
+                    _error ?? vaultFailureMessage(ref.watch(vaultControllerProvider).failure!),
                     style: const TextStyle(color: DiogelColors.stateError),
                   ),
                 ],

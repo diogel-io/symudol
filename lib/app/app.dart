@@ -74,7 +74,7 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
       child: MaterialApp(
         title: 'Android Diogel',
         theme: DiogelTheme.darkTheme,
-        home: isLoading 
+        home: isLoading && vaultState is NoVault
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : _getHome(vaultState),
       ),
