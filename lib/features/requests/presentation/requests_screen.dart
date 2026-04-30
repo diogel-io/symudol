@@ -389,6 +389,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
   }
 
   Widget _buildActionButtons(BuildContext context, SigningRequest request, bool isLoading) {
+    final signerService = ref.watch(signerServiceProvider);
+    final isDemo = signerService.isDemo;
+
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
       decoration: BoxDecoration(
@@ -433,7 +436,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                       : const Icon(Icons.check),
-                  label: Text(isLoading ? 'Signing...' : 'Sign event'),
+                  label: Text(isLoading
+                      ? 'Signing...'
+                      : isDemo
+                          ? 'Sign event (DEMO)'
+                          : 'Sign event'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       vertical: DiogelSpacing.space4,
@@ -448,8 +455,13 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
           ),
           const SizedBox(height: DiogelSpacing.space2),
           Text(
-            'This action will generate a digital signature using your private key.',
-            style: Theme.of(context).textTheme.labelSmall,
+            isDemo
+                ? 'DEMO: This action uses a fake signer for development purposes.'
+                : 'This action will generate a digital signature using your private key.',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isDemo ? DiogelColors.stateWarning : null,
+                  fontWeight: isDemo ? FontWeight.bold : null,
+                ),
             textAlign: TextAlign.center,
           ),
         ],

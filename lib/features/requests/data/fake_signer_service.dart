@@ -15,6 +15,9 @@ class FakeSignerService implements SignerService {
   });
 
   @override
+  bool get isDemo => true;
+
+  @override
   Future<SignedRequestResult> sign(SigningRequest request) async {
     await Future.delayed(const Duration(milliseconds: 100));
 

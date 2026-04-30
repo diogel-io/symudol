@@ -176,7 +176,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      await tester.tap(find.text('Sign event'));
+      await tester.tap(find.text('Sign event (DEMO)'));
       await tester.pump(); 
       
       // The fake signer has a 100ms delay
@@ -212,7 +212,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      await tester.tap(find.text('Sign event'));
+      await tester.tap(find.text('Sign event (DEMO)'));
       await tester.pump(); // This SHOULD show the error immediately
       await tester.pump();
 
@@ -265,7 +265,7 @@ void main() {
       ));
       await tester.pump();
 
-      await tester.tap(find.text('Sign event'));
+      await tester.tap(find.text('Sign event (DEMO)'));
       
       // FakeSignerService has 100ms delay.
       await tester.pump(const Duration(milliseconds: 200));
