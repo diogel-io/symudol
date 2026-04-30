@@ -2,6 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../features/requests/application/request_providers.dart';
+import '../features/requests/domain/request_provenance.dart';
+import '../features/requests/domain/request_trust_status.dart';
+import '../features/requests/domain/signing_action_type.dart';
+import '../features/requests/domain/signing_request.dart';
+import '../features/requests/domain/signing_request_status.dart';
 import '../features/unlock/presentation/unlock_vault_screen.dart';
 import '../features/vault/presentation/setup_vault_screen.dart';
 import '../features/navigation/presentation/main_navigation_screen.dart';
@@ -23,6 +29,34 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Add a sample request for demo purposes if list is empty
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = ref.read(requestControllerProvider.notifier);
+      if (controller.state.requests.isEmpty) {
+        controller.acceptRequest(
+          SigningRequest(
+            id: 'demo-1',
+            provenance: const RequestProvenance(
+              sourceDisplayName: 'Amethyst',
+              sourceIdentifier: 'nostr:amethyst:client',
+              trustStatus: RequestTrustStatus.unknown,
+            ),
+            actionType: SigningActionType.signEvent,
+            eventKind: 1,
+            eventPayload: {
+              'content': 'Hello Nostr! Signing this message from my secure vault. Security first, always.',
+              'created_at': 1715432001,
+              'tags': [['t', 'security'], ['t', 'privacy']],
+            },
+            targetIdentityPublicKey: 'npub1...a4f2',
+            targetIdentityLocalId: 'active-id',
+            createdAt: DateTime.now(),
+            status: SigningRequestStatus.pending,
+          ),
+        );
+      }
+    });
   }
 
   @override
