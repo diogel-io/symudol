@@ -1,0 +1,3 @@
+enum SigningActionType {
+  signEvent,
+}
