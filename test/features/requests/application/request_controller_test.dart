@@ -7,7 +7,6 @@ import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../fakes/fake_vault_store.dart';
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
 import '../../vault/application/vault_providers.dart';
+import '../../identity/domain/vault_identity.dart';
 import '../application/request_providers.dart';
 import '../domain/request_trust_status.dart';
 import '../domain/signing_request.dart';
@@ -179,7 +180,6 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
   }
 
   Widget _buildProvenanceWarning(BuildContext context, RequestTrustStatus status) {
-    final isUnknown = status == RequestTrustStatus.unknown;
     final isUntrusted = status == RequestTrustStatus.knownUntrusted || status == RequestTrustStatus.invalid;
     
     if (status == RequestTrustStatus.knownTrusted) return const SizedBox.shrink();
@@ -232,7 +232,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
   }
 
-  Widget _buildIdentityCard(BuildContext context, dynamic activeIdentity) {
+  Widget _buildIdentityCard(BuildContext context, VaultIdentity? activeIdentity) {
     final displayName = activeIdentity?.displayName ?? 'Anonymous';
     final pubkey = activeIdentity?.publicKey ?? 'Unknown Public Key';
     final truncatedPubkey = pubkey.length > 16 

@@ -76,7 +76,15 @@ class RequestController extends StateNotifier<RequestState> {
       return;
     }
 
-    final request = state.requests.firstWhere((r) => r.id == requestId);
+    final request = _findRequest(requestId);
+    if (request == null) {
+      state = state.copyWith(
+        isLoading: false,
+        failure: const RequestFailure('Approval failed: Request no longer exists'),
+      );
+      return;
+    }
+
     final result = await _signerService.sign(request);
 
     if (result is SignedRequestFailure) {
@@ -107,6 +115,15 @@ class RequestController extends StateNotifier<RequestState> {
 
   void clearFailure() {
     state = state.copyWith(clearFailure: true);
+  }
+
+  SigningRequest? _findRequest(String requestId) {
+    for (final request in state.requests) {
+      if (request.id == requestId) {
+        return request;
+      }
+    }
+    return null;
   }
 
   /// Injects a demo request for development/demo purposes.

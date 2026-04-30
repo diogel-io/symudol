@@ -6,7 +6,7 @@ sealed class SignedRequestResult {
 
 class SignedRequestSuccess extends SignedRequestResult {
   final String signature;
-  final Map<String, dynamic> signedPayload;
+  final Map<String, Object?> signedPayload;
 
   const SignedRequestSuccess({
     required this.signature,

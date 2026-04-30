@@ -7,7 +7,7 @@ class SigningRequest {
   final RequestProvenance provenance;
   final SigningActionType actionType;
   final int eventKind;
-  final Map<String, dynamic> eventPayload;
+  final Map<String, Object?> eventPayload;
   final String targetIdentityPublicKey;
   final String targetIdentityLocalId;
   final DateTime createdAt;
@@ -27,7 +27,7 @@ class SigningRequest {
     required this.status,
   });
 
-  Map<String, dynamic> toJson() {
+  Map<String, Object?> toJson() {
     return {
       'id': id,
       'provenance': provenance.toJson(),
@@ -42,13 +42,15 @@ class SigningRequest {
     };
   }
 
-  factory SigningRequest.fromJson(Map<String, dynamic> json) {
+  factory SigningRequest.fromJson(Map<String, Object?> json) {
     return SigningRequest(
       id: json['id'] as String,
-      provenance: RequestProvenance.fromJson(json['provenance'] as Map<String, dynamic>),
+      provenance: RequestProvenance.fromJson(
+        (json['provenance'] as Map).cast<String, Object?>(),
+      ),
       actionType: SigningActionType.values.byName(json['actionType'] as String),
       eventKind: json['eventKind'] as int,
-      eventPayload: json['eventPayload'] as Map<String, dynamic>,
+      eventPayload: (json['eventPayload'] as Map).cast<String, Object?>(),
       targetIdentityPublicKey: json['targetIdentityPublicKey'] as String,
       targetIdentityLocalId: json['targetIdentityLocalId'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
@@ -62,7 +64,7 @@ class SigningRequest {
     RequestProvenance? provenance,
     SigningActionType? actionType,
     int? eventKind,
-    Map<String, dynamic>? eventPayload,
+    Map<String, Object?>? eventPayload,
     String? targetIdentityPublicKey,
     String? targetIdentityLocalId,
     DateTime? createdAt,

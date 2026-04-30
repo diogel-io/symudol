@@ -11,7 +11,7 @@ class RequestProvenance {
     required this.trustStatus,
   });
 
-  Map<String, dynamic> toJson() {
+  Map<String, Object?> toJson() {
     return {
       'sourceDisplayName': sourceDisplayName,
       'sourceIdentifier': sourceIdentifier,
@@ -19,7 +19,7 @@ class RequestProvenance {
     };
   }
 
-  factory RequestProvenance.fromJson(Map<String, dynamic> json) {
+  factory RequestProvenance.fromJson(Map<String, Object?> json) {
     return RequestProvenance(
       sourceDisplayName: json['sourceDisplayName'] as String,
       sourceIdentifier: json['sourceIdentifier'] as String?,

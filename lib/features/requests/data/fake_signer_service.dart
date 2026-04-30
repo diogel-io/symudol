@@ -23,7 +23,7 @@ class FakeSignerService implements SignerService {
     }
 
     final signature = customSignature ?? 'fake_signature_for_${request.id}';
-    final signedPayload = Map<String, dynamic>.from(request.eventPayload);
+    final signedPayload = Map<String, Object?>.from(request.eventPayload);
     signedPayload['sig'] = signature;
 
     return SignedRequestSuccess(
