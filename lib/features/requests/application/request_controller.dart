@@ -94,32 +94,43 @@ class RequestController extends StateNotifier<RequestState> {
       return;
     }
 
-    final result = await _signerService.sign(request);
+    try {
+      final result = await _signerService.sign(request);
 
-    if (result is SignedRequestFailure) {
+      if (result is SignedRequestFailure) {
+        _markRequestFailed(requestId, result.failure);
+        return;
+      }
+
+      // On success
       final updatedRequests = state.requests.map((r) {
         if (r.id == requestId) {
-          return r.copyWith(status: SigningRequestStatus.failed);
+          return r.copyWith(status: SigningRequestStatus.approved);
         }
         return r;
       }).toList();
-      state = state.copyWith(
-        requests: updatedRequests,
-        isLoading: false,
-        failure: result.failure,
-      );
-      return;
-    }
 
-    // On success
+      state = state.copyWith(requests: updatedRequests, isLoading: false);
+    } catch (e) {
+      _markRequestFailed(
+        requestId,
+        RequestFailure('Approval failed: Unexpected error during signing: $e'),
+      );
+    }
+  }
+
+  void _markRequestFailed(String requestId, RequestFailure failure) {
     final updatedRequests = state.requests.map((r) {
       if (r.id == requestId) {
-        return r.copyWith(status: SigningRequestStatus.approved);
+        return r.copyWith(status: SigningRequestStatus.failed);
       }
       return r;
     }).toList();
-
-    state = state.copyWith(requests: updatedRequests, isLoading: false);
+    state = state.copyWith(
+      requests: updatedRequests,
+      isLoading: false,
+      failure: failure,
+    );
   }
 
   void clearFailure() {

@@ -137,6 +137,33 @@ SigningRequest createSampleRequest({
       expect(requestController.failure!.message, contains('Fake signer error'));
       expect(requestController.state.requests.first.status, SigningRequestStatus.failed);
     });
+
+    test('approveRequest should handle signer service exceptions', () async {
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test');
+      final activeIdentity = vaultController.state.activeIdentity!;
+
+      // Setup throwing signer
+      signerService = FakeSignerService(shouldThrow: true);
+      requestController = RequestController(vaultController, signerService);
+
+      final request = createSampleRequest(
+        targetPublicKey: activeIdentity.publicKey,
+        targetLocalId: activeIdentity.localId,
+      );
+      await requestController.acceptRequest(request);
+
+      try {
+        await requestController.approveRequest(request.id);
+      } catch (_) {
+        // Expected if not handled
+      }
+
+      // If handled, isLoading should be false, failure should be set, and status should be failed
+      expect(requestController.state.isLoading, isFalse);
+      expect(requestController.failure, isNotNull);
+      expect(requestController.state.requests.first.status, SigningRequestStatus.failed);
+    });
     
     test('injectDemoRequest should add a demo request when identity exists', () async {
       await vaultController.createVault('1234');

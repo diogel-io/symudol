@@ -5,16 +5,22 @@ import '../domain/signing_request.dart';
 
 class FakeSignerService implements SignerService {
   final bool shouldFail;
+  final bool shouldThrow;
   final String? customSignature;
 
   FakeSignerService({
     this.shouldFail = false,
+    this.shouldThrow = false,
     this.customSignature,
   });
 
   @override
   Future<SignedRequestResult> sign(SigningRequest request) async {
     await Future.delayed(const Duration(milliseconds: 100));
+
+    if (shouldThrow) {
+      throw Exception('Unexpected signer error');
+    }
 
     if (shouldFail) {
       return const SignedRequestFailure(
