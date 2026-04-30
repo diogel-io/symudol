@@ -111,10 +111,10 @@ class RequestController extends StateNotifier<RequestState> {
       }).toList();
 
       state = state.copyWith(requests: updatedRequests, isLoading: false);
-    } catch (e) {
+    } catch (error) {
       _markRequestFailed(
         requestId,
-        RequestFailure('Approval failed: Unexpected error during signing: $e'),
+        RequestFailure('Approval failed: Unexpected error during signing', error),
       );
     }
   }
