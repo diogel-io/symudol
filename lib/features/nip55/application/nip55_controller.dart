@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:android_diogel/features/requests/application/request_controller.dart';
+import 'package:android_diogel/features/requests/domain/signing_request.dart';
+import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
@@ -77,6 +81,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final Nip55ResponseBuilder _responseBuilder;
   final VaultController _vaultController;
   final RequestController _requestController;
+  final Duration _pendingUnlockTimeout;
+  Timer? _pendingUnlockTimer;
 
   Nip55Controller({
     required Nip55Gateway gateway,
@@ -85,14 +91,22 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55IntentParser parser = const Nip55IntentParser(),
     Nip55RequestMapper mapper = const Nip55RequestMapper(),
     Nip55ResponseBuilder responseBuilder = const Nip55ResponseBuilder(),
+    Duration pendingUnlockTimeout = const Duration(minutes: 5),
   }) : _gateway = gateway,
        _vaultController = vaultController,
        _requestController = requestController,
        _parser = parser,
        _mapper = mapper,
        _responseBuilder = responseBuilder,
+       _pendingUnlockTimeout = pendingUnlockTimeout,
        super(const Nip55State()) {
     _gateway.setIncomingIntentHandler((raw) => handleRawIntent(raw));
+  }
+
+  @override
+  void dispose() {
+    _pendingUnlockTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> consumePendingNativeIntent() async {
@@ -184,6 +198,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearFailure: true,
       clearSuccess: true,
     );
+    _pendingUnlockTimer?.cancel();
     try {
       if (incoming.method == Nip55Method.getPublicKey) {
         await _handleGetPublicKey(incoming);
@@ -210,6 +225,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           'Unlock Diogel and select an identity before sharing a public key.',
         ),
       );
+      _startPendingUnlockTimer(incoming);
       throw const Nip55Failure(
         'Unlock Diogel and select an identity before sharing a public key.',
       );
@@ -237,6 +253,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           'Unlock Diogel and select an identity before signing.',
         ),
       );
+      _startPendingUnlockTimer(incoming);
       throw const Nip55Failure(
         'Unlock Diogel and select an identity before signing.',
       );
@@ -289,7 +306,22 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (state.pendingSigningRequestId != requestId) return;
     final incoming = state.pendingIncoming;
     final signedEvent = _requestController.state.signedEvents[requestId];
-    if (incoming == null || signedEvent == null) return;
+    if (incoming == null) return;
+    if (signedEvent == null) {
+      final request = _findRequest(requestId);
+      if (request?.status == SigningRequestStatus.failed ||
+          _requestController.state.failure != null) {
+        await _gateway.rejectNip55Intent(
+          requestToken: incoming.requestToken,
+          error: 'Signing failed. No event was returned.',
+        );
+        state = state.copyWith(
+          clearPendingIncoming: true,
+          clearPendingSigningRequestId: true,
+        );
+      }
+      return;
+    }
 
     await _gateway.completeNip55Intent(
       requestToken: incoming.requestToken,
@@ -320,8 +352,33 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
+  Future<void> cancelPendingExternalRequest({
+    String error = 'User cancelled NIP-55 request',
+  }) async {
+    final incoming = state.pendingIncoming;
+    if (incoming == null) return;
+    _pendingUnlockTimer?.cancel();
+    await _gateway.rejectNip55Intent(
+      requestToken: incoming.requestToken,
+      error: error,
+    );
+    state = state.copyWith(
+      clearPendingIncoming: true,
+      clearPendingSigningRequestId: true,
+      clearPendingPublicKeyRequest: true,
+      isLoading: false,
+    );
+  }
+
   void clearMessages() {
     state = state.copyWith(clearFailure: true, clearSuccess: true);
+  }
+
+  SigningRequest? _findRequest(String requestId) {
+    for (final request in _requestController.state.requests) {
+      if (request.id == requestId) return request;
+    }
+    return null;
   }
 
   Nip55IncomingRequest? _safeParseForRejection(Map<String, Object?> raw) {
@@ -334,5 +391,21 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   bool _isWaitingForUnlockFailure(Nip55Failure error) {
     return error.message.startsWith('Unlock Diogel');
+  }
+
+  void _startPendingUnlockTimer(Nip55IncomingRequest incoming) {
+    _pendingUnlockTimer?.cancel();
+    _pendingUnlockTimer = Timer(_pendingUnlockTimeout, () {
+      if (!mounted) return;
+      if (state.pendingIncoming?.requestToken != incoming.requestToken ||
+          !state.isWaitingForUnlock) {
+        return;
+      }
+      unawaited(
+        cancelPendingExternalRequest(
+          error: 'NIP-55 request timed out waiting for unlock',
+        ),
+      );
+    });
   }
 }

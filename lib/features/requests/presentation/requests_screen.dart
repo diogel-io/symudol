@@ -157,7 +157,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 TextButton.icon(
                   onPressed: () => setState(() => _showRawJson = !_showRawJson),
                   icon: Text(
-                    _showRawJson ? 'Hide Raw' : 'Raw JSON',
+                    _showRawJson ? 'Hide Draft' : 'Event draft JSON',
                     style: const TextStyle(
                       color: DiogelColors.actionPrimary,
                       fontSize: 12,

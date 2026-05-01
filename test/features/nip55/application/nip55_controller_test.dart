@@ -125,6 +125,26 @@ void main() {
       expect(gateway.completedExtras?['event'], contains('"sig"'));
     });
 
+    test('signing failure rejects external caller safely', () async {
+      await controller.handleRawIntent({
+        'requestToken': 'token-fail',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":42,"tags":[]}',
+        'id': 'fail',
+        'currentUser': vaultController.state.activeIdentity!.publicKey,
+        'callerPackage': 'com.example.app',
+      });
+      final request = requestController.state.requests.single;
+
+      await requestController.approveRequest(request.id);
+      await controller.completeApprovedSigningRequest(request.id);
+
+      expect(gateway.completedExtras, isNull);
+      expect(gateway.rejectedToken, 'token-fail');
+      expect(gateway.rejectedError, 'Signing failed. No event was returned.');
+      expect(controller.state.pendingSigningRequestId, isNull);
+    });
+
     test('rejection calls gateway reject', () async {
       await controller.handleRawIntent(signEventRaw());
       final request = requestController.state.requests.single;
@@ -230,6 +250,51 @@ void main() {
 
       expect(requestController.state.requests, hasLength(1));
       expect(controller.state.pendingSigningRequestId, isNotNull);
+    });
+
+    test('locked pending request can be cancelled', () async {
+      final activePubkey = vaultController.state.activeIdentity!.publicKey;
+      await vaultController.lock();
+
+      await controller.handleRawIntent({
+        'requestToken': 'token-cancel',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"hello","tags":[]}',
+        'id': 'cancel',
+        'currentUser': activePubkey,
+      });
+
+      await controller.cancelPendingExternalRequest();
+
+      expect(gateway.rejectedToken, 'token-cancel');
+      expect(gateway.rejectedError, contains('cancelled'));
+      expect(controller.state.pendingIncoming, isNull);
+    });
+
+    test('locked pending request times out', () async {
+      final activePubkey = vaultController.state.activeIdentity!.publicKey;
+      await vaultController.lock();
+      final timeoutGateway = FakeNip55Gateway();
+      final timeoutController = Nip55Controller(
+        gateway: timeoutGateway,
+        vaultController: vaultController,
+        requestController: requestController,
+        pendingUnlockTimeout: const Duration(milliseconds: 1),
+      );
+
+      await timeoutController.handleRawIntent({
+        'requestToken': 'token-timeout',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"hello","tags":[]}',
+        'id': 'timeout',
+        'currentUser': activePubkey,
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(timeoutGateway.rejectedToken, 'token-timeout');
+      expect(timeoutGateway.rejectedError, contains('timed out'));
+      expect(timeoutController.state.pendingIncoming, isNull);
+      timeoutController.dispose();
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
@@ -19,9 +20,9 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
   Future<void> _unlockVault() async {
     final notifier = ref.read(vaultControllerProvider.notifier);
     await notifier.unlock(_pin);
-    
+
     if (!mounted) return;
-    
+
     final state = ref.read(vaultControllerProvider);
     if (state.failure != null) {
       setState(() {
@@ -53,6 +54,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
   Widget build(BuildContext context) {
     final vaultState = ref.watch(vaultStateProvider);
     final controllerState = ref.watch(vaultControllerProvider);
+    final nip55State = ref.watch(nip55ControllerProvider);
     final failure = controllerState.failure;
 
     return Scaffold(
@@ -105,21 +107,47 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                   ),
                   const SizedBox(height: DiogelSpacing.space6),
                   Text(
-                    vaultState is SessionExpired ? 'Session Expired' : 'Unlock Vault',
+                    vaultState is SessionExpired
+                        ? 'Session Expired'
+                        : 'Unlock Vault',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
+                  if (nip55State.isWaitingForUnlock) ...[
+                    const SizedBox(height: DiogelSpacing.space3),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DiogelSpacing.space6,
+                      ),
+                      child: Text(
+                        'An external Android app is waiting for a NIP-55 signing decision. Unlock to review it, or cancel the request.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: DiogelColors.stateWarning,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => ref
+                          .read(nip55ControllerProvider.notifier)
+                          .cancelPendingExternalRequest(),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Cancel external request'),
+                    ),
+                  ],
                   if (failure != null) ...[
                     const SizedBox(height: DiogelSpacing.space2),
                     Text(
                       vaultFailureMessage(failure),
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ],
                   const SizedBox(height: DiogelSpacing.space1),
                   Text(
-                    vaultState is SessionExpired 
-                        ? 'Your session has timed out due to inactivity' 
+                    vaultState is SessionExpired
+                        ? 'Your session has timed out due to inactivity'
                         : 'Enter security PIN to continue',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: DiogelColors.textSecondary,
@@ -195,9 +223,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: _pin.length == 6
-                            ? _unlockVault
-                            : null,
+                        onPressed: _pin.length == 6 ? _unlockVault : null,
                         icon: const Icon(Icons.lock_open),
                         label: const Text('Unlock Vault'),
                       ),
