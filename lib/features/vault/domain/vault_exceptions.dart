@@ -23,6 +23,14 @@ class IdentityNotFoundException extends VaultException {
   const IdentityNotFoundException() : super('Identity not found');
 }
 
+class IdentityMismatchException extends VaultException {
+  const IdentityMismatchException() : super('Identity mismatch');
+}
+
+class VaultSigningException extends VaultException {
+  const VaultSigningException(super.message);
+}
+
 class VaultStorageException extends VaultException {
   const VaultStorageException(super.message);
 

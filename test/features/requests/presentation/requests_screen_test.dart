@@ -1,6 +1,7 @@
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/fake_signer_service.dart';
+import 'package:android_diogel/features/requests/data/real_signer_service.dart';
 import 'package:android_diogel/features/requests/domain/request_provenance.dart';
 import 'package:android_diogel/features/requests/domain/request_trust_status.dart';
 import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
@@ -39,9 +40,7 @@ void main() {
         signerServiceProvider.overrideWithValue(signerService),
         requestControllerProvider.overrideWith((ref) => requestController),
       ],
-      child: const MaterialApp(
-        home: RequestsScreen(),
-      ),
+      child: const MaterialApp(home: RequestsScreen()),
     );
   }
 
@@ -86,7 +85,7 @@ void main() {
       await requestController.acceptRequest(request);
 
       await tester.pumpWidget(createTestWidget());
-      await tester.pump(); 
+      await tester.pump();
 
       expect(find.text('Signing Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
@@ -151,10 +150,59 @@ void main() {
       expect(find.text('No active requests'), findsOneWidget);
     });
 
-    testWidgets('approving a request calls signer and clears pending on success', (tester) async {
+    testWidgets(
+      'approving a request calls signer and clears pending on success',
+      (tester) async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity(displayName: 'User');
+        final activeIdentity = vaultController.state.activeIdentity!;
+
+        final request = SigningRequest(
+          id: 'req1',
+          provenance: const RequestProvenance(
+            sourceDisplayName: 'App',
+            trustStatus: RequestTrustStatus.knownTrusted,
+          ),
+          actionType: SigningActionType.signEvent,
+          eventKind: 1,
+          eventPayload: {'content': 'test'},
+          targetIdentityPublicKey: activeIdentity.publicKey,
+          targetIdentityLocalId: activeIdentity.localId,
+          createdAt: DateTime.now(),
+          status: SigningRequestStatus.pending,
+        );
+
+        await requestController.acceptRequest(request);
+
+        await tester.pumpWidget(createTestWidget());
+        await tester.pump();
+
+        await tester.tap(find.text('Sign event (DEMO)'));
+        await tester.pump();
+
+        // The fake signer has a 100ms delay
+        await tester.pump(const Duration(milliseconds: 150));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No active requests'), findsOneWidget);
+      },
+    );
+
+    testWidgets('approving with real signer shows signed event success state', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'User');
       final activeIdentity = vaultController.state.activeIdentity!;
+      final realSigner = RealSignerService(vaultService);
+      final realRequestController = RequestController(
+        vaultController,
+        realSigner,
+      );
 
       final request = SigningRequest(
         id: 'req1',
@@ -164,26 +212,42 @@ void main() {
         ),
         actionType: SigningActionType.signEvent,
         eventKind: 1,
-        eventPayload: {'content': 'test'},
+        eventPayload: const {
+          'kind': 1,
+          'content': 'test',
+          'created_at': 1777618800,
+          'tags': [],
+        },
         targetIdentityPublicKey: activeIdentity.publicKey,
         targetIdentityLocalId: activeIdentity.localId,
         createdAt: DateTime.now(),
         status: SigningRequestStatus.pending,
       );
 
-      await requestController.acceptRequest(request);
+      await realRequestController.acceptRequest(request);
 
-      await tester.pumpWidget(createTestWidget());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            vaultControllerProvider.overrideWith((ref) => vaultController),
+            signerServiceProvider.overrideWithValue(realSigner),
+            requestControllerProvider.overrideWith(
+              (ref) => realRequestController,
+            ),
+          ],
+          child: const MaterialApp(home: RequestsScreen()),
+        ),
+      );
       await tester.pump();
 
-      await tester.tap(find.text('Sign event (DEMO)'));
-      await tester.pump(); 
-      
-      // The fake signer has a 100ms delay
-      await tester.pump(const Duration(milliseconds: 150));
+      await tester.tap(find.text('Sign event'));
       await tester.pumpAndSettle();
 
-      expect(find.text('No active requests'), findsOneWidget);
+      expect(find.text('Event signed'), findsOneWidget);
+      expect(find.textContaining('has not been published'), findsOneWidget);
+      expect(find.textContaining('ID: '), findsOneWidget);
+      expect(find.textContaining('SIG: '), findsOneWidget);
+      expect(find.textContaining(activeIdentity.localId), findsNothing);
     });
 
     testWidgets('approving while locked fails safely', (tester) async {
@@ -222,7 +286,9 @@ void main() {
       expect(find.text('Signing Request'), findsOneWidget);
     });
 
-    testWidgets('signing failure displays safe failure message', (tester) async {
+    testWidgets('signing failure displays safe failure message', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1200, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.reset());
@@ -234,7 +300,10 @@ void main() {
       // Setup failing signer
       final failingSigner = FakeSignerService(shouldFail: true);
       // Create a NEW controller with the failing signer
-      final failingRequestController = RequestController(vaultController, failingSigner);
+      final failingRequestController = RequestController(
+        vaultController,
+        failingSigner,
+      );
 
       final request = SigningRequest(
         id: 'req1',
@@ -253,20 +322,22 @@ void main() {
 
       await failingRequestController.acceptRequest(request);
 
-      await tester.pumpWidget(ProviderScope(
-        overrides: [
-          vaultControllerProvider.overrideWith((ref) => vaultController),
-          signerServiceProvider.overrideWithValue(failingSigner),
-          requestControllerProvider.overrideWith((ref) => failingRequestController),
-        ],
-        child: const MaterialApp(
-          home: RequestsScreen(),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            vaultControllerProvider.overrideWith((ref) => vaultController),
+            signerServiceProvider.overrideWithValue(failingSigner),
+            requestControllerProvider.overrideWith(
+              (ref) => failingRequestController,
+            ),
+          ],
+          child: const MaterialApp(home: RequestsScreen()),
         ),
-      ));
+      );
       await tester.pump();
 
       await tester.tap(find.text('Sign event (DEMO)'));
-      
+
       // FakeSignerService has 100ms delay.
       await tester.pump(const Duration(milliseconds: 200));
       await tester.pumpAndSettle();

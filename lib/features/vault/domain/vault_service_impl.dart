@@ -1,5 +1,9 @@
 import 'dart:async';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
+import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
+import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
@@ -9,10 +13,14 @@ import 'package:dart_nostr/dart_nostr.dart';
 
 class VaultServiceImpl implements VaultService {
   final VaultStore _store;
+  final NostrCryptoService _cryptoService;
   VaultState _state = const NoVault();
   VaultIdentity? _activeIdentity;
 
-  VaultServiceImpl(this._store);
+  VaultServiceImpl(
+    this._store, {
+    NostrCryptoService cryptoService = const DartNostrCryptoService(),
+  }) : _cryptoService = cryptoService;
 
   @override
   VaultState get state => _state;
@@ -54,10 +62,10 @@ class VaultServiceImpl implements VaultService {
 
     // Placeholder: In Task 3.1, we just compare with a hardcoded or stored value.
     // Since we don't have KEK derivation yet, we'll assume any PIN works for the placeholder
-    // or we might want to store a hash. 
+    // or we might want to store a hash.
     // For this task, let's assume '1234' for simplicity or just transition to Unlocked.
     // The requirement says "unlock placeholder/session transition".
-    
+
     _state = const VaultUnlocked();
 
     // Restore active identity from store
@@ -103,11 +111,14 @@ class VaultServiceImpl implements VaultService {
     final existing = await _store.getIdentities();
     if (existing.any((i) => i.publicKey == publicKey)) {
       // Practically unlikely, but handled
-      throw const VaultStorageException('Identity with this public key already exists');
+      throw const VaultStorageException(
+        'Identity with this public key already exists',
+      );
     }
 
     final now = DateTime.now();
-    final localId = publicKey; // Using publicKey as localId for now, or could use UUID
+    final localId =
+        publicKey; // Using publicKey as localId for now, or could use UUID
 
     final record = VaultIdentityRecord(
       identityId: localId,
@@ -121,7 +132,7 @@ class VaultServiceImpl implements VaultService {
     await _store.saveIdentityRecord(record);
 
     final identity = record.toVaultIdentity(isActive: _activeIdentity == null);
-    
+
     // Refresh identities from store if needed, but here we just need to update _activeIdentity if it's the first one
     if (_activeIdentity == null) {
       await setActiveIdentity(identity.localId);
@@ -131,31 +142,40 @@ class VaultServiceImpl implements VaultService {
   }
 
   @override
-  Future<VaultIdentity> importIdentity(String keyInput, {String? displayName}) async {
+  Future<VaultIdentity> importIdentity(
+    String keyInput, {
+    String? displayName,
+  }) async {
     _checkUnlocked();
 
     final nostr = Nostr.instance;
     String hexPrivateKey;
-    
+
     // Normalize input
     final trimmedInput = keyInput.trim();
     if (trimmedInput.startsWith('nsec1')) {
       try {
-        hexPrivateKey = nostr.services.bech32.decodeNsecKeyToPrivateKey(trimmedInput);
+        hexPrivateKey = nostr.services.bech32.decodeNsecKeyToPrivateKey(
+          trimmedInput,
+        );
       } catch (e) {
         throw const VaultStorageException('Invalid nsec key format');
       }
     } else {
       // Assume hex
       if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(trimmedInput)) {
-        throw const VaultStorageException('Invalid private key format: expected 64 hex characters');
+        throw const VaultStorageException(
+          'Invalid private key format: expected 64 hex characters',
+        );
       }
       hexPrivateKey = trimmedInput.toLowerCase();
     }
 
     late final String publicKey;
     try {
-      publicKey = nostr.services.keys.generateKeyPairFromExistingPrivateKey(hexPrivateKey).public;
+      publicKey = nostr.services.keys
+          .generateKeyPairFromExistingPrivateKey(hexPrivateKey)
+          .public;
     } catch (e) {
       // This should ideally be caught by normalization, but as a safety measure:
       throw VaultStorageException('Failed to derive public key: $e');
@@ -164,7 +184,9 @@ class VaultServiceImpl implements VaultService {
     // Duplicate check
     final existing = await _store.getIdentities();
     if (existing.any((i) => i.publicKey == publicKey)) {
-      throw const VaultStorageException('Identity with this public key already exists');
+      throw const VaultStorageException(
+        'Identity with this public key already exists',
+      );
     }
 
     final now = DateTime.now();
@@ -194,9 +216,13 @@ class VaultServiceImpl implements VaultService {
   Future<List<VaultIdentity>> listIdentities() async {
     _checkUnlocked();
     final records = await _store.getIdentities();
-    return records.map((r) => r.toVaultIdentity(
-      isActive: _activeIdentity?.localId == r.identityId,
-    )).toList();
+    return records
+        .map(
+          (r) => r.toVaultIdentity(
+            isActive: _activeIdentity?.localId == r.identityId,
+          ),
+        )
+        .toList();
   }
 
   @override
@@ -209,6 +235,47 @@ class VaultServiceImpl implements VaultService {
     );
     await _store.setActiveIdentityId(localId);
     _activeIdentity = record.toVaultIdentity(isActive: true);
+  }
+
+  @override
+  Future<SignedNostrEvent> signNostrEvent({
+    required String identityLocalId,
+    required NostrEventDraft draft,
+  }) async {
+    _checkUnlocked();
+
+    final record = await _store.getIdentityRecord(identityLocalId);
+    if (record == null) {
+      throw const IdentityNotFoundException();
+    }
+
+    if (_activeIdentity?.localId != identityLocalId) {
+      throw const IdentityMismatchException();
+    }
+
+    final derivedPublicKey = _cryptoService.derivePublicKey(
+      record.secretPayload,
+    );
+    if (derivedPublicKey != record.publicKey) {
+      throw const VaultSigningException(
+        'Stored identity key material is invalid',
+      );
+    }
+
+    try {
+      final signedEvent = _cryptoService.signEvent(
+        privateKeyHex: record.secretPayload,
+        draft: draft,
+      );
+      if (!_cryptoService.verifySignedEvent(signedEvent)) {
+        throw const VaultSigningException('Signed event failed verification');
+      }
+      return signedEvent;
+    } on VaultException {
+      rethrow;
+    } catch (_) {
+      throw const VaultSigningException('Unable to sign event');
+    }
   }
 
   @override

@@ -26,6 +26,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final requestState = ref.watch(requestControllerProvider);
     final isLoading = requestState.isLoading;
     final failure = requestState.failure;
+    final signedEvent = activeRequest == null
+        ? null
+        : requestState.signedEvents[activeRequest.id];
 
     final vaultState = ref.watch(vaultControllerProvider);
     final activeIdentity = vaultState.activeIdentity;
@@ -45,14 +48,16 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               Text(
                 'No active requests',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: DiogelColors.textSecondary,
-                    ),
+                  color: DiogelColors.textSecondary,
+                ),
               ),
               const SizedBox(height: DiogelSpacing.space6),
               OutlinedButton.icon(
                 onPressed: activeIdentity == null
                     ? null
-                    : () => ref.read(requestControllerProvider.notifier).injectDemoRequest(),
+                    : () => ref
+                          .read(requestControllerProvider.notifier)
+                          .injectDemoRequest(),
                 icon: const Icon(Icons.bug_report_outlined),
                 label: const Text('Load Demo Request (Dev)'),
                 style: OutlinedButton.styleFrom(
@@ -92,7 +97,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               _buildFailureMessage(context, failure.message),
               const SizedBox(height: DiogelSpacing.space4),
             ],
-            _buildProvenanceWarning(context, activeRequest.provenance.trustStatus),
+            if (signedEvent != null) ...[
+              _buildSignedMessage(context, signedEvent.id, signedEvent.sig),
+              const SizedBox(height: DiogelSpacing.space4),
+            ],
+            _buildProvenanceWarning(
+              context,
+              activeRequest.provenance.trustStatus,
+            ),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'REQUEST SOURCE'),
             const SizedBox(height: DiogelSpacing.space2),
@@ -100,7 +112,8 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               icon: Icons.apps,
               iconColor: DiogelColors.actionPrimary,
               title: activeRequest.provenance.sourceDisplayName,
-              subtitle: activeRequest.provenance.sourceIdentifier ?? 'Unknown Source',
+              subtitle:
+                  activeRequest.provenance.sourceIdentifier ?? 'Unknown Source',
             ),
             const SizedBox(height: DiogelSpacing.space4),
             _buildSectionHeader(context, 'ACTION TYPE'),
@@ -146,8 +159,70 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
           ],
         ),
       ),
-      bottomSheet: _buildActionButtons(context, activeRequest, isLoading),
+      bottomSheet: signedEvent == null
+          ? _buildActionButtons(context, activeRequest, isLoading)
+          : null,
     );
+  }
+
+  Widget _buildSignedMessage(
+    BuildContext context,
+    String eventId,
+    String signature,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(DiogelSpacing.space4),
+      decoration: BoxDecoration(
+        color: DiogelColors.stateSuccess.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(DiogelRadius.medium),
+        border: Border.all(
+          color: DiogelColors.stateSuccess.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.verified_outlined, color: DiogelColors.stateSuccess),
+          const SizedBox(width: DiogelSpacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Event signed',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: DiogelColors.stateSuccess,
+                  ),
+                ),
+                const SizedBox(height: DiogelSpacing.space1),
+                Text(
+                  'The event was signed locally with your selected identity. It has not been published by Diogel.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: DiogelSpacing.space2),
+                Text(
+                  'ID: ${_shortFingerprint(eventId)}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                ),
+                Text(
+                  'SIG: ${_shortFingerprint(signature)}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortFingerprint(String value) {
+    if (value.length <= 16) return value;
+    return '${value.substring(0, 8)}...${value.substring(value.length - 8)}';
   }
 
   Widget _buildFailureMessage(BuildContext context, String message) {
@@ -156,7 +231,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       decoration: BoxDecoration(
         color: DiogelColors.stateError.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(DiogelRadius.medium),
-        border: Border.all(color: DiogelColors.stateError.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: DiogelColors.stateError.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
@@ -165,28 +242,42 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: DiogelColors.stateError,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: DiogelColors.stateError),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.close, size: 20, color: DiogelColors.stateError),
-            onPressed: () => ref.read(requestControllerProvider.notifier).clearFailure(),
+            icon: const Icon(
+              Icons.close,
+              size: 20,
+              color: DiogelColors.stateError,
+            ),
+            onPressed: () =>
+                ref.read(requestControllerProvider.notifier).clearFailure(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildProvenanceWarning(BuildContext context, RequestTrustStatus status) {
-    final isUntrusted = status == RequestTrustStatus.knownUntrusted || status == RequestTrustStatus.invalid;
-    
-    if (status == RequestTrustStatus.knownTrusted) return const SizedBox.shrink();
+  Widget _buildProvenanceWarning(
+    BuildContext context,
+    RequestTrustStatus status,
+  ) {
+    final isUntrusted =
+        status == RequestTrustStatus.knownUntrusted ||
+        status == RequestTrustStatus.invalid;
 
-    final color = isUntrusted ? DiogelColors.stateError : DiogelColors.stateWarning;
+    if (status == RequestTrustStatus.knownTrusted) {
+      return const SizedBox.shrink();
+    }
+
+    final color = isUntrusted
+        ? DiogelColors.stateError
+        : DiogelColors.stateWarning;
     final title = isUntrusted ? 'Untrusted Source' : 'Unknown Provenance';
-    final message = isUntrusted 
+    final message = isUntrusted
         ? 'This request comes from a known malicious or invalid source. DO NOT SIGN unless you are absolutely sure.'
         : 'The requesting application is not in your verified list. Exercise caution.';
 
@@ -208,11 +299,15 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               children: [
                 Text(
                   title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: color),
                 ),
                 Text(
                   message,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: color),
                 ),
               ],
             ),
@@ -226,16 +321,19 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     return Text(
       title,
       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: DiogelColors.textTertiary,
-            letterSpacing: 1.2,
-          ),
+        color: DiogelColors.textTertiary,
+        letterSpacing: 1.2,
+      ),
     );
   }
 
-  Widget _buildIdentityCard(BuildContext context, VaultIdentity? activeIdentity) {
+  Widget _buildIdentityCard(
+    BuildContext context,
+    VaultIdentity? activeIdentity,
+  ) {
     final displayName = activeIdentity?.displayName ?? 'Anonymous';
     final pubkey = activeIdentity?.publicKey ?? 'Unknown Public Key';
-    final truncatedPubkey = pubkey.length > 16 
+    final truncatedPubkey = pubkey.length > 16
         ? '${pubkey.substring(0, 8)}...${pubkey.substring(pubkey.length - 8)}'
         : pubkey;
 
@@ -253,10 +351,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: DiogelColors.actionPrimary,
-                width: 2,
-              ),
+              border: Border.all(color: DiogelColors.actionPrimary, width: 2),
             ),
             child: const Icon(
               Icons.person,
@@ -276,9 +371,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 Text(
                   truncatedPubkey,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: DiogelColors.actionPrimary,
-                        fontFamily: 'monospace',
-                      ),
+                    color: DiogelColors.actionPrimary,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ],
             ),
@@ -295,7 +390,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
   }
 
   Widget _buildRawJsonDisclosure(SigningRequest request) {
-    final jsonString = const JsonEncoder.withIndent('  ').convert(request.eventPayload);
+    final jsonString = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(request.eventPayload);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -326,10 +423,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'CONTENT',
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
+          Text('CONTENT', style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: DiogelSpacing.space2),
           Container(
             width: double.infinity,
@@ -343,9 +437,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             ),
             child: Text(
               request.eventPayload['content']?.toString() ?? 'No content',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontStyle: FontStyle.italic,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
             ),
           ),
           const SizedBox(height: DiogelSpacing.space4),
@@ -361,7 +455,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                     ),
                     Text(
                       request.eventPayload['created_at']?.toString() ?? 'N/A',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                     ),
                   ],
                 ),
@@ -370,13 +466,12 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'TAGS',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
+                    Text('TAGS', style: Theme.of(context).textTheme.labelSmall),
                     Text(
                       request.eventPayload['tags']?.toString() ?? '[]',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                     ),
                   ],
                 ),
@@ -388,7 +483,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, SigningRequest request, bool isLoading) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    SigningRequest request,
+    bool isLoading,
+  ) {
     final signerService = ref.watch(signerServiceProvider);
     final isDemo = signerService.isDemo;
 
@@ -396,9 +495,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       padding: const EdgeInsets.all(DiogelSpacing.space4),
       decoration: BoxDecoration(
         color: DiogelColors.surfaceBackground.withValues(alpha: 0.8),
-        border: const Border(
-          top: BorderSide(color: DiogelColors.borderSubtle),
-        ),
+        border: const Border(top: BorderSide(color: DiogelColors.borderSubtle)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -407,7 +504,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: isLoading ? null : () => ref.read(requestControllerProvider.notifier).rejectRequest(request.id),
+                  onPressed: isLoading
+                      ? null
+                      : () => ref
+                            .read(requestControllerProvider.notifier)
+                            .rejectRequest(request.id),
                   icon: const Icon(Icons.close),
                   label: const Text('Reject'),
                   style: OutlinedButton.styleFrom(
@@ -428,19 +529,28 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: isLoading ? null : () => ref.read(requestControllerProvider.notifier).approveRequest(request.id),
+                  onPressed: isLoading
+                      ? null
+                      : () => ref
+                            .read(requestControllerProvider.notifier)
+                            .approveRequest(request.id),
                   icon: isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : const Icon(Icons.check),
-                  label: Text(isLoading
-                      ? 'Signing...'
-                      : isDemo
-                          ? 'Sign event (DEMO)'
-                          : 'Sign event'),
+                  label: Text(
+                    isLoading
+                        ? 'Signing...'
+                        : isDemo
+                        ? 'Sign event (DEMO)'
+                        : 'Sign event',
+                  ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       vertical: DiogelSpacing.space4,
@@ -459,9 +569,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 ? 'DEMO: This action uses a fake signer for development purposes.'
                 : 'This action will generate a digital signature using your private key.',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: isDemo ? DiogelColors.stateWarning : null,
-                  fontWeight: isDemo ? FontWeight.bold : null,
-                ),
+              color: isDemo ? DiogelColors.stateWarning : null,
+              fontWeight: isDemo ? FontWeight.bold : null,
+            ),
             textAlign: TextAlign.center,
           ),
         ],

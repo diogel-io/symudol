@@ -16,7 +16,7 @@ class RequestController extends StateNotifier<RequestState> {
   final SignerService _signerService;
 
   RequestController(this._vaultController, this._signerService)
-      : super(const RequestState(requests: []));
+    : super(const RequestState(requests: []));
 
   RequestFailure? get failure => state.failure;
 
@@ -35,7 +35,8 @@ class RequestController extends StateNotifier<RequestState> {
   Future<void> acceptRequest(SigningRequest request) async {
     state = state.copyWith(isLoading: true, clearFailure: true);
     // In-memory implementation for now.
-    final updatedRequests = List<SigningRequest>.from(state.requests)..add(request);
+    final updatedRequests = List<SigningRequest>.from(state.requests)
+      ..add(request);
     state = state.copyWith(requests: updatedRequests, isLoading: false);
   }
 
@@ -52,7 +53,7 @@ class RequestController extends StateNotifier<RequestState> {
   }
 
   /// Approves a request through the signer service.
-  /// 
+  ///
   /// Blocks approval if the vault is locked or no active identity exists.
   Future<void> approveRequest(String requestId) async {
     state = state.copyWith(isLoading: true, clearFailure: true);
@@ -80,7 +81,9 @@ class RequestController extends StateNotifier<RequestState> {
     if (request == null) {
       state = state.copyWith(
         isLoading: false,
-        failure: const RequestFailure('Approval failed: Request no longer exists'),
+        failure: const RequestFailure(
+          'Approval failed: Request no longer exists',
+        ),
       );
       return;
     }
@@ -102,6 +105,8 @@ class RequestController extends StateNotifier<RequestState> {
         return;
       }
 
+      final success = result as SignedRequestSuccess;
+
       // On success
       final updatedRequests = state.requests.map((r) {
         if (r.id == requestId) {
@@ -110,11 +115,23 @@ class RequestController extends StateNotifier<RequestState> {
         return r;
       }).toList();
 
-      state = state.copyWith(requests: updatedRequests, isLoading: false);
+      final signedEvents = Map.of(state.signedEvents);
+      if (success.event != null) {
+        signedEvents[requestId] = success.event!;
+      }
+
+      state = state.copyWith(
+        requests: updatedRequests,
+        isLoading: false,
+        signedEvents: signedEvents,
+      );
     } catch (error) {
       _markRequestFailed(
         requestId,
-        RequestFailure('Approval failed: Unexpected error during signing', error),
+        RequestFailure(
+          'Approval failed: Unexpected error during signing',
+          error,
+        ),
       );
     }
   }
@@ -147,13 +164,15 @@ class RequestController extends StateNotifier<RequestState> {
   }
 
   /// Injects a demo request for development/demo purposes.
-  /// 
+  ///
   /// This should only be used in development or demo modes.
   Future<void> injectDemoRequest() async {
     final activeIdentity = _vaultController.state.activeIdentity;
     if (activeIdentity == null) {
       state = state.copyWith(
-        failure: const RequestFailure('Cannot inject demo request: No active identity'),
+        failure: const RequestFailure(
+          'Cannot inject demo request: No active identity',
+        ),
       );
       return;
     }

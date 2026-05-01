@@ -1,4 +1,6 @@
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
+import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
@@ -28,21 +30,27 @@ void main() {
       expect(vaultService.state, isA<VaultLocked>());
     });
 
-    test('createVault should set sentinel and transition to VaultUnlocked', () async {
-      await vaultService.createVault('1234');
-      
-      expect(vaultService.state, isA<VaultUnlocked>());
-      expect(await fakeStore.getSentinel(), isNotNull);
-    });
+    test(
+      'createVault should set sentinel and transition to VaultUnlocked',
+      () async {
+        await vaultService.createVault('1234');
 
-    test('createVault should throw VaultAlreadyExistsException if sentinel exists', () async {
-      await fakeStore.setSentinel('vault_exists');
-      
-      expect(
-        () => vaultService.createVault('1234'),
-        throwsA(isA<VaultAlreadyExistsException>()),
-      );
-    });
+        expect(vaultService.state, isA<VaultUnlocked>());
+        expect(await fakeStore.getSentinel(), isNotNull);
+      },
+    );
+
+    test(
+      'createVault should throw VaultAlreadyExistsException if sentinel exists',
+      () async {
+        await fakeStore.setSentinel('vault_exists');
+
+        expect(
+          () => vaultService.createVault('1234'),
+          throwsA(isA<VaultAlreadyExistsException>()),
+        );
+      },
+    );
 
     test('lock should transition from VaultUnlocked to VaultLocked', () async {
       await vaultService.createVault('1234');
@@ -61,129 +69,164 @@ void main() {
       expect(vaultService.state, isA<VaultLocked>());
     });
 
-    test('unlock should transition from VaultLocked to VaultUnlocked', () async {
-      await fakeStore.setSentinel('vault_exists');
-      await vaultService.init();
-      expect(vaultService.state, isA<VaultLocked>());
+    test(
+      'unlock should transition from VaultLocked to VaultUnlocked',
+      () async {
+        await fakeStore.setSentinel('vault_exists');
+        await vaultService.init();
+        expect(vaultService.state, isA<VaultLocked>());
 
-      await vaultService.unlock('1234');
-      expect(vaultService.state, isA<VaultUnlocked>());
-    });
+        await vaultService.unlock('1234');
+        expect(vaultService.state, isA<VaultUnlocked>());
+      },
+    );
 
-    test('unlock should throw VaultNotFoundException if no vault exists', () async {
-      expect(
-        () => vaultService.unlock('1234'),
-        throwsA(isA<VaultNotFoundException>()),
-      );
-    });
+    test(
+      'unlock should throw VaultNotFoundException if no vault exists',
+      () async {
+        expect(
+          () => vaultService.unlock('1234'),
+          throwsA(isA<VaultNotFoundException>()),
+        );
+      },
+    );
 
-    test('lock should transition to NoVault if vault was deleted from store externally (edge case)', () async {
-      await vaultService.createVault('1234');
-      await fakeStore.clearAll();
-      
-      await vaultService.lock();
-      expect(vaultService.state, isA<NoVault>());
-    });
+    test(
+      'lock should transition to NoVault if vault was deleted from store externally (edge case)',
+      () async {
+        await vaultService.createVault('1234');
+        await fakeStore.clearAll();
+
+        await vaultService.lock();
+        expect(vaultService.state, isA<NoVault>());
+      },
+    );
   });
 
   group('VaultServiceImpl Identity operations while locked', () {
-    test('createIdentity should throw VaultLockedException when locked', () async {
-      await fakeStore.setSentinel('vault_exists');
-      await vaultService.init();
-      
-      expect(
-        () => vaultService.createIdentity(),
-        throwsA(isA<VaultLockedException>()),
-      );
-    });
+    test(
+      'createIdentity should throw VaultLockedException when locked',
+      () async {
+        await fakeStore.setSentinel('vault_exists');
+        await vaultService.init();
 
-    test('listIdentities should throw VaultLockedException when locked', () async {
-      await fakeStore.setSentinel('vault_exists');
-      await vaultService.init();
-      
-      expect(
-        () => vaultService.listIdentities(),
-        throwsA(isA<VaultLockedException>()),
-      );
-    });
+        expect(
+          () => vaultService.createIdentity(),
+          throwsA(isA<VaultLockedException>()),
+        );
+      },
+    );
+
+    test(
+      'listIdentities should throw VaultLockedException when locked',
+      () async {
+        await fakeStore.setSentinel('vault_exists');
+        await vaultService.init();
+
+        expect(
+          () => vaultService.listIdentities(),
+          throwsA(isA<VaultLockedException>()),
+        );
+      },
+    );
   });
 
   group('VaultServiceImpl Identity creation and listing', () {
-    test('createIdentity should generate a valid identity and store it', () async {
-      await vaultService.createVault('1234');
-      
-      final identity = await vaultService.createIdentity(displayName: 'Test Identity');
-      
-      expect(identity.publicKey, isNotEmpty);
-      expect(identity.displayName, equals('Test Identity'));
-      expect(identity.origin, equals(IdentityOrigin.generated));
-      
-      final identities = await vaultService.listIdentities();
-      expect(identities, hasLength(1));
-      expect(identities.first.publicKey, equals(identity.publicKey));
-    });
+    test(
+      'createIdentity should generate a valid identity and store it',
+      () async {
+        await vaultService.createVault('1234');
+
+        final identity = await vaultService.createIdentity(
+          displayName: 'Test Identity',
+        );
+
+        expect(identity.publicKey, isNotEmpty);
+        expect(identity.displayName, equals('Test Identity'));
+        expect(identity.origin, equals(IdentityOrigin.generated));
+
+        final identities = await vaultService.listIdentities();
+        expect(identities, hasLength(1));
+        expect(identities.first.publicKey, equals(identity.publicKey));
+      },
+    );
 
     test('listIdentities should not expose the private key', () async {
       await vaultService.createVault('1234');
       await vaultService.createIdentity();
-      
+
       final identities = await vaultService.listIdentities();
       final identity = identities.first;
-      
+
       // VaultIdentity doesn't have a private key field.
-      // We check the record in the store to ensure it DOES have it, 
+      // We check the record in the store to ensure it DOES have it,
       // but the returned object doesn't.
       final record = await fakeStore.getIdentityRecord(identity.localId);
       expect(record?.secretPayload, isNotEmpty);
-      
+
       // We expect a NoSuchMethodError if we try to access secretPayload on VaultIdentity
-      expect(() => (identity as dynamic).secretPayload, throwsNoSuchMethodError);
+      expect(
+        () => (identity as dynamic).secretPayload,
+        throwsNoSuchMethodError,
+      );
     });
 
-    test('importIdentity should derive public key from nsec and store it', () async {
-      await vaultService.createVault('1234');
-      
-      final nostr = Nostr.instance;
-      final keyPair = nostr.services.keys.generateKeyPair();
-      final privateKey = keyPair.private;
-      final nsec = nostr.services.bech32.encodePrivateKeyToNsec(privateKey);
-      final expectedPublicKey = keyPair.public;
-      
-      final identity = await vaultService.importIdentity(nsec, displayName: 'Imported');
-      
-      expect(identity.publicKey, equals(expectedPublicKey));
-      expect(identity.origin, equals(IdentityOrigin.imported));
-      
-      final record = await fakeStore.getIdentityRecord(identity.localId);
-      expect(record?.secretPayload, equals(privateKey));
-    });
+    test(
+      'importIdentity should derive public key from nsec and store it',
+      () async {
+        await vaultService.createVault('1234');
 
-    test('importIdentity should derive public key from hex private key and store it', () async {
-      await vaultService.createVault('1234');
-      
-      final nostr = Nostr.instance;
-      final keyPair = nostr.services.keys.generateKeyPair();
-      final privateKey = keyPair.private;
-      final expectedPublicKey = keyPair.public;
-      
-      final identity = await vaultService.importIdentity(privateKey, displayName: 'Imported Hex');
-      
-      expect(identity.publicKey, equals(expectedPublicKey));
-      expect(identity.origin, equals(IdentityOrigin.imported));
-      
-      final record = await fakeStore.getIdentityRecord(identity.localId);
-      expect(record?.secretPayload, equals(privateKey));
-    });
+        final nostr = Nostr.instance;
+        final keyPair = nostr.services.keys.generateKeyPair();
+        final privateKey = keyPair.private;
+        final nsec = nostr.services.bech32.encodePrivateKeyToNsec(privateKey);
+        final expectedPublicKey = keyPair.public;
+
+        final identity = await vaultService.importIdentity(
+          nsec,
+          displayName: 'Imported',
+        );
+
+        expect(identity.publicKey, equals(expectedPublicKey));
+        expect(identity.origin, equals(IdentityOrigin.imported));
+
+        final record = await fakeStore.getIdentityRecord(identity.localId);
+        expect(record?.secretPayload, equals(privateKey));
+      },
+    );
+
+    test(
+      'importIdentity should derive public key from hex private key and store it',
+      () async {
+        await vaultService.createVault('1234');
+
+        final nostr = Nostr.instance;
+        final keyPair = nostr.services.keys.generateKeyPair();
+        final privateKey = keyPair.private;
+        final expectedPublicKey = keyPair.public;
+
+        final identity = await vaultService.importIdentity(
+          privateKey,
+          displayName: 'Imported Hex',
+        );
+
+        expect(identity.publicKey, equals(expectedPublicKey));
+        expect(identity.origin, equals(IdentityOrigin.imported));
+
+        final record = await fakeStore.getIdentityRecord(identity.localId);
+        expect(record?.secretPayload, equals(privateKey));
+      },
+    );
 
     test('importIdentity should reject invalid key formats', () async {
       await vaultService.createVault('1234');
-      
+
       // Invalid nsec (wrong prefix/checksum)
       expect(
         () => vaultService.importIdentity('nsec1invalid'),
         throwsA(isA<VaultStorageException>()),
       );
-      
+
       // Invalid hex (too short)
       expect(
         () => vaultService.importIdentity('abc123'),
@@ -199,13 +242,13 @@ void main() {
 
     test('should handle duplicate public keys for both nsec and hex', () async {
       await vaultService.createVault('1234');
-      
+
       final nostr = Nostr.instance;
       final privateKey = nostr.services.keys.generateKeyPair().private;
       final nsec = nostr.services.bech32.encodePrivateKeyToNsec(privateKey);
-      
+
       await vaultService.importIdentity(privateKey);
-      
+
       // Duplicate hex
       expect(
         () => vaultService.importIdentity(privateKey),
@@ -221,7 +264,7 @@ void main() {
     test('listIdentities should return safe summaries without secrets', () async {
       await vaultService.createVault('1234');
       await vaultService.createIdentity(displayName: 'Test');
-      
+
       final identities = await vaultService.listIdentities();
       expect(identities, isNotEmpty);
       // VaultIdentity doesn't have secretPayload, it's only in VaultIdentityRecord
@@ -229,24 +272,30 @@ void main() {
     });
   });
   group('VaultServiceImpl Active Identity', () {
-    test('setActiveIdentity should update activeIdentity and persist in store', () async {
-      await vaultService.createVault('1234');
-      final identity = await vaultService.createIdentity(displayName: 'Test');
-      
-      await vaultService.setActiveIdentity(identity.localId);
-      
-      expect(vaultService.activeIdentity?.localId, equals(identity.localId));
-      expect(await fakeStore.getActiveIdentityId(), equals(identity.localId));
-    });
+    test(
+      'setActiveIdentity should update activeIdentity and persist in store',
+      () async {
+        await vaultService.createVault('1234');
+        final identity = await vaultService.createIdentity(displayName: 'Test');
 
-    test('setActiveIdentity should throw IdentityNotFoundException for unknown ID', () async {
-      await vaultService.createVault('1234');
-      
-      expect(
-        () => vaultService.setActiveIdentity('unknown'),
-        throwsA(isA<IdentityNotFoundException>()),
-      );
-    });
+        await vaultService.setActiveIdentity(identity.localId);
+
+        expect(vaultService.activeIdentity?.localId, equals(identity.localId));
+        expect(await fakeStore.getActiveIdentityId(), equals(identity.localId));
+      },
+    );
+
+    test(
+      'setActiveIdentity should throw IdentityNotFoundException for unknown ID',
+      () async {
+        await vaultService.createVault('1234');
+
+        expect(
+          () => vaultService.setActiveIdentity('unknown'),
+          throwsA(isA<IdentityNotFoundException>()),
+        );
+      },
+    );
 
     test('active identity should be loaded during init', () async {
       // Setup store with an identity and active ID
@@ -269,37 +318,128 @@ void main() {
       // Usually active identity might be needed for the UI even when locked (e.g. showing who is logging in),
       // but the requirement says "list/select active identity" and "expose active identity summary".
       // If the vault is locked, we might not want to expose it if it's sensitive, but it's just a summary.
-      
+
       // Let's assume for now it's available after unlock if we want to follow _checkUnlocked() pattern,
       // OR we can make it available whenever it's loaded.
       await vaultService.unlock('1234');
-      
+
       expect(vaultService.activeIdentity?.localId, equals(identityId));
     });
 
-    test('the first created identity should become active automatically if none active', () async {
-      await vaultService.createVault('1234');
-      final identity = await vaultService.createIdentity();
-      
-      expect(vaultService.activeIdentity?.localId, equals(identity.localId));
+    test(
+      'the first created identity should become active automatically if none active',
+      () async {
+        await vaultService.createVault('1234');
+        final identity = await vaultService.createIdentity();
+
+        expect(vaultService.activeIdentity?.localId, equals(identity.localId));
+      },
+    );
+
+    test(
+      'listIdentities should return identities with correct isActive flag',
+      () async {
+        await vaultService.createVault('1234');
+        final identity1 = await vaultService.createIdentity(
+          displayName: 'ID 1',
+        );
+        final identity2 = await vaultService.createIdentity(
+          displayName: 'ID 2',
+        );
+
+        // Initially, identity1 is active (first created)
+        var identities = await vaultService.listIdentities();
+        expect(
+          identities.firstWhere((i) => i.localId == identity1.localId).isActive,
+          isTrue,
+        );
+        expect(
+          identities.firstWhere((i) => i.localId == identity2.localId).isActive,
+          isFalse,
+        );
+
+        // Switch to identity2
+        await vaultService.setActiveIdentity(identity2.localId);
+
+        identities = await vaultService.listIdentities();
+        expect(
+          identities.firstWhere((i) => i.localId == identity1.localId).isActive,
+          isFalse,
+        );
+        expect(
+          identities.firstWhere((i) => i.localId == identity2.localId).isActive,
+          isTrue,
+        );
+      },
+    );
+  });
+
+  group('VaultServiceImpl Nostr signing', () {
+    final draft = NostrEventDraft(
+      kind: 1,
+      content: 'hello',
+      tags: const [],
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        1777618800 * 1000,
+        isUtc: true,
+      ),
+    );
+
+    test('signNostrEvent refuses while locked', () async {
+      await fakeStore.setSentinel('vault_exists');
+      await vaultService.init();
+
+      expect(
+        () => vaultService.signNostrEvent(
+          identityLocalId: 'missing',
+          draft: draft,
+        ),
+        throwsA(isA<VaultLockedException>()),
+      );
     });
 
-    test('listIdentities should return identities with correct isActive flag', () async {
+    test('signNostrEvent refuses missing identity', () async {
+      await vaultService.createVault('1234');
+
+      expect(
+        () => vaultService.signNostrEvent(
+          identityLocalId: 'missing',
+          draft: draft,
+        ),
+        throwsA(isA<IdentityNotFoundException>()),
+      );
+    });
+
+    test('signNostrEvent refuses active identity mismatch', () async {
       await vaultService.createVault('1234');
       final identity1 = await vaultService.createIdentity(displayName: 'ID 1');
       final identity2 = await vaultService.createIdentity(displayName: 'ID 2');
-      
-      // Initially, identity1 is active (first created)
-      var identities = await vaultService.listIdentities();
-      expect(identities.firstWhere((i) => i.localId == identity1.localId).isActive, isTrue);
-      expect(identities.firstWhere((i) => i.localId == identity2.localId).isActive, isFalse);
-      
-      // Switch to identity2
-      await vaultService.setActiveIdentity(identity2.localId);
-      
-      identities = await vaultService.listIdentities();
-      expect(identities.firstWhere((i) => i.localId == identity1.localId).isActive, isFalse);
-      expect(identities.firstWhere((i) => i.localId == identity2.localId).isActive, isTrue);
+      await vaultService.setActiveIdentity(identity1.localId);
+
+      expect(
+        () => vaultService.signNostrEvent(
+          identityLocalId: identity2.localId,
+          draft: draft,
+        ),
+        throwsA(isA<IdentityMismatchException>()),
+      );
+    });
+
+    test('signNostrEvent signs with active identity', () async {
+      await vaultService.createVault('1234');
+      final identity = await vaultService.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+
+      final event = await vaultService.signNostrEvent(
+        identityLocalId: identity.localId,
+        draft: draft,
+      );
+
+      expect(event.pubkey, identity.publicKey);
+      expect(event.id, isNotEmpty);
+      expect(event.sig, isNotEmpty);
+      expect(const DartNostrCryptoService().verifySignedEvent(event), isTrue);
     });
   });
 }
