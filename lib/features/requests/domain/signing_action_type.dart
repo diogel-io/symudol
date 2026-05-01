@@ -1,3 +1,1 @@
-enum SigningActionType {
-  signEvent,
-}
+enum SigningActionType { signEvent }

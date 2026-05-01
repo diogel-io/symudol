@@ -1,7 +1,1 @@
-enum SigningRequestStatus {
-  pending,
-  approved,
-  rejected,
-  failed,
-  expired,
-}
+enum SigningRequestStatus { pending, approved, rejected, failed, expired }

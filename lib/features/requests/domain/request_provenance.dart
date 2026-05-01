@@ -23,7 +23,9 @@ class RequestProvenance {
     return RequestProvenance(
       sourceDisplayName: json['sourceDisplayName'] as String,
       sourceIdentifier: json['sourceIdentifier'] as String?,
-      trustStatus: RequestTrustStatus.values.byName(json['trustStatus'] as String),
+      trustStatus: RequestTrustStatus.values.byName(
+        json['trustStatus'] as String,
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../theme/tokens.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../identity/domain/vault_identity.dart';
+import '../../nip55/application/nip55_providers.dart';
 import '../application/request_providers.dart';
 import '../domain/request_trust_status.dart';
 import '../domain/signing_request.dart';
@@ -32,6 +33,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
 
     final vaultState = ref.watch(vaultControllerProvider);
     final activeIdentity = vaultState.activeIdentity;
+    final nip55State = ref.watch(nip55ControllerProvider);
+
+    if (activeRequest == null && nip55State.pendingPublicKeyRequest != null) {
+      return _buildPublicKeyRequestScaffold(context, activeIdentity);
+    }
 
     if (activeRequest == null) {
       return Scaffold(
@@ -39,6 +45,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              if (nip55State.lastSuccessMessage != null) ...[
+                _buildSuccessMessage(context, nip55State.lastSuccessMessage!),
+                const SizedBox(height: DiogelSpacing.space6),
+              ],
+              if (nip55State.failure != null) ...[
+                _buildFailureMessage(context, nip55State.failure!.message),
+                const SizedBox(height: DiogelSpacing.space6),
+              ],
               const Icon(
                 Icons.receipt_long_outlined,
                 size: 64,
@@ -162,6 +176,140 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       bottomSheet: signedEvent == null
           ? _buildActionButtons(context, activeRequest, isLoading)
           : null,
+    );
+  }
+
+  Widget _buildPublicKeyRequestScaffold(
+    BuildContext context,
+    VaultIdentity? activeIdentity,
+  ) {
+    final nip55Request = ref
+        .watch(nip55ControllerProvider)
+        .pendingPublicKeyRequest!;
+    final source = nip55Request.callerPackage ?? 'External Android app';
+    final pubkey = activeIdentity?.publicKey ?? 'No active identity';
+    final truncatedPubkey = _shortFingerprint(pubkey);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Public Key Request')),
+      body: Padding(
+        padding: const EdgeInsets.all(DiogelSpacing.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProvenanceWarning(context, RequestTrustStatus.unknown),
+            const SizedBox(height: DiogelSpacing.space6),
+            _buildSectionHeader(context, 'REQUEST SOURCE'),
+            const SizedBox(height: DiogelSpacing.space2),
+            RequestDetailItem(
+              icon: Icons.android,
+              iconColor: DiogelColors.actionPrimary,
+              title: source,
+              subtitle: 'External Android app request',
+            ),
+            const SizedBox(height: DiogelSpacing.space6),
+            _buildSectionHeader(context, 'SHARING ACCOUNT'),
+            const SizedBox(height: DiogelSpacing.space2),
+            _buildIdentityCard(context, activeIdentity),
+            const SizedBox(height: DiogelSpacing.space6),
+            Text(
+              'This app wants to know your public Nostr key. No signing will happen, and requested permissions are not remembered in this version.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            if (nip55Request.permissions != null) ...[
+              const SizedBox(height: DiogelSpacing.space4),
+              Text(
+                'Requested permissions: ${nip55Request.permissions}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DiogelColors.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: DiogelSpacing.space4),
+            Text(
+              'Public key: $truncatedPubkey',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                color: DiogelColors.actionPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomSheet: Container(
+        padding: const EdgeInsets.all(DiogelSpacing.space4),
+        decoration: BoxDecoration(
+          color: DiogelColors.surfaceBackground.withValues(alpha: 0.8),
+          border: const Border(
+            top: BorderSide(color: DiogelColors.borderSubtle),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => ref
+                    .read(nip55ControllerProvider.notifier)
+                    .rejectPublicKeyRequest(),
+                icon: const Icon(Icons.close),
+                label: const Text('Reject request'),
+              ),
+            ),
+            const SizedBox(width: DiogelSpacing.space4),
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                onPressed: activeIdentity == null
+                    ? null
+                    : () => ref
+                          .read(nip55ControllerProvider.notifier)
+                          .approvePublicKeyRequest(),
+                icon: const Icon(Icons.key),
+                label: const Text('Share public key'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuccessMessage(BuildContext context, String message) {
+    return Container(
+      padding: const EdgeInsets.all(DiogelSpacing.space4),
+      decoration: BoxDecoration(
+        color: DiogelColors.stateSuccess.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(DiogelRadius.medium),
+        border: Border.all(
+          color: DiogelColors.stateSuccess.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.check_circle_outline,
+            color: DiogelColors.stateSuccess,
+          ),
+          const SizedBox(width: DiogelSpacing.space3),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: DiogelColors.stateSuccess,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.close,
+              size: 20,
+              color: DiogelColors.stateSuccess,
+            ),
+            onPressed: () =>
+                ref.read(nip55ControllerProvider.notifier).clearMessages(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -506,9 +654,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 child: OutlinedButton.icon(
                   onPressed: isLoading
                       ? null
-                      : () => ref
-                            .read(requestControllerProvider.notifier)
-                            .rejectRequest(request.id),
+                      : () async {
+                          await ref
+                              .read(requestControllerProvider.notifier)
+                              .rejectRequest(request.id);
+                          await ref
+                              .read(nip55ControllerProvider.notifier)
+                              .rejectSigningRequest(request.id);
+                        },
                   icon: const Icon(Icons.close),
                   label: const Text('Reject'),
                   style: OutlinedButton.styleFrom(
@@ -531,9 +684,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 child: FilledButton.icon(
                   onPressed: isLoading
                       ? null
-                      : () => ref
-                            .read(requestControllerProvider.notifier)
-                            .approveRequest(request.id),
+                      : () async {
+                          await ref
+                              .read(requestControllerProvider.notifier)
+                              .approveRequest(request.id);
+                          await ref
+                              .read(nip55ControllerProvider.notifier)
+                              .completeApprovedSigningRequest(request.id);
+                        },
                   icon: isLoading
                       ? const SizedBox(
                           width: 20,

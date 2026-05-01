@@ -25,6 +25,9 @@ class NostrEventPayloadParser {
         'Event kind mismatch between request metadata and payload',
       );
     }
+    if (request.eventKind < 0 || request.eventKind > 65535) {
+      throw const NostrEventPayloadParseException('Invalid event kind range');
+    }
     final kindValue = request.eventKind;
 
     final contentValue = payload['content'];

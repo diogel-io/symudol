@@ -10,7 +10,10 @@ void main() {
   const parser = NostrEventPayloadParser();
   final createdAt = DateTime.utc(2026, 5, 1, 7, 30);
 
-  SigningRequest requestWith(Map<String, Object?> payload) {
+  SigningRequest requestWith(
+    Map<String, Object?> payload, {
+    int eventKind = 1,
+  }) {
     return SigningRequest(
       id: 'req1',
       provenance: const RequestProvenance(
@@ -18,7 +21,7 @@ void main() {
         trustStatus: RequestTrustStatus.unknown,
       ),
       actionType: SigningActionType.signEvent,
-      eventKind: 1,
+      eventKind: eventKind,
       eventPayload: payload,
       targetIdentityPublicKey: 'pubkey',
       targetIdentityLocalId: 'local',
@@ -74,6 +77,20 @@ void main() {
       final draft = parser.parse(requestWith({'content': 'hello'}));
 
       expect(draft.kind, 1);
+    });
+
+    test('rejects event kind below NIP-01 range', () {
+      expect(
+        () => parser.parse(requestWith({'content': 'hello'}, eventKind: -1)),
+        throwsA(isA<NostrEventPayloadParseException>()),
+      );
+    });
+
+    test('rejects event kind above NIP-01 range', () {
+      expect(
+        () => parser.parse(requestWith({'content': 'hello'}, eventKind: 65536)),
+        throwsA(isA<NostrEventPayloadParseException>()),
+      );
     });
 
     test('rejects malformed tags', () {

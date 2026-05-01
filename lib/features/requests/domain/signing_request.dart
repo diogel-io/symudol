@@ -54,7 +54,9 @@ class SigningRequest {
       targetIdentityPublicKey: json['targetIdentityPublicKey'] as String,
       targetIdentityLocalId: json['targetIdentityLocalId'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
-      expiresAt: json['expiresAt'] != null ? DateTime.parse(json['expiresAt'] as String) : null,
+      expiresAt: json['expiresAt'] != null
+          ? DateTime.parse(json['expiresAt'] as String)
+          : null,
       status: SigningRequestStatus.values.byName(json['status'] as String),
     );
   }
@@ -77,8 +79,10 @@ class SigningRequest {
       actionType: actionType ?? this.actionType,
       eventKind: eventKind ?? this.eventKind,
       eventPayload: eventPayload ?? this.eventPayload,
-      targetIdentityPublicKey: targetIdentityPublicKey ?? this.targetIdentityPublicKey,
-      targetIdentityLocalId: targetIdentityLocalId ?? this.targetIdentityLocalId,
+      targetIdentityPublicKey:
+          targetIdentityPublicKey ?? this.targetIdentityPublicKey,
+      targetIdentityLocalId:
+          targetIdentityLocalId ?? this.targetIdentityLocalId,
       createdAt: createdAt ?? this.createdAt,
       expiresAt: expiresAt ?? this.expiresAt,
       status: status ?? this.status,

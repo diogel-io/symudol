@@ -1,6 +1,1 @@
-enum RequestTrustStatus {
-  knownTrusted,
-  knownUntrusted,
-  unknown,
-  invalid,
-}
+enum RequestTrustStatus { knownTrusted, knownUntrusted, unknown, invalid }
