@@ -10,6 +10,12 @@ class Nip55IntentParser {
   final DateTime Function()? _now;
 
   Nip55IncomingRequest parse(Map<String, Object?> raw) {
+    final parsedAt = (_now ?? DateTime.now)();
+    final requestToken = raw['requestToken'] as String?;
+    if (requestToken == null || requestToken.trim().isEmpty) {
+      throw const Nip55ParseException('Missing NIP-55 request token');
+    }
+
     final method = Nip55Method.fromWire(raw['type'] as String?);
     if (method == Nip55Method.unsupported) {
       throw const Nip55ParseException('Unsupported NIP-55 request type');
@@ -30,7 +36,8 @@ class Nip55IntentParser {
     }
 
     return Nip55IncomingRequest(
-      localId: 'nip55-${(_now ?? DateTime.now)().microsecondsSinceEpoch}',
+      localId: 'nip55-${parsedAt.microsecondsSinceEpoch}',
+      requestToken: requestToken,
       method: method,
       content: content,
       externalId: raw['id'] as String?,
@@ -40,7 +47,7 @@ class Nip55IntentParser {
       callerPackage: raw['callerPackage'] as String?,
       dataUri: raw['dataUri'] as String?,
       eventJson: eventJson,
-      receivedAt: (_now ?? DateTime.now)(),
+      receivedAt: parsedAt,
     );
   }
 

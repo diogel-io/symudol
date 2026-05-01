@@ -32,6 +32,13 @@ class Nip55RequestMapper {
       );
     }
 
+    final eventPubkey = eventJson['pubkey'];
+    if (eventPubkey != null && eventPubkey != activeIdentity.publicKey) {
+      throw const Nip55Failure(
+        'Requested event pubkey does not match active identity.',
+      );
+    }
+
     final source = incoming.callerPackage?.trim().isNotEmpty == true
         ? incoming.callerPackage!.trim()
         : 'External Android app';
@@ -45,11 +52,24 @@ class Nip55RequestMapper {
       ),
       actionType: SigningActionType.signEvent,
       eventKind: kind,
-      eventPayload: eventJson,
+      eventPayload: _normalizedEventPayload(eventJson, kind),
       targetIdentityPublicKey: activeIdentity.publicKey,
       targetIdentityLocalId: activeIdentity.localId,
       createdAt: incoming.receivedAt,
       status: SigningRequestStatus.pending,
     );
+  }
+
+  Map<String, Object?> _normalizedEventPayload(
+    Map<String, Object?> eventJson,
+    int kind,
+  ) {
+    return {
+      'kind': kind,
+      if (eventJson['created_at'] != null)
+        'created_at': eventJson['created_at'],
+      'tags': eventJson['tags'] ?? const [],
+      'content': eventJson['content'],
+    };
   }
 }

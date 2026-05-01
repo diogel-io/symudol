@@ -7,6 +7,8 @@ import '../../nip55/application/nip55_providers.dart';
 import '../../requests/application/request_providers.dart';
 import '../../requests/presentation/requests_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../vault/application/vault_providers.dart';
+import '../../vault/domain/vault_state.dart';
 
 class MainNavigationScreen extends ConsumerStatefulWidget {
   const MainNavigationScreen({super.key});
@@ -37,6 +39,13 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   Widget build(BuildContext context) {
     final activeRequest = ref.watch(activeRequestProvider);
     final nip55State = ref.watch(nip55ControllerProvider);
+    final vaultState = ref.watch(vaultControllerProvider);
+    if (nip55State.isWaitingForUnlock &&
+        vaultState.vaultState is VaultUnlocked) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(nip55ControllerProvider.notifier).resumePendingAfterUnlock();
+      });
+    }
     if ((activeRequest != null || nip55State.pendingPublicKeyRequest != null) &&
         _currentIndex != 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

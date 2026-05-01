@@ -13,12 +13,13 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
-    private var hasPendingNip55Result = false
+    private var activeRequestToken: String? = null
+    private var nextRequestNumber = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initialNip55Intent = parseNip55Intent(intent)
-        hasPendingNip55Result = initialNip55Intent != null
+        activeRequestToken = initialNip55Intent?.get("requestToken") as? String
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -54,8 +55,11 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         val payload = parseNip55Intent(intent)
         if (payload != null) {
+            if (activeRequestToken != null) {
+                return
+            }
+            activeRequestToken = payload["requestToken"] as? String
             latestNip55Intent = payload
-            hasPendingNip55Result = true
             channel?.invokeMethod("onNip55Intent", payload)
         }
     }
@@ -66,7 +70,9 @@ class MainActivity : FlutterActivity() {
         val data = intent.data ?: return null
         if (data.scheme != "nostrsigner") return null
 
+        val token = "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
         return mapOf(
+            "requestToken" to token,
             "type" to intent.getStringExtra("type"),
             "content" to extractContent(data),
             "id" to intent.getStringExtra("id"),
@@ -85,7 +91,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun completeNip55Intent(arguments: Map<*, *>?) {
-        if (!hasPendingNip55Result) return
+        if (!isActiveRequest(arguments)) return
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
@@ -94,20 +100,25 @@ class MainActivity : FlutterActivity() {
             }
         }
         setResult(Activity.RESULT_OK, resultIntent)
-        hasPendingNip55Result = false
+        activeRequestToken = null
         finish()
     }
 
     private fun rejectNip55Intent(arguments: Map<*, *>?) {
-        if (hasPendingNip55Result) {
-            val resultIntent = Intent()
-            val error = arguments?.get("error") as? String
-            if (!error.isNullOrBlank()) {
-                resultIntent.putExtra("error", error)
-            }
-            setResult(Activity.RESULT_CANCELED, resultIntent)
-            hasPendingNip55Result = false
+        if (!isActiveRequest(arguments)) return
+        val resultIntent = Intent()
+        val error = arguments?.get("error") as? String
+        if (!error.isNullOrBlank()) {
+            resultIntent.putExtra("error", error)
         }
+        setResult(Activity.RESULT_CANCELED, resultIntent)
+        activeRequestToken = null
         finish()
+    }
+
+    private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
+        val requestedToken = arguments?.get("requestToken") as? String
+        val activeToken = activeRequestToken
+        return activeToken != null && requestedToken == activeToken
     }
 }

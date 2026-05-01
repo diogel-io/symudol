@@ -50,7 +50,13 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 const SizedBox(height: DiogelSpacing.space6),
               ],
               if (nip55State.failure != null) ...[
-                _buildFailureMessage(context, nip55State.failure!.message),
+                _buildFailureMessage(
+                  context,
+                  nip55State.failure!.message,
+                  onDismiss: () => ref
+                      .read(nip55ControllerProvider.notifier)
+                      .clearMessages(),
+                ),
                 const SizedBox(height: DiogelSpacing.space6),
               ],
               const Icon(
@@ -373,7 +379,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     return '${value.substring(0, 8)}...${value.substring(value.length - 8)}';
   }
 
-  Widget _buildFailureMessage(BuildContext context, String message) {
+  Widget _buildFailureMessage(
+    BuildContext context,
+    String message, {
+    VoidCallback? onDismiss,
+  }) {
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
       decoration: BoxDecoration(
@@ -401,8 +411,10 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               size: 20,
               color: DiogelColors.stateError,
             ),
-            onPressed: () =>
-                ref.read(requestControllerProvider.notifier).clearFailure(),
+            onPressed:
+                onDismiss ??
+                () =>
+                    ref.read(requestControllerProvider.notifier).clearFailure(),
           ),
         ],
       ),

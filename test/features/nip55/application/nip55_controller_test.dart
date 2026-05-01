@@ -12,7 +12,9 @@ class FakeNip55Gateway implements Nip55Gateway {
   Map<String, Object?>? initial;
   Map<String, Object?>? latest;
   Map<String, Object?>? completedExtras;
+  String? completedToken;
   String? rejectedError;
+  String? rejectedToken;
   void Function(Map<String, Object?> raw)? handler;
 
   @override
@@ -37,12 +39,20 @@ class FakeNip55Gateway implements Nip55Gateway {
   }
 
   @override
-  Future<void> completeNip55Intent(Map<String, Object?> extras) async {
+  Future<void> completeNip55Intent({
+    required String requestToken,
+    required Map<String, Object?> extras,
+  }) async {
+    completedToken = requestToken;
     completedExtras = extras;
   }
 
   @override
-  Future<void> rejectNip55Intent({String? error}) async {
+  Future<void> rejectNip55Intent({
+    required String requestToken,
+    String? error,
+  }) async {
+    rejectedToken = requestToken;
     rejectedError = error;
   }
 }
@@ -77,6 +87,7 @@ void main() {
   });
 
   Map<String, Object?> signEventRaw({String? id = 'external-id'}) => {
+    'requestToken': 'token-$id',
     'type': 'sign_event',
     'content': '{"kind":1,"content":"hello","tags":[]}',
     'id': id,
@@ -109,6 +120,7 @@ void main() {
       await controller.completeApprovedSigningRequest(request.id);
 
       expect(gateway.completedExtras?['result'], isNotEmpty);
+      expect(gateway.completedToken, 'token-external-id');
       expect(gateway.completedExtras?['id'], 'external-id');
       expect(gateway.completedExtras?['event'], contains('"sig"'));
     });
@@ -121,10 +133,12 @@ void main() {
       await controller.rejectSigningRequest(request.id);
 
       expect(gateway.rejectedError, contains('rejected'));
+      expect(gateway.rejectedToken, 'token-external-id');
     });
 
     test('malformed intent calls gateway reject', () async {
       await controller.handleRawIntent({
+        'requestToken': 'bad-token',
         'type': 'sign_event',
         'content': '{bad',
       });
@@ -143,6 +157,7 @@ void main() {
 
     test('get_public_key approval returns pubkey', () async {
       await controller.handleRawIntent({
+        'requestToken': 'pk-token',
         'type': 'get_public_key',
         'permissions': '["sign_event"]',
         'callerPackage': 'com.example.app',
@@ -154,15 +169,20 @@ void main() {
         gateway.completedExtras?['result'],
         vaultController.state.activeIdentity!.publicKey,
       );
+      expect(gateway.completedToken, 'pk-token');
       expect(gateway.completedExtras?['package'], 'io.threenine.androidiogel');
     });
 
     test('get_public_key rejection completes as rejected', () async {
-      await controller.handleRawIntent({'type': 'get_public_key'});
+      await controller.handleRawIntent({
+        'requestToken': 'pk-token',
+        'type': 'get_public_key',
+      });
 
       await controller.rejectPublicKeyRequest();
 
       expect(gateway.rejectedError, contains('rejected'));
+      expect(gateway.rejectedToken, 'pk-token');
     });
 
     test('get_public_key with no identity fails safely', () async {
@@ -180,10 +200,36 @@ void main() {
         requestController: emptyRequestController,
       );
 
-      await emptyController.handleRawIntent({'type': 'get_public_key'});
+      await emptyController.handleRawIntent({
+        'requestToken': 'pk-token',
+        'type': 'get_public_key',
+      });
 
-      expect(emptyGateway.rejectedError, contains('select an identity'));
+      expect(emptyGateway.rejectedError, contains('Select an identity'));
       expect(emptyController.state.pendingPublicKeyRequest, isNull);
+    });
+
+    test('locked vault keeps request pending until unlock', () async {
+      final activePubkey = vaultController.state.activeIdentity!.publicKey;
+      await vaultController.lock();
+
+      await controller.handleRawIntent({
+        'requestToken': 'token-locked',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"hello","tags":[]}',
+        'id': 'locked',
+        'currentUser': activePubkey,
+        'callerPackage': 'com.example.app',
+      });
+
+      expect(gateway.rejectedError, isNull);
+      expect(controller.state.isWaitingForUnlock, isTrue);
+
+      await vaultController.unlock('1234');
+      await controller.resumePendingAfterUnlock();
+
+      expect(requestController.state.requests, hasLength(1));
+      expect(controller.state.pendingSigningRequestId, isNotNull);
     });
   });
 }

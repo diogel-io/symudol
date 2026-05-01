@@ -2,6 +2,7 @@ import 'nip55_method.dart';
 
 class Nip55IncomingRequest {
   final String localId;
+  final String requestToken;
   final Nip55Method method;
   final String? content;
   final String? externalId;
@@ -15,6 +16,7 @@ class Nip55IncomingRequest {
 
   const Nip55IncomingRequest({
     required this.localId,
+    required this.requestToken,
     required this.method,
     required this.receivedAt,
     this.content,

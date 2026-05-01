@@ -13,6 +13,7 @@ void main() {
   test('returns exact NIP-55 extras for sign_event', () {
     final incoming = Nip55IncomingRequest(
       localId: 'local',
+      requestToken: 'token-1',
       method: Nip55Method.signEvent,
       externalId: 'external-id',
       receivedAt: DateTime.utc(2026, 5, 1),

@@ -9,9 +9,12 @@ abstract interface class Nip55Gateway {
 
   Future<Map<String, Object?>?> consumeLatestNip55Intent();
 
-  Future<void> completeNip55Intent(Map<String, Object?> extras);
+  Future<void> completeNip55Intent({
+    required String requestToken,
+    required Map<String, Object?> extras,
+  });
 
-  Future<void> rejectNip55Intent({String? error});
+  Future<void> rejectNip55Intent({required String requestToken, String? error});
 }
 
 class Nip55MethodChannelGateway implements Nip55Gateway {
@@ -56,16 +59,23 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
   }
 
   @override
-  Future<void> completeNip55Intent(Map<String, Object?> extras) async {
+  Future<void> completeNip55Intent({
+    required String requestToken,
+    required Map<String, Object?> extras,
+  }) async {
     await _channel.invokeMethod<void>('completeNip55Intent', {
+      'requestToken': requestToken,
       'resultCode': 'ok',
       'extras': extras,
     });
   }
 
   @override
-  Future<void> rejectNip55Intent({String? error}) async {
-    final arguments = <String, Object?>{};
+  Future<void> rejectNip55Intent({
+    required String requestToken,
+    String? error,
+  }) async {
+    final arguments = <String, Object?>{'requestToken': requestToken};
     if (error != null) {
       arguments['error'] = error;
     }
@@ -74,6 +84,13 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
 
   Map<String, Object?>? _castMap(Object? value) {
     if (value == null || value is! Map) return null;
-    return value.cast<String, Object?>();
+    final result = <String, Object?>{};
+    for (final entry in value.entries) {
+      final key = entry.key;
+      if (key is String) {
+        result[key] = entry.value;
+      }
+    }
+    return result;
   }
 }

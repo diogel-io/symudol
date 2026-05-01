@@ -33,6 +33,11 @@ class Nip55State {
       pendingSigningRequestId != null ||
       pendingPublicKeyRequest != null;
 
+  bool get isWaitingForUnlock =>
+      pendingIncoming != null &&
+      pendingSigningRequestId == null &&
+      pendingPublicKeyRequest == null;
+
   Nip55State copyWith({
     Nip55IncomingRequest? pendingIncoming,
     String? pendingSigningRequestId,
@@ -104,8 +109,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   Future<void> handleRawIntent(Map<String, Object?> raw) async {
+    Nip55IncomingRequest? incoming;
     if (state.hasPendingExternalRequest) {
+      final busyRequest = _safeParseForRejection(raw);
+      if (busyRequest == null) return;
       await _gateway.rejectNip55Intent(
+        requestToken: busyRequest.requestToken,
         error: 'Diogel is already reviewing another NIP-55 request',
       );
       return;
@@ -117,7 +126,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearSuccess: true,
     );
     try {
-      final incoming = _parser.parse(raw);
+      incoming = _parser.parse(raw);
       if (incoming.method == Nip55Method.getPublicKey) {
         await _handleGetPublicKey(incoming);
       } else if (incoming.method == Nip55Method.signEvent) {
@@ -128,27 +137,86 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         isLoading: false,
         failure: Nip55Failure(error.message, error),
       );
-      await _gateway.rejectNip55Intent(error: error.message);
+      final requestToken = raw['requestToken'] as String?;
+      if (requestToken != null) {
+        await _gateway.rejectNip55Intent(
+          requestToken: requestToken,
+          error: error.message,
+        );
+      }
     } on Nip55Failure catch (error) {
       state = state.copyWith(isLoading: false, failure: error);
-      await _gateway.rejectNip55Intent(error: error.message);
+      if (incoming == null || !_isWaitingForUnlockFailure(error)) {
+        final requestToken =
+            incoming?.requestToken ?? raw['requestToken'] as String?;
+        if (requestToken != null) {
+          await _gateway.rejectNip55Intent(
+            requestToken: requestToken,
+            error: error.message,
+          );
+        }
+      }
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
         failure: Nip55Failure('Unable to handle NIP-55 request', error),
       );
+      final requestToken =
+          incoming?.requestToken ?? raw['requestToken'] as String?;
+      if (requestToken != null) {
+        await _gateway.rejectNip55Intent(
+          requestToken: requestToken,
+          error: 'Unable to handle NIP-55 request',
+        );
+      }
+    }
+  }
+
+  Future<void> resumePendingAfterUnlock() async {
+    final incoming = state.pendingIncoming;
+    if (incoming == null || !state.isWaitingForUnlock || state.isLoading) {
+      return;
+    }
+    if (_vaultController.state.vaultState is! VaultUnlocked) return;
+
+    state = state.copyWith(
+      isLoading: true,
+      clearFailure: true,
+      clearSuccess: true,
+    );
+    try {
+      if (incoming.method == Nip55Method.getPublicKey) {
+        await _handleGetPublicKey(incoming);
+      } else if (incoming.method == Nip55Method.signEvent) {
+        await _handleSignEvent(incoming);
+      }
+    } on Nip55Failure catch (error) {
+      state = state.copyWith(isLoading: false, failure: error);
       await _gateway.rejectNip55Intent(
-        error: 'Unable to handle NIP-55 request',
+        requestToken: incoming.requestToken,
+        error: error.message,
       );
+      state = state.copyWith(clearPendingIncoming: true);
     }
   }
 
   Future<void> _handleGetPublicKey(Nip55IncomingRequest incoming) async {
     final activeIdentity = _vaultController.state.activeIdentity;
-    if (_vaultController.state.vaultState is! VaultUnlocked ||
-        activeIdentity == null) {
+    if (_vaultController.state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(
+        isLoading: false,
+        pendingIncoming: incoming,
+        failure: const Nip55Failure(
+          'Unlock Diogel and select an identity before sharing a public key.',
+        ),
+      );
       throw const Nip55Failure(
         'Unlock Diogel and select an identity before sharing a public key.',
+      );
+    }
+    if (activeIdentity == null) {
+      throw const Nip55Failure(
+        'Select an identity before sharing a public key.',
       );
     }
 
@@ -161,11 +229,20 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   Future<void> _handleSignEvent(Nip55IncomingRequest incoming) async {
     final activeIdentity = _vaultController.state.activeIdentity;
-    if (_vaultController.state.vaultState is! VaultUnlocked ||
-        activeIdentity == null) {
+    if (_vaultController.state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(
+        isLoading: false,
+        pendingIncoming: incoming,
+        failure: const Nip55Failure(
+          'Unlock Diogel and select an identity before signing.',
+        ),
+      );
       throw const Nip55Failure(
         'Unlock Diogel and select an identity before signing.',
       );
+    }
+    if (activeIdentity == null) {
+      throw const Nip55Failure('Select an identity before signing.');
     }
 
     final signingRequest = _mapper.mapSignEvent(
@@ -186,7 +263,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (request == null || activeIdentity == null) return;
 
     await _gateway.completeNip55Intent(
-      _responseBuilder.getPublicKeyExtras(activeIdentity),
+      requestToken: request.requestToken,
+      extras: _responseBuilder.getPublicKeyExtras(activeIdentity),
     );
     state = state.copyWith(
       clearPendingIncoming: true,
@@ -197,7 +275,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   Future<void> rejectPublicKeyRequest() async {
     if (state.pendingPublicKeyRequest == null) return;
-    await _gateway.rejectNip55Intent(error: 'User rejected public key request');
+    await _gateway.rejectNip55Intent(
+      requestToken: state.pendingPublicKeyRequest!.requestToken,
+      error: 'User rejected public key request',
+    );
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
@@ -211,7 +292,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (incoming == null || signedEvent == null) return;
 
     await _gateway.completeNip55Intent(
-      _responseBuilder.signEventExtras(
+      requestToken: incoming.requestToken,
+      extras: _responseBuilder.signEventExtras(
         incoming: incoming,
         signedEvent: signedEvent,
       ),
@@ -226,7 +308,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   Future<void> rejectSigningRequest(String requestId) async {
     if (state.pendingSigningRequestId != requestId) return;
-    await _gateway.rejectNip55Intent(error: 'User rejected signing request');
+    final incoming = state.pendingIncoming;
+    if (incoming == null) return;
+    await _gateway.rejectNip55Intent(
+      requestToken: incoming.requestToken,
+      error: 'User rejected signing request',
+    );
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingSigningRequestId: true,
@@ -235,5 +322,17 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   void clearMessages() {
     state = state.copyWith(clearFailure: true, clearSuccess: true);
+  }
+
+  Nip55IncomingRequest? _safeParseForRejection(Map<String, Object?> raw) {
+    try {
+      return _parser.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isWaitingForUnlockFailure(Nip55Failure error) {
+    return error.message.startsWith('Unlock Diogel');
   }
 }

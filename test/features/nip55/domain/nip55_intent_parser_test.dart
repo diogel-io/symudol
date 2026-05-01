@@ -14,18 +14,21 @@ void main() {
   group('Nip55IntentParser', () {
     test('parses get_public_key', () {
       final request = parser.parse({
+        'requestToken': 'token-1',
         'type': 'get_public_key',
         'permissions': '["sign_event"]',
         'callerPackage': 'com.example.app',
       });
 
       expect(request.method, Nip55Method.getPublicKey);
+      expect(request.requestToken, 'token-1');
       expect(request.permissions, '["sign_event"]');
       expect(request.callerPackage, 'com.example.app');
     });
 
     test('parses sign_event', () {
       final request = parser.parse({
+        'requestToken': 'token-2',
         'type': 'sign_event',
         'content': '{"kind":1,"content":"hello","tags":[]}',
         'id': 'caller-id',
@@ -40,21 +43,26 @@ void main() {
 
     test('rejects unsupported method', () {
       expect(
-        () => parser.parse({'type': 'nip04_encrypt'}),
+        () =>
+            parser.parse({'requestToken': 'token-3', 'type': 'nip04_encrypt'}),
         throwsA(isA<Nip55ParseException>()),
       );
     });
 
     test('rejects malformed event JSON', () {
       expect(
-        () => parser.parse({'type': 'sign_event', 'content': '{bad'}),
+        () => parser.parse({
+          'requestToken': 'token-4',
+          'type': 'sign_event',
+          'content': '{bad',
+        }),
         throwsA(isA<Nip55ParseException>()),
       );
     });
 
     test('rejects missing sign_event content', () {
       expect(
-        () => parser.parse({'type': 'sign_event'}),
+        () => parser.parse({'requestToken': 'token-5', 'type': 'sign_event'}),
         throwsA(isA<Nip55ParseException>()),
       );
     });
@@ -62,10 +70,18 @@ void main() {
     test('rejects invalid current_user', () {
       expect(
         () => parser.parse({
+          'requestToken': 'token-6',
           'type': 'sign_event',
           'content': '{"kind":1,"content":"hello","tags":[]}',
           'currentUser': 'not-a-pubkey',
         }),
+        throwsA(isA<Nip55ParseException>()),
+      );
+    });
+
+    test('rejects missing request token', () {
+      expect(
+        () => parser.parse({'type': 'get_public_key'}),
         throwsA(isA<Nip55ParseException>()),
       );
     });
