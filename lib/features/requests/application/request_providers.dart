@@ -26,15 +26,15 @@ final requestControllerProvider =
 /// Provider for the current active request (pending or failed).
 ///
 /// Failed requests are kept active so that the user can see the error
-/// and either retry or dismiss them.
+/// and either retry or dismiss them. Approved signed requests are completed
+/// results, not active work items, so they must not block later pending requests.
 final activeRequestProvider = Provider<SigningRequest?>((ref) {
   final state = ref.watch(requestControllerProvider);
   try {
     return state.requests.firstWhere(
       (r) =>
           r.status == SigningRequestStatus.pending ||
-          r.status == SigningRequestStatus.failed ||
-          state.signedEvents.containsKey(r.id),
+          r.status == SigningRequestStatus.failed,
     );
   } catch (_) {
     return null;

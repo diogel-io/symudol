@@ -63,6 +63,19 @@ void main() {
       );
     });
 
+    test('rejects payload kind that differs from displayed request kind', () {
+      expect(
+        () => parser.parse(requestWith({'kind': 5, 'content': 'hello'})),
+        throwsA(isA<NostrEventPayloadParseException>()),
+      );
+    });
+
+    test('uses request kind when payload kind is missing', () {
+      final draft = parser.parse(requestWith({'content': 'hello'}));
+
+      expect(draft.kind, 1);
+    });
+
     test('rejects malformed tags', () {
       expect(
         () => parser.parse(

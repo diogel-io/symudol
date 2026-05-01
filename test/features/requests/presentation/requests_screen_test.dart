@@ -188,7 +188,7 @@ void main() {
       },
     );
 
-    testWidgets('approving with real signer shows signed event success state', (
+    testWidgets('approving with real signer completes the active request', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(1200, 1600);
@@ -243,10 +243,8 @@ void main() {
       await tester.tap(find.text('Sign event'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Event signed'), findsOneWidget);
-      expect(find.textContaining('has not been published'), findsOneWidget);
-      expect(find.textContaining('ID: '), findsOneWidget);
-      expect(find.textContaining('SIG: '), findsOneWidget);
+      expect(find.text('No active requests'), findsOneWidget);
+      expect(realRequestController.state.signedEvents[request.id], isNotNull);
       expect(find.textContaining(activeIdentity.localId), findsNothing);
     });
 

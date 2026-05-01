@@ -16,10 +16,16 @@ class NostrEventPayloadParser {
   NostrEventDraft parse(SigningRequest request) {
     final payload = request.eventPayload;
 
-    final kindValue = payload['kind'] ?? request.eventKind;
-    if (kindValue is! int) {
+    final payloadKind = payload['kind'];
+    if (payloadKind != null && payloadKind is! int) {
       throw const NostrEventPayloadParseException('Invalid event kind');
     }
+    if (payloadKind != null && payloadKind != request.eventKind) {
+      throw const NostrEventPayloadParseException(
+        'Event kind mismatch between request metadata and payload',
+      );
+    }
+    final kindValue = request.eventKind;
 
     final contentValue = payload['content'];
     if (contentValue is! String) {

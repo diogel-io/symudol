@@ -1,4 +1,5 @@
 import 'package:android_diogel/features/requests/application/request_controller.dart';
+import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/real_signer_service.dart';
 import 'package:android_diogel/features/requests/data/fake_signer_service.dart';
 import 'package:android_diogel/features/requests/domain/request_provenance.dart';
@@ -8,6 +9,7 @@ import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../fakes/fake_vault_store.dart';
 
@@ -276,5 +278,42 @@ void main() {
         SigningRequestStatus.pending,
       );
     });
+
+    test(
+      'activeRequestProvider does not let signed approvals block pending requests',
+      () async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity(displayName: 'Test');
+        final activeIdentity = vaultController.state.activeIdentity!;
+        requestController = RequestController(
+          vaultController,
+          RealSignerService(vaultService),
+        );
+
+        final approvedRequest = createSampleRequest(
+          id: 'approved',
+          targetPublicKey: activeIdentity.publicKey,
+          targetLocalId: activeIdentity.localId,
+        );
+        final pendingRequest = createSampleRequest(
+          id: 'pending',
+          targetPublicKey: activeIdentity.publicKey,
+          targetLocalId: activeIdentity.localId,
+        );
+
+        await requestController.acceptRequest(approvedRequest);
+        await requestController.approveRequest(approvedRequest.id);
+        await requestController.acceptRequest(pendingRequest);
+
+        final container = ProviderContainer(
+          overrides: [
+            requestControllerProvider.overrideWith((ref) => requestController),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(container.read(activeRequestProvider)?.id, pendingRequest.id);
+      },
+    );
   });
 }
