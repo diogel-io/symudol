@@ -17,13 +17,13 @@ void main() {
         'requestToken': 'token-1',
         'type': 'get_public_key',
         'permissions': '["sign_event"]',
-        'callerPackage': 'com.example.app',
+        'sourceHint': 'com.example.app',
       });
 
       expect(request.method, Nip55Method.getPublicKey);
       expect(request.requestToken, 'token-1');
       expect(request.permissions, '["sign_event"]');
-      expect(request.callerPackage, 'com.example.app');
+      expect(request.sourceHint, 'com.example.app');
     });
 
     test('parses sign_event', () {

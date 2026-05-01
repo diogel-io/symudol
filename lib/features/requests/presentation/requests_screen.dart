@@ -9,6 +9,7 @@ import '../../nip55/application/nip55_providers.dart';
 import '../application/request_providers.dart';
 import '../domain/request_trust_status.dart';
 import '../domain/signing_request.dart';
+import '../domain/signing_request_status.dart';
 import 'widgets/request_detail_item.dart';
 
 class RequestsScreen extends ConsumerStatefulWidget {
@@ -180,7 +181,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
         ),
       ),
       bottomSheet: signedEvent == null
-          ? _buildActionButtons(context, activeRequest, isLoading)
+          ? activeRequest.status == SigningRequestStatus.failed
+                ? _buildDismissFailedButton(context, activeRequest)
+                : _buildActionButtons(context, activeRequest, isLoading)
           : null,
     );
   }
@@ -192,7 +195,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final nip55Request = ref
         .watch(nip55ControllerProvider)
         .pendingPublicKeyRequest!;
-    final source = nip55Request.callerPackage ?? 'External Android app';
+    final source = nip55Request.sourceHint ?? 'External Android app';
     final pubkey = activeIdentity?.publicKey ?? 'No active identity';
     final truncatedPubkey = _shortFingerprint(pubkey);
 
@@ -211,7 +214,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               icon: Icons.android,
               iconColor: DiogelColors.actionPrimary,
               title: source,
-              subtitle: 'External Android app request',
+              subtitle: 'Source hint — not verified',
             ),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'SHARING ACCOUNT'),
@@ -745,6 +748,29 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDismissFailedButton(
+    BuildContext context,
+    SigningRequest request,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(DiogelSpacing.space4),
+      decoration: BoxDecoration(
+        color: DiogelColors.surfaceBackground.withValues(alpha: 0.8),
+        border: const Border(top: BorderSide(color: DiogelColors.borderSubtle)),
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => ref
+              .read(requestControllerProvider.notifier)
+              .dismissRequest(request.id),
+          icon: const Icon(Icons.done),
+          label: const Text('Dismiss failed request'),
+        ),
       ),
     );
   }

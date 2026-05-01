@@ -197,6 +197,33 @@ void main() {
       );
     });
 
+    test('dismissRequest clears a failed request from active work', () async {
+      final failedRequest = createSampleRequest(
+        id: 'failed',
+        status: SigningRequestStatus.failed,
+      );
+      final pendingRequest = createSampleRequest(id: 'pending');
+      await requestController.acceptRequest(failedRequest);
+      await requestController.acceptRequest(pendingRequest);
+
+      final container = ProviderContainer(
+        overrides: [
+          requestControllerProvider.overrideWith((ref) => requestController),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(activeRequestProvider)?.id, 'failed');
+
+      await requestController.dismissRequest(failedRequest.id);
+
+      expect(container.read(activeRequestProvider)?.id, 'pending');
+      expect(
+        requestController.state.requests.first.status,
+        SigningRequestStatus.rejected,
+      );
+    });
+
     test('approveRequest should handle signer service exceptions', () async {
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'Test');

@@ -52,6 +52,20 @@ class RequestController extends StateNotifier<RequestState> {
     state = state.copyWith(requests: updatedRequests, isLoading: false);
   }
 
+  /// Dismisses terminal request UI by moving it to rejected.
+  ///
+  /// Used after an external NIP-55 request has already received a terminal
+  /// failure/cancel result, so it must no longer block later active requests.
+  Future<void> dismissRequest(String requestId) async {
+    final updatedRequests = state.requests.map((r) {
+      if (r.id == requestId) {
+        return r.copyWith(status: SigningRequestStatus.rejected);
+      }
+      return r;
+    }).toList();
+    state = state.copyWith(requests: updatedRequests, clearFailure: true);
+  }
+
   /// Approves a request through the signer service.
   ///
   /// Blocks approval if the vault is locked or no active identity exists.

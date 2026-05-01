@@ -315,6 +315,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           requestToken: incoming.requestToken,
           error: 'Signing failed. No event was returned.',
         );
+        await _requestController.dismissRequest(requestId);
         state = state.copyWith(
           clearPendingIncoming: true,
           clearPendingSigningRequestId: true,

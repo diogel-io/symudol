@@ -39,15 +39,15 @@ class Nip55RequestMapper {
       );
     }
 
-    final source = incoming.callerPackage?.trim().isNotEmpty == true
-        ? incoming.callerPackage!.trim()
+    final source = incoming.sourceHint?.trim().isNotEmpty == true
+        ? incoming.sourceHint!.trim()
         : 'External Android app';
 
     return SigningRequest(
       id: incoming.localId,
       provenance: RequestProvenance(
-        sourceDisplayName: source,
-        sourceIdentifier: incoming.callerPackage ?? incoming.dataUri,
+        sourceDisplayName: 'Source hint: $source',
+        sourceIdentifier: incoming.sourceHint ?? incoming.dataUri,
         trustStatus: RequestTrustStatus.unknown,
       ),
       actionType: SigningActionType.signEvent,

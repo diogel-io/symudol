@@ -9,7 +9,7 @@ class Nip55IncomingRequest {
   final String? currentUser;
   final String? pubkey;
   final String? permissions;
-  final String? callerPackage;
+  final String? sourceHint;
   final String? dataUri;
   final Map<String, Object?>? eventJson;
   final DateTime receivedAt;
@@ -24,7 +24,7 @@ class Nip55IncomingRequest {
     this.currentUser,
     this.pubkey,
     this.permissions,
-    this.callerPackage,
+    this.sourceHint,
     this.dataUri,
     this.eventJson,
   });

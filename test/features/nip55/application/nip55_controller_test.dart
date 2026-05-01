@@ -1,7 +1,10 @@
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
+import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/real_signer_service.dart';
+import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -92,7 +95,7 @@ void main() {
     'content': '{"kind":1,"content":"hello","tags":[]}',
     'id': id,
     'currentUser': vaultController.state.activeIdentity!.publicKey,
-    'callerPackage': 'com.example.app',
+    'sourceHint': 'com.example.app',
   };
 
   group('Nip55Controller', () {
@@ -104,7 +107,7 @@ void main() {
       expect(requestController.state.requests, hasLength(1));
       expect(
         requestController.state.requests.single.provenance.sourceDisplayName,
-        'com.example.app',
+        'Source hint: com.example.app',
       );
       expect(
         controller.state.pendingSigningRequestId,
@@ -132,7 +135,7 @@ void main() {
         'content': '{"kind":1,"content":42,"tags":[]}',
         'id': 'fail',
         'currentUser': vaultController.state.activeIdentity!.publicKey,
-        'callerPackage': 'com.example.app',
+        'sourceHint': 'com.example.app',
       });
       final request = requestController.state.requests.single;
 
@@ -143,7 +146,40 @@ void main() {
       expect(gateway.rejectedToken, 'token-fail');
       expect(gateway.rejectedError, 'Signing failed. No event was returned.');
       expect(controller.state.pendingSigningRequestId, isNull);
+      expect(requestController.state.requests.single.status.name, 'rejected');
     });
+
+    test(
+      'settled NIP-55 signing failure reveals next pending request',
+      () async {
+        await controller.handleRawIntent({
+          'requestToken': 'token-fail',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":42,"tags":[]}',
+          'id': 'fail',
+          'currentUser': vaultController.state.activeIdentity!.publicKey,
+        });
+        final failedRequest = requestController.state.requests.single;
+
+        await requestController.approveRequest(failedRequest.id);
+        await controller.completeApprovedSigningRequest(failedRequest.id);
+        await requestController.acceptRequest(
+          failedRequest.copyWith(
+            id: 'next-pending',
+            status: SigningRequestStatus.pending,
+          ),
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            requestControllerProvider.overrideWith((ref) => requestController),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(container.read(activeRequestProvider)?.id, 'next-pending');
+      },
+    );
 
     test('rejection calls gateway reject', () async {
       await controller.handleRawIntent(signEventRaw());
@@ -180,7 +216,7 @@ void main() {
         'requestToken': 'pk-token',
         'type': 'get_public_key',
         'permissions': '["sign_event"]',
-        'callerPackage': 'com.example.app',
+        'sourceHint': 'com.example.app',
       });
 
       await controller.approvePublicKeyRequest();
@@ -239,7 +275,7 @@ void main() {
         'content': '{"kind":1,"content":"hello","tags":[]}',
         'id': 'locked',
         'currentUser': activePubkey,
-        'callerPackage': 'com.example.app',
+        'sourceHint': 'com.example.app',
       });
 
       expect(gateway.rejectedError, isNull);

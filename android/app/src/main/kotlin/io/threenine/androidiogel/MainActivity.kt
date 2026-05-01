@@ -56,6 +56,11 @@ class MainActivity : FlutterActivity() {
         val payload = parseNip55Intent(intent)
         if (payload != null) {
             if (activeRequestToken != null) {
+                // Do not call setResult/finish here to reject the second caller.
+                // This Activity currently owns the first caller's result, and
+                // finishing here can poison the active request. A future
+                // Nip55BridgeActivity or native queue must own independent
+                // settlement for concurrent callers.
                 return
             }
             activeRequestToken = payload["requestToken"] as? String
@@ -79,7 +84,7 @@ class MainActivity : FlutterActivity() {
             "currentUser" to intent.getStringExtra("current_user"),
             "pubkey" to intent.getStringExtra("pubkey"),
             "permissions" to intent.getStringExtra("permissions"),
-            "callerPackage" to (callingPackage ?: referrer?.host ?: intent.`package`),
+            "sourceHint" to (callingPackage ?: referrer?.host ?: intent.`package`),
             "dataUri" to data.toString()
         )
     }

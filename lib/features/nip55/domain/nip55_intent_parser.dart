@@ -44,7 +44,7 @@ class Nip55IntentParser {
       currentUser: currentUser,
       pubkey: raw['pubkey'] as String?,
       permissions: raw['permissions'] as String?,
-      callerPackage: raw['callerPackage'] as String?,
+      sourceHint: raw['sourceHint'] as String?,
       dataUri: raw['dataUri'] as String?,
       eventJson: eventJson,
       receivedAt: parsedAt,

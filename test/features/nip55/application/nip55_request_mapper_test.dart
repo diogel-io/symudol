@@ -22,7 +22,7 @@ void main() {
     method: Nip55Method.signEvent,
     receivedAt: DateTime.utc(2026, 5, 1),
     currentUser: currentUser,
-    callerPackage: 'com.example.app',
+    sourceHint: 'com.example.app',
     eventJson: const {'kind': 1, 'content': 'hello', 'tags': []},
   );
 
@@ -39,7 +39,10 @@ void main() {
       expect(request.eventPayload.containsKey('sig'), isFalse);
       expect(request.eventPayload.containsKey('pubkey'), isFalse);
       expect(request.targetIdentityPublicKey, identity.publicKey);
-      expect(request.provenance.sourceDisplayName, 'com.example.app');
+      expect(
+        request.provenance.sourceDisplayName,
+        'Source hint: com.example.app',
+      );
       expect(request.provenance.trustStatus, RequestTrustStatus.unknown);
     });
 
