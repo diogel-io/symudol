@@ -5,6 +5,25 @@ import '../../../theme/tokens.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/settings_tile.dart';
 
+String formatInactivityTimeout(int minutes) {
+  return switch (minutes) {
+    0 => 'Never while app is open',
+    1 => '1 minute',
+    60 => '1 hour',
+    _ => '$minutes minutes',
+  };
+}
+
+String formatBackgroundLockDelay(int minutes) {
+  return switch (minutes) {
+    -1 => 'Never while app is running',
+    0 => 'Immediately',
+    1 => '1 minute',
+    60 => '1 hour',
+    _ => '$minutes minutes',
+  };
+}
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -12,6 +31,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final vaultControllerState = ref.watch(vaultControllerProvider);
     final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
+    final backgroundLockDelayMinutes =
+        vaultControllerState.backgroundLockDelayMinutes;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -39,17 +60,69 @@ class SettingsScreen extends ConsumerWidget {
           ),
           SettingsTile(
             icon: Icons.timer_outlined,
-            title: 'Inactivity Timeout',
-            subtitle: timeoutMinutes == 0 ? 'Never' : '$timeoutMinutes minutes',
+            title: 'In-app inactivity timeout',
+            subtitle:
+                'Locks when you stop using Diogel while it is open: '
+                '${formatInactivityTimeout(timeoutMinutes)}',
             onTap: () async {
               final newValue = await showDialog<int>(
                 context: context,
-                builder: (context) => _TimeoutPickerDialog(initialValue: timeoutMinutes),
+                builder: (context) => _TimeoutPickerDialog(
+                  title: 'In-app inactivity timeout',
+                  initialValue: timeoutMinutes,
+                  options: const [
+                    _TimeoutOption(0, 'Never while app is open'),
+                    _TimeoutOption(1, '1 minute'),
+                    _TimeoutOption(5, '5 minutes'),
+                    _TimeoutOption(15, '15 minutes'),
+                    _TimeoutOption(30, '30 minutes'),
+                    _TimeoutOption(60, '1 hour'),
+                  ],
+                ),
               );
               if (newValue != null) {
-                ref.read(vaultControllerProvider.notifier).setInactivityTimeout(newValue);
+                ref
+                    .read(vaultControllerProvider.notifier)
+                    .setInactivityTimeout(newValue);
               }
             },
+          ),
+          SettingsTile(
+            icon: Icons.phonelink_lock_outlined,
+            title: 'Background lock delay',
+            subtitle:
+                'Locks after Diogel is sent to the background: '
+                '${formatBackgroundLockDelay(backgroundLockDelayMinutes)}',
+            onTap: () async {
+              final newValue = await showDialog<int>(
+                context: context,
+                builder: (context) => _TimeoutPickerDialog(
+                  title: 'Background lock delay',
+                  initialValue: backgroundLockDelayMinutes,
+                  options: const [
+                    _TimeoutOption(0, 'Immediately'),
+                    _TimeoutOption(1, '1 minute'),
+                    _TimeoutOption(5, '5 minutes'),
+                    _TimeoutOption(15, '15 minutes'),
+                    _TimeoutOption(30, '30 minutes'),
+                    _TimeoutOption(60, '1 hour'),
+                    _TimeoutOption(-1, 'Never while app is running'),
+                  ],
+                ),
+              );
+              if (newValue != null) {
+                ref
+                    .read(vaultControllerProvider.notifier)
+                    .setBackgroundLockDelayMinutes(newValue);
+              }
+            },
+          ),
+          const SettingsTile(
+            icon: Icons.info_outline,
+            title: 'Session security',
+            subtitle:
+                'Shorter delays are safer; longer delays are more convenient. '
+                'Never only lasts while the app process remains running.',
           ),
           SettingsTile(
             icon: Icons.lock_open,
@@ -85,25 +158,34 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-class _TimeoutPickerDialog extends StatelessWidget {
-  final int initialValue;
+class _TimeoutOption {
+  final int value;
+  final String label;
 
-  const _TimeoutPickerDialog({required this.initialValue});
+  const _TimeoutOption(this.value, this.label);
+}
+
+class _TimeoutPickerDialog extends StatelessWidget {
+  final String title;
+  final int initialValue;
+  final List<_TimeoutOption> options;
+
+  const _TimeoutPickerDialog({
+    required this.title,
+    required this.initialValue,
+    required this.options,
+  });
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Inactivity Timeout'),
+      title: Text(title),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildOption(context, 0, 'Never'),
-            _buildOption(context, 1, '1 minute'),
-            _buildOption(context, 5, '5 minutes'),
-            _buildOption(context, 15, '15 minutes'),
-            _buildOption(context, 30, '30 minutes'),
-            _buildOption(context, 60, '1 hour'),
+            for (final option in options)
+              _buildOption(context, option.value, option.label),
           ],
         ),
       ),
@@ -117,8 +199,8 @@ class _TimeoutPickerDialog extends StatelessWidget {
   }
 
   Widget _buildOption(BuildContext context, int value, String label) {
-    // RadioListTile currently reports deprecation for groupValue/onChanged in some Flutter versions 
-    // but the suggested RadioGroup alternative is not yet standard in many projects.
+    // RadioListTile currently reports deprecation for groupValue/onChanged in
+    // some Flutter versions, but RadioGroup is not standard everywhere yet.
     // ignore: deprecated_member_use
     return RadioListTile<int>(
       title: Text(label),

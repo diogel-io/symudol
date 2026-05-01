@@ -12,6 +12,26 @@ import 'package:android_diogel/features/vault/domain/vault_store.dart';
 import 'package:dart_nostr/dart_nostr.dart';
 
 class VaultServiceImpl implements VaultService {
+  static const int defaultInactivityTimeoutMinutes = 5;
+  static const int defaultBackgroundLockDelayMinutes = 5;
+  static const Set<int> supportedInactivityTimeoutMinutes = {
+    0,
+    1,
+    5,
+    15,
+    30,
+    60,
+  };
+  static const Set<int> supportedBackgroundLockDelayMinutes = {
+    -1,
+    0,
+    1,
+    5,
+    15,
+    30,
+    60,
+  };
+
   final VaultStore _store;
   final NostrCryptoService _cryptoService;
   VaultState _state = const NoVault();
@@ -281,12 +301,43 @@ class VaultServiceImpl implements VaultService {
   @override
   Future<int> getInactivityTimeout() async {
     final timeout = await _store.getInactivityTimeout();
-    return timeout ?? 5; // Default 5 minutes
+    return timeout ?? defaultInactivityTimeoutMinutes;
   }
 
   @override
   Future<void> setInactivityTimeout(int minutes) async {
+    _validateSupportedMinutes(
+      minutes,
+      supportedInactivityTimeoutMinutes,
+      'Unsupported inactivity timeout',
+    );
     await _store.setInactivityTimeout(minutes);
+  }
+
+  @override
+  Future<int> getBackgroundLockDelayMinutes() async {
+    final delay = await _store.getBackgroundLockDelayMinutes();
+    return delay ?? defaultBackgroundLockDelayMinutes;
+  }
+
+  @override
+  Future<void> setBackgroundLockDelayMinutes(int minutes) async {
+    _validateSupportedMinutes(
+      minutes,
+      supportedBackgroundLockDelayMinutes,
+      'Unsupported background lock delay',
+    );
+    await _store.setBackgroundLockDelayMinutes(minutes);
+  }
+
+  void _validateSupportedMinutes(
+    int minutes,
+    Set<int> supportedValues,
+    String message,
+  ) {
+    if (!supportedValues.contains(minutes)) {
+      throw VaultStorageException('$message: $minutes minutes');
+    }
   }
 
   void _checkUnlocked() {

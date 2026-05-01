@@ -28,6 +28,15 @@ abstract class VaultStore {
   /// Sets the inactivity timeout in minutes.
   Future<void> setInactivityTimeout(int minutes);
 
+  /// Reads the background lock delay in minutes.
+  ///
+  /// `0` means lock immediately when backgrounded, and `-1` means never lock
+  /// merely because the app was backgrounded while this process remains alive.
+  Future<int?> getBackgroundLockDelayMinutes();
+
+  /// Sets the background lock delay in minutes.
+  Future<void> setBackgroundLockDelayMinutes(int minutes);
+
   /// Reads a full identity record including secret.
   Future<VaultIdentityRecord?> getIdentityRecord(String localId);
 

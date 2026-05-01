@@ -16,8 +16,10 @@ class DiogelApp extends ConsumerStatefulWidget {
   ConsumerState<DiogelApp> createState() => _DiogelAppState();
 }
 
-class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserver {
+class _DiogelAppState extends ConsumerState<DiogelApp>
+    with WidgetsBindingObserver {
   Timer? _inactivityTimer;
+  Timer? _backgroundLockTimer;
 
   @override
   void initState() {
@@ -28,6 +30,7 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
   @override
   void dispose() {
     _inactivityTimer?.cancel();
+    _backgroundLockTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -45,12 +48,36 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
     }
   }
 
+  void _scheduleBackgroundLock() {
+    _backgroundLockTimer?.cancel();
+    _inactivityTimer?.cancel();
+
+    final vaultControllerState = ref.read(vaultControllerProvider);
+    if (vaultControllerState.vaultState is! VaultUnlocked) {
+      return;
+    }
+
+    final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
+    if (delayMinutes == -1) {
+      return;
+    }
+
+    if (delayMinutes == 0) {
+      ref.read(vaultControllerProvider.notifier).lock();
+      return;
+    }
+
+    _backgroundLockTimer = Timer(Duration(minutes: delayMinutes), () {
+      ref.read(vaultControllerProvider.notifier).expireSession();
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // Auto-lock when app goes to background
-      ref.read(vaultControllerProvider.notifier).lock();
+    if (state == AppLifecycleState.paused) {
+      _scheduleBackgroundLock();
     } else if (state == AppLifecycleState.resumed) {
+      _backgroundLockTimer?.cancel();
       _resetInactivityTimer();
     }
   }
@@ -66,6 +93,7 @@ class _DiogelAppState extends ConsumerState<DiogelApp> with WidgetsBindingObserv
       _resetInactivityTimer();
     } else {
       _inactivityTimer?.cancel();
+      _backgroundLockTimer?.cancel();
     }
 
     return Listener(

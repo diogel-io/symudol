@@ -77,6 +77,12 @@ abstract interface class VaultService {
   /// Sets the inactivity timeout in minutes.
   Future<void> setInactivityTimeout(int minutes);
 
+  /// Gets the background lock delay in minutes.
+  Future<int> getBackgroundLockDelayMinutes();
+
+  /// Sets the background lock delay in minutes.
+  Future<void> setBackgroundLockDelayMinutes(int minutes);
+
   /// Initializes the service state from persistent storage.
   Future<void> init();
 }

@@ -7,6 +7,7 @@ class FakeVaultStore implements VaultStore {
   String? _sentinel;
   String? _activeIdentityId;
   int? _inactivityTimeout;
+  int? _backgroundLockDelayMinutes;
   final Map<String, VaultIdentityRecord> _identities = {};
 
   /// Simulates a storage error when set to true.
@@ -74,6 +75,18 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
+  Future<int?> getBackgroundLockDelayMinutes() async {
+    _checkError();
+    return _backgroundLockDelayMinutes;
+  }
+
+  @override
+  Future<void> setBackgroundLockDelayMinutes(int minutes) async {
+    _checkError();
+    _backgroundLockDelayMinutes = minutes;
+  }
+
+  @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
     _checkError();
     return _identities.values.toList();
@@ -88,8 +101,11 @@ class FakeVaultStore implements VaultStore {
   @override
   Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
     _checkError();
-    if (shouldThrowDuplicateIdentityError && _identities.containsKey(record.identityId)) {
-      throw const VaultStorageException('Already exists: Simulated duplicate identity error');
+    if (shouldThrowDuplicateIdentityError &&
+        _identities.containsKey(record.identityId)) {
+      throw const VaultStorageException(
+        'Already exists: Simulated duplicate identity error',
+      );
     }
     _identities[record.identityId] = record;
   }

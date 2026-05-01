@@ -10,10 +10,11 @@ class SecureStorageVaultStore implements VaultStore {
   static const String _keySentinel = 'vault_sentinel';
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
+  static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
   static const String _keyIdentitiesPrefix = 'identity_';
 
   SecureStorageVaultStore({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   @override
   Future<String?> getVersion() => _storage.read(key: _keyVersion);
@@ -48,6 +49,16 @@ class SecureStorageVaultStore implements VaultStore {
       _storage.write(key: _keyInactivityTimeout, value: minutes.toString());
 
   @override
+  Future<int?> getBackgroundLockDelayMinutes() async {
+    final value = await _storage.read(key: _keyBackgroundLockDelay);
+    return value != null ? int.tryParse(value) : null;
+  }
+
+  @override
+  Future<void> setBackgroundLockDelayMinutes(int minutes) =>
+      _storage.write(key: _keyBackgroundLockDelay, value: minutes.toString());
+
+  @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
     final all = await _storage.readAll();
     return all.entries
@@ -66,10 +77,7 @@ class SecureStorageVaultStore implements VaultStore {
   @override
   Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
     final key = '$_keyIdentitiesPrefix${record.identityId}';
-    await _storage.write(
-      key: key,
-      value: jsonEncode(record.toJson()),
-    );
+    await _storage.write(key: key, value: jsonEncode(record.toJson()));
   }
 
   @override

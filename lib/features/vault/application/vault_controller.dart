@@ -10,6 +10,7 @@ class VaultControllerState {
   final List<VaultIdentity> identities;
   final VaultIdentity? activeIdentity;
   final int inactivityTimeoutMinutes;
+  final int backgroundLockDelayMinutes;
   final bool isLoading;
   final VaultFailure? failure;
 
@@ -18,6 +19,7 @@ class VaultControllerState {
     this.identities = const [],
     this.activeIdentity,
     this.inactivityTimeoutMinutes = 5,
+    this.backgroundLockDelayMinutes = 5,
     this.isLoading = true,
     this.failure,
   });
@@ -27,6 +29,7 @@ class VaultControllerState {
     List<VaultIdentity>? identities,
     VaultIdentity? activeIdentity,
     int? inactivityTimeoutMinutes,
+    int? backgroundLockDelayMinutes,
     bool? isLoading,
     VaultFailure? failure,
     bool clearFailure = false,
@@ -35,8 +38,13 @@ class VaultControllerState {
     return VaultControllerState(
       vaultState: vaultState ?? this.vaultState,
       identities: identities ?? this.identities,
-      activeIdentity: clearActiveIdentity ? null : (activeIdentity ?? this.activeIdentity),
-      inactivityTimeoutMinutes: inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
+      activeIdentity: clearActiveIdentity
+          ? null
+          : (activeIdentity ?? this.activeIdentity),
+      inactivityTimeoutMinutes:
+          inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
+      backgroundLockDelayMinutes:
+          backgroundLockDelayMinutes ?? this.backgroundLockDelayMinutes,
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
     );
@@ -47,7 +55,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
   final VaultService _vaultService;
 
   VaultController(this._vaultService)
-      : super(const VaultControllerState(vaultState: NoVault(), isLoading: true)) {
+    : super(
+        const VaultControllerState(vaultState: NoVault(), isLoading: true),
+      ) {
     initialize();
   }
 
@@ -68,17 +78,20 @@ class VaultController extends StateNotifier<VaultControllerState> {
     List<VaultIdentity> identities = [];
     VaultIdentity? activeIdentity;
     int timeout = 5;
+    int backgroundLockDelay = 5;
 
     if (vaultState is VaultUnlocked) {
       identities = await _vaultService.listIdentities();
       activeIdentity = _vaultService.activeIdentity;
       timeout = await _vaultService.getInactivityTimeout();
+      backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
     } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
       identities = [];
       activeIdentity = null;
-      // In locked state we might not be able to get the timeout if it requires KEK, 
+      // In locked state we might not be able to get the timeout if it requires KEK,
       // but getInactivityTimeout is just a simple read from store for now.
       timeout = await _vaultService.getInactivityTimeout();
+      backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
     } else if (vaultState is NoVault) {
       // Ensure everything is cleared
       identities = [];
@@ -91,6 +104,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       activeIdentity: activeIdentity,
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
+      backgroundLockDelayMinutes: backgroundLockDelay,
     );
   }
 
@@ -102,6 +116,18 @@ class VaultController extends StateNotifier<VaultControllerState> {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.setInactivityTimeout(minutes);
+      await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> setBackgroundLockDelayMinutes(int minutes) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      await _vaultService.setBackgroundLockDelayMinutes(minutes);
       await _refreshState();
     } catch (e) {
       state = state.copyWith(failure: _mapExceptionToFailure(e));
@@ -163,7 +189,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       state = state.copyWith(failure: const VaultLockedFailure());
       return;
     }
-    
+
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.createIdentity(displayName: displayName);
