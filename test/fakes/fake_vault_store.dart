@@ -122,6 +122,8 @@ class FakeVaultStore implements VaultStore {
     _version = null;
     _sentinel = null;
     _activeIdentityId = null;
+    _inactivityTimeout = null;
+    _backgroundLockDelayMinutes = null;
     _identities.clear();
   }
 }

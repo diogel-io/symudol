@@ -39,10 +39,10 @@ void main() {
 
       await store.saveIdentityRecord(record);
       final identities = await store.getIdentities();
-      
+
       expect(identities, hasLength(1));
       expect(identities.first.identityId, 'id1');
-      
+
       final retrievedRecord = await store.getIdentityRecord('id1');
       expect(retrievedRecord?.secretPayload, 'secret1');
     });
@@ -63,25 +63,34 @@ void main() {
 
       await store.saveIdentityRecord(record);
       store.shouldThrowDuplicateIdentityError = true;
-      
-      expect(() => store.saveIdentityRecord(record), throwsA(isA<VaultStorageException>()));
+
+      expect(
+        () => store.saveIdentityRecord(record),
+        throwsA(isA<VaultStorageException>()),
+      );
     });
 
     test('clearAll should reset everything', () async {
       await store.setVersion('1.0');
       await store.setSentinel('sentinel');
-      await store.saveIdentityRecord(VaultIdentityRecord(
-        identityId: 'id1',
-        publicKey: 'pub1',
-        secretPayload: 'secret1',
-        createdAt: DateTime.now(),
-        origin: IdentityOrigin.generated,
-      ));
+      await store.setInactivityTimeout(1);
+      await store.setBackgroundLockDelayMinutes(0);
+      await store.saveIdentityRecord(
+        VaultIdentityRecord(
+          identityId: 'id1',
+          publicKey: 'pub1',
+          secretPayload: 'secret1',
+          createdAt: DateTime.now(),
+          origin: IdentityOrigin.generated,
+        ),
+      );
 
       await store.clearAll();
 
       expect(await store.getVersion(), isNull);
       expect(await store.getSentinel(), isNull);
+      expect(await store.getInactivityTimeout(), isNull);
+      expect(await store.getBackgroundLockDelayMinutes(), isNull);
       expect(await store.getIdentities(), isEmpty);
     });
   });

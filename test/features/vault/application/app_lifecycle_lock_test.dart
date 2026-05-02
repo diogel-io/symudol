@@ -77,6 +77,18 @@ void main() {
     expect(state, isA<SessionExpired>());
   });
 
+  testWidgets('hidden schedules background lock', (tester) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(0);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+
+    final state = container.read(vaultStateProvider);
+    expect(state, isA<VaultLocked>());
+  });
+
   testWidgets('background delay -1 does not lock on background', (
     tester,
   ) async {
