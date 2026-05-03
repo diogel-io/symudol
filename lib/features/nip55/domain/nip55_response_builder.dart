@@ -38,12 +38,14 @@ class Nip55ResponseBuilder {
   Map<String, Object?> getPublicKeyExtras(
     VaultIdentity identity, {
     Nip55IncomingRequest? incoming,
+    String? permissionsResultsJson,
   }) {
     final options = incoming?.webReturnOptions;
     return {
       'result': identity.publicKey,
       if (incoming?.externalId != null) 'id': incoming!.externalId,
       'package': signerPackage,
+      if (permissionsResultsJson != null) 'results': permissionsResultsJson,
       if (options?.callbackUrl != null)
         'callbackUrl': options!.callbackUrl.toString(),
       if (options != null && options.isBrowserFlow && !options.hasCallback)

@@ -16,10 +16,10 @@ class DiogelApp extends ConsumerStatefulWidget {
   const DiogelApp({super.key});
 
   @override
-  ConsumerState<DiogelApp> createState() => _DiogelAppState();
+  ConsumerState<DiogelApp> createState() => DiogelAppState();
 }
 
-class _DiogelAppState extends ConsumerState<DiogelApp>
+class DiogelAppState extends ConsumerState<DiogelApp>
     with WidgetsBindingObserver {
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
@@ -38,7 +38,21 @@ class _DiogelAppState extends ConsumerState<DiogelApp>
     super.dispose();
   }
 
+  @visibleForTesting
+  void resetInactivityTimerThrottled() {
+    _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
+    _resetInactivityTimer();
+  }
+
+  DateTime _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
+
   void _resetInactivityTimer() {
+    final now = DateTime.now();
+    if (now.difference(_lastInactivityReset) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastInactivityReset = now;
+
     _inactivityTimer?.cancel();
     final vaultControllerState = ref.read(vaultControllerProvider);
     if (vaultControllerState.vaultState is VaultUnlocked) {
@@ -138,6 +152,8 @@ class _DiogelAppState extends ConsumerState<DiogelApp>
     } else if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive) {
       _backgroundLockTimer?.cancel();
+      // Force reset on resume regardless of throttle
+      _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
       _resetInactivityTimer();
     }
   }

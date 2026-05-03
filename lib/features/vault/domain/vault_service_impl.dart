@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as dev;
-import 'package:flutter/foundation.dart';
 import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';

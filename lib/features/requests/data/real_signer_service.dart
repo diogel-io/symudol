@@ -1,3 +1,4 @@
+import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:android_diogel/features/requests/domain/request_failure.dart';
 import 'package:android_diogel/features/requests/domain/signed_request_result.dart';
@@ -21,7 +22,8 @@ class RealSignerService implements SignerService {
   @override
   Future<SignedRequestResult> sign(SigningRequest request) async {
     try {
-      final draft = _parser.parse(request);
+      final parser = _parser;
+      final draft = await ConcurrencyUtils.runTask(() => parser.parse(request));
       final event = await _vaultService.signNostrEvent(
         identityLocalId: request.targetIdentityLocalId,
         draft: draft,

@@ -40,6 +40,9 @@ void main() {
     // 2. Should be Unlocked
     expect(find.text('Accounts'), findsWidgets);
 
+    // Ensure the inactivity timer is started (it might have been throttled during setup)
+    tester.state<DiogelAppState>(find.byType(DiogelApp)).resetInactivityTimerThrottled();
+
     // 3. Configure timeout to 1 minute
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
@@ -55,6 +58,9 @@ void main() {
     // Go back to Accounts
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
     await tester.pumpAndSettle();
+
+    // Ensure the inactivity timer is started with the new timeout
+    tester.state<DiogelAppState>(find.byType(DiogelApp)).resetInactivityTimerThrottled();
 
     // 4. Wait for timeout
     await tester.pump(const Duration(minutes: 1, seconds: 1));
@@ -114,6 +120,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.account_balance_wallet_outlined));
     await tester.pumpAndSettle();
+
+    // Ensure the inactivity timer is started and throttled to now
+    tester.state<DiogelAppState>(find.byType(DiogelApp)).resetInactivityTimerThrottled();
 
     await tester.pump(const Duration(seconds: 30));
     rebuildHost!(() {});
