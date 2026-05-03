@@ -10,13 +10,14 @@ sealed class Nip55PermissionScope {
 
   static Nip55PermissionScope fromJson(Map<String, Object?> json) {
     final type = json['type'] as String?;
+    final peerPubkey = json['peerPubkey'] as String?;
     return switch (type) {
       'get_public_key' => const GetPublicKeyScope(),
       'sign_event' => SignEventScope(json['kind'] as int?),
-      'nip44_encrypt' => const Nip44EncryptScope(),
-      'nip44_decrypt' => const Nip44DecryptScope(),
-      'nip04_encrypt' => const Nip04EncryptScope(),
-      'nip04_decrypt' => const Nip04DecryptScope(),
+      'nip44_encrypt' => Nip44EncryptScope(peerPubkey),
+      'nip44_decrypt' => Nip44DecryptScope(peerPubkey),
+      'nip04_encrypt' => Nip04EncryptScope(peerPubkey),
+      'nip04_decrypt' => Nip04DecryptScope(peerPubkey),
       'decrypt_zap_event' => const DecryptZapEventScope(),
       _ => UnsupportedScope(json['wire'] as String? ?? type ?? 'unknown'),
     };
@@ -55,61 +56,65 @@ final class SignEventScope extends Nip55PermissionScope {
 }
 
 final class Nip44EncryptScope extends Nip55PermissionScope {
-  const Nip44EncryptScope();
+  final String? peerPubkey;
+  const Nip44EncryptScope([this.peerPubkey]);
 
   @override
-  String get wire => 'nip44_encrypt';
+  String get wire => peerPubkey == null ? 'nip44_encrypt' : 'nip44_encrypt:$peerPubkey';
 
   @override
-  String get label => 'NIP-44 encrypt';
+  String get label => peerPubkey == null ? 'NIP-44 encrypt' : 'NIP-44 encrypt with ${_short(peerPubkey!)}';
 
   @override
-  Map<String, Object?> toJson() => {'type': wire};
+  Map<String, Object?> toJson() => {'type': 'nip44_encrypt', 'peerPubkey': peerPubkey};
 }
 
 final class Nip44DecryptScope extends Nip55PermissionScope {
-  const Nip44DecryptScope();
+  final String? peerPubkey;
+  const Nip44DecryptScope([this.peerPubkey]);
 
   @override
-  String get wire => 'nip44_decrypt';
+  String get wire => peerPubkey == null ? 'nip44_decrypt' : 'nip44_decrypt:$peerPubkey';
 
   @override
-  String get label => 'NIP-44 decrypt';
+  String get label => peerPubkey == null ? 'NIP-44 decrypt' : 'NIP-44 decrypt from ${_short(peerPubkey!)}';
 
   @override
   bool get isSensitive => true;
 
   @override
-  Map<String, Object?> toJson() => {'type': wire};
+  Map<String, Object?> toJson() => {'type': 'nip44_decrypt', 'peerPubkey': peerPubkey};
 }
 
 final class Nip04EncryptScope extends Nip55PermissionScope {
-  const Nip04EncryptScope();
+  final String? peerPubkey;
+  const Nip04EncryptScope([this.peerPubkey]);
 
   @override
-  String get wire => 'nip04_encrypt';
+  String get wire => peerPubkey == null ? 'nip04_encrypt' : 'nip04_encrypt:$peerPubkey';
 
   @override
-  String get label => 'NIP-04 encrypt';
+  String get label => peerPubkey == null ? 'NIP-04 encrypt' : 'NIP-04 encrypt with ${_short(peerPubkey!)}';
 
   @override
-  Map<String, Object?> toJson() => {'type': wire};
+  Map<String, Object?> toJson() => {'type': 'nip04_encrypt', 'peerPubkey': peerPubkey};
 }
 
 final class Nip04DecryptScope extends Nip55PermissionScope {
-  const Nip04DecryptScope();
+  final String? peerPubkey;
+  const Nip04DecryptScope([this.peerPubkey]);
 
   @override
-  String get wire => 'nip04_decrypt';
+  String get wire => peerPubkey == null ? 'nip04_decrypt' : 'nip04_decrypt:$peerPubkey';
 
   @override
-  String get label => 'NIP-04 decrypt';
+  String get label => peerPubkey == null ? 'NIP-04 decrypt' : 'NIP-04 decrypt from ${_short(peerPubkey!)}';
 
   @override
   bool get isSensitive => true;
 
   @override
-  Map<String, Object?> toJson() => {'type': wire};
+  Map<String, Object?> toJson() => {'type': 'nip04_decrypt', 'peerPubkey': peerPubkey};
 }
 
 final class DecryptZapEventScope extends Nip55PermissionScope {
@@ -152,6 +157,23 @@ extension Nip55PermissionScopeMatching on Nip55PermissionScope {
     if (grant is SignEventScope && requested is SignEventScope) {
       return grant.kind == null || grant.kind == requested.kind;
     }
+    if (grant is Nip44EncryptScope && requested is Nip44EncryptScope) {
+      return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
+    }
+    if (grant is Nip44DecryptScope && requested is Nip44DecryptScope) {
+      return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
+    }
+    if (grant is Nip04EncryptScope && requested is Nip04EncryptScope) {
+      return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
+    }
+    if (grant is Nip04DecryptScope && requested is Nip04DecryptScope) {
+      return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
+    }
     return runtimeType == requested.runtimeType;
   }
+}
+
+String _short(String hex) {
+  if (hex.length <= 8) return hex;
+  return '${hex.substring(0, 4)}...${hex.substring(hex.length - 4)}';
 }

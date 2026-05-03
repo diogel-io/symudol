@@ -31,7 +31,7 @@ void main() {
     expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
-    expect(uriParser, contains('substringBefore("?")'));
+    expect(uriParser, contains("substringBeforeLast('?')"));
   });
 
   test('Bridge marks browsable nostrsigner URLs as browser flow', () {

@@ -6,7 +6,11 @@ object Nip55UriParser {
     fun content(uri: Uri): String? {
         val raw = uri.schemeSpecificPart ?: return null
         if (raw.isBlank()) return null
-        val withoutQuery = raw.substringBefore("?")
+        val withoutQuery = if (raw.contains('?')) {
+            raw.substringBeforeLast('?')
+        } else {
+            raw
+        }
         val normalized = withoutQuery.removePrefix("//")
         if (normalized.isBlank()) return null
         return try {
@@ -39,7 +43,7 @@ object Nip55UriParser {
             return uri.encodedQuery
         }
         val raw = uri.schemeSpecificPart ?: return null
-        val marker = raw.indexOf('?')
+        val marker = raw.lastIndexOf('?')
         if (marker < 0 || marker == raw.lastIndex) return null
         return raw.substring(marker + 1)
     }

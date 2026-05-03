@@ -30,9 +30,8 @@ class Nip55ResponseBuilder {
       if (webPayload.copyToClipboard) 'copyToClipboard': true,
       if (webPayload.clipboardLabel != null)
         'clipboardLabel': webPayload.clipboardLabel,
-      if (webPayload.returnType != null) 'returnType': webPayload.returnType,
-      if (webPayload.compressionType != null)
-        'compressionType': webPayload.compressionType,
+      'returnType': webPayload.returnType,
+      'compressionType': webPayload.compressionType,
     };
   }
 
@@ -57,8 +56,10 @@ class Nip55ResponseBuilder {
   Map<String, Object?> operationResultExtras({
     required Nip55IncomingRequest incoming,
     required String result,
-    String clipboardLabel = 'NIP-55 result',
+    String? clipboardLabel,
   }) {
+    final effectiveClipboardLabel =
+        clipboardLabel ?? 'NIP-55 ${incoming.method.wireName} result';
     return {
       'result': result,
       if (incoming.externalId != null) 'id': incoming.externalId,
@@ -69,7 +70,7 @@ class Nip55ResponseBuilder {
         'copyToClipboard': true,
       if (incoming.webReturnOptions.isBrowserFlow &&
           !incoming.webReturnOptions.hasCallback)
-        'clipboardLabel': clipboardLabel,
+        'clipboardLabel': effectiveClipboardLabel,
       'returnType': incoming.webReturnOptions.returnType.name,
       'compressionType': incoming.webReturnOptions.compressionType.name,
     };
@@ -85,7 +86,7 @@ class Nip55ResponseBuilder {
       Nip55WebReturnType.event => switch (options.compressionType) {
         Nip55WebCompressionType.none => eventJson,
         Nip55WebCompressionType.gzip =>
-          'Signer1${base64Encode(GZipCodec().encode(utf8.encode(eventJson)))}',
+          'Signer1${base64Encode(gzip.encode(utf8.encode(eventJson)))}',
       },
     };
     return _WebPayload(

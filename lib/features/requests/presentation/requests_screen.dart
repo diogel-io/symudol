@@ -41,15 +41,23 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
         ? null
         : const NostrEventPayloadParser().review(activeRequest.eventPayload);
 
-    if (activeRequest == null && nip55State.pendingPublicKeyRequest != null) {
-      return _buildPublicKeyRequestScaffold(context, activeIdentity);
-    }
-
-    if (activeRequest == null && nip55State.pendingCryptoRequest != null) {
-      return _buildCryptoRequestScaffold(context, activeIdentity);
-    }
-
     if (activeRequest == null) {
+      if (nip55State.pendingPublicKeyRequest != null) {
+        return _buildPublicKeyRequestScaffold(context, activeIdentity);
+      }
+
+      if (nip55State.pendingCryptoRequest != null) {
+        return _buildCryptoRequestScaffold(context, activeIdentity);
+      }
+
+      if (nip55State.isLoading) {
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
       return Scaffold(
         body: Center(
           child: Column(
@@ -154,11 +162,13 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               iconColor: DiogelColors.nostrAccentMuted,
               title: 'Sign Kind ${activeRequest.eventKind} Event',
               subtitle:
-                  '${eventReview!.kindLabel} • ${activeRequest.actionType.name}',
+                  '${eventReview?.kindLabel ?? 'Event'} • ${activeRequest.actionType.name}',
             ),
             const SizedBox(height: DiogelSpacing.space4),
-            _buildRiskNote(context, eventReview),
-            const SizedBox(height: DiogelSpacing.space6),
+            if (eventReview != null) ...[
+              _buildRiskNote(context, eventReview),
+              const SizedBox(height: DiogelSpacing.space6),
+            ],
             _buildSectionHeader(context, 'SIGNING WITH ACCOUNT'),
             const SizedBox(height: DiogelSpacing.space2),
             _buildIdentityCard(context, activeIdentity),
@@ -188,7 +198,8 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               _buildRawJsonDisclosure(activeRequest),
               const SizedBox(height: DiogelSpacing.space4),
             ],
-            _buildEventSummary(context, activeRequest, eventReview),
+            if (eventReview != null)
+              _buildEventSummary(context, activeRequest, eventReview),
           ],
         ),
       ),

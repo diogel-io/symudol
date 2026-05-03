@@ -817,11 +817,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       final kind = incoming.eventJson?['kind'];
       return SignEventScope(kind is int ? kind : null);
     }
+    final peerPubkey = incoming.pubkey;
     return switch (incoming.method) {
-      Nip55Method.nip04Encrypt => const Nip04EncryptScope(),
-      Nip55Method.nip04Decrypt => const Nip04DecryptScope(),
-      Nip55Method.nip44Encrypt => const Nip44EncryptScope(),
-      Nip55Method.nip44Decrypt => const Nip44DecryptScope(),
+      Nip55Method.nip04Encrypt => Nip04EncryptScope(peerPubkey),
+      Nip55Method.nip04Decrypt => Nip04DecryptScope(peerPubkey),
+      Nip55Method.nip44Encrypt => Nip44EncryptScope(peerPubkey),
+      Nip55Method.nip44Decrypt => Nip44DecryptScope(peerPubkey),
       Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
       Nip55Method.getPublicKey ||
       Nip55Method.signEvent ||
