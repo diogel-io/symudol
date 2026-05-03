@@ -4,6 +4,7 @@ import 'package:android_diogel/features/requests/application/request_controller.
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
+import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
@@ -14,6 +15,7 @@ import '../domain/nip55_failure.dart';
 import '../domain/nip55_incoming_request.dart';
 import '../domain/nip55_intent_parser.dart';
 import '../domain/nip55_method.dart';
+import '../domain/nip55_payload.dart';
 import '../domain/nip55_permission_decision.dart';
 import '../domain/nip55_permission_scope.dart';
 import '../domain/nip55_permission_store.dart';
@@ -24,6 +26,7 @@ class Nip55State {
   final Nip55IncomingRequest? pendingIncoming;
   final String? pendingSigningRequestId;
   final Nip55IncomingRequest? pendingPublicKeyRequest;
+  final Nip55IncomingRequest? pendingCryptoRequest;
   final bool isLoading;
   final Nip55Failure? failure;
   final String? lastSuccessMessage;
@@ -33,6 +36,7 @@ class Nip55State {
     this.pendingIncoming,
     this.pendingSigningRequestId,
     this.pendingPublicKeyRequest,
+    this.pendingCryptoRequest,
     this.isLoading = false,
     this.failure,
     this.lastSuccessMessage,
@@ -42,17 +46,20 @@ class Nip55State {
   bool get hasPendingExternalRequest =>
       pendingIncoming != null ||
       pendingSigningRequestId != null ||
-      pendingPublicKeyRequest != null;
+      pendingPublicKeyRequest != null ||
+      pendingCryptoRequest != null;
 
   bool get isWaitingForUnlock =>
       pendingIncoming != null &&
       pendingSigningRequestId == null &&
-      pendingPublicKeyRequest == null;
+      pendingPublicKeyRequest == null &&
+      pendingCryptoRequest == null;
 
   Nip55State copyWith({
     Nip55IncomingRequest? pendingIncoming,
     String? pendingSigningRequestId,
     Nip55IncomingRequest? pendingPublicKeyRequest,
+    Nip55IncomingRequest? pendingCryptoRequest,
     bool? isLoading,
     Nip55Failure? failure,
     String? lastSuccessMessage,
@@ -60,6 +67,7 @@ class Nip55State {
     bool clearPendingIncoming = false,
     bool clearPendingSigningRequestId = false,
     bool clearPendingPublicKeyRequest = false,
+    bool clearPendingCryptoRequest = false,
     bool clearFailure = false,
     bool clearSuccess = false,
     bool clearApprovalSession = false,
@@ -74,6 +82,9 @@ class Nip55State {
       pendingPublicKeyRequest: clearPendingPublicKeyRequest
           ? null
           : (pendingPublicKeyRequest ?? this.pendingPublicKeyRequest),
+      pendingCryptoRequest: clearPendingCryptoRequest
+          ? null
+          : (pendingCryptoRequest ?? this.pendingCryptoRequest),
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
       lastSuccessMessage: clearSuccess
@@ -94,6 +105,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final Nip55PermissionStore? _permissionStore;
   final Nip55ApprovalPolicy _approvalPolicy;
   final VaultController _vaultController;
+  final VaultService _vaultService;
   final RequestController _requestController;
   final Duration _pendingUnlockTimeout;
   final DateTime Function() _now;
@@ -102,6 +114,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   Nip55Controller({
     required Nip55Gateway gateway,
     required VaultController vaultController,
+    required VaultService vaultService,
     required RequestController requestController,
     Nip55IntentParser parser = const Nip55IntentParser(),
     Nip55RequestMapper mapper = const Nip55RequestMapper(),
@@ -112,6 +125,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     DateTime Function()? now,
   }) : _gateway = gateway,
        _vaultController = vaultController,
+       _vaultService = vaultService,
        _requestController = requestController,
        _parser = parser,
        _mapper = mapper,
@@ -167,9 +181,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       } else if (incoming.method == Nip55Method.signEvent) {
         await _handleSignEvent(incoming);
       } else {
-        throw Nip55Failure(
-          '${incoming.method.wireName} is parsed but not implemented yet.',
-        );
+        await _handleCryptoOperation(incoming);
       }
     } on Nip55ParseException catch (error) {
       state = state.copyWith(
@@ -230,9 +242,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       } else if (incoming.method == Nip55Method.signEvent) {
         await _handleSignEvent(incoming);
       } else {
-        throw Nip55Failure(
-          '${incoming.method.wireName} is parsed but not implemented yet.',
-        );
+        await _handleCryptoOperation(incoming);
       }
     } on Nip55Failure catch (error) {
       state = state.copyWith(isLoading: false, failure: error);
@@ -353,6 +363,56 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
   }
 
+  Future<void> _handleCryptoOperation(Nip55IncomingRequest incoming) async {
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (_vaultController.state.vaultState is! VaultUnlocked) {
+      state = state.copyWith(
+        isLoading: false,
+        pendingIncoming: incoming,
+        failure: Nip55Failure(
+          'Unlock Diogel and select an identity before ${incoming.method.wireName}.',
+        ),
+      );
+      _startPendingUnlockTimer(incoming);
+      throw Nip55Failure(
+        'Unlock Diogel and select an identity before ${incoming.method.wireName}.',
+      );
+    }
+    if (activeIdentity == null) {
+      throw Nip55Failure(
+        'Select an identity before ${incoming.method.wireName}.',
+      );
+    }
+    final currentUser = incoming.currentUser;
+    if (currentUser != null && currentUser != activeIdentity.publicKey) {
+      throw const Nip55Failure(
+        'Requested account does not match active identity.',
+      );
+    }
+
+    final decision = await _decide(incoming, activeIdentity.publicKey);
+    if (decision is AutoReject) {
+      await _markGrantUsed(decision.grant);
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: decision.reason,
+      );
+      state = state.copyWith(isLoading: false, clearPendingIncoming: true);
+      return;
+    }
+    if (decision is AutoAllow && _canUseApprovalSession(decision.grant)) {
+      await _markGrantUsed(decision.grant);
+      await _completeCryptoOperation(incoming, remember: false);
+      return;
+    }
+
+    state = state.copyWith(
+      isLoading: false,
+      pendingIncoming: incoming,
+      pendingCryptoRequest: incoming,
+    );
+  }
+
   Future<void> approvePublicKeyRequest({bool remember = false}) async {
     final request = state.pendingPublicKeyRequest;
     final activeIdentity = _vaultController.state.activeIdentity;
@@ -403,6 +463,108 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
     );
+  }
+
+  Future<void> approveCryptoRequest({bool remember = false}) async {
+    final request = state.pendingCryptoRequest;
+    if (request == null) return;
+    await _completeCryptoOperation(request, remember: remember);
+    _extendApprovalSession();
+  }
+
+  Future<void> rejectCryptoRequest({bool remember = false}) async {
+    final request = state.pendingCryptoRequest;
+    if (request == null) return;
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (remember && activeIdentity != null && !_scopeFor(request).isSensitive) {
+      await _saveGrant(
+        incoming: request,
+        identityPubkey: activeIdentity.publicKey,
+        scope: _scopeFor(request),
+        decision: Nip55PermissionDecision.reject,
+      );
+    }
+    await _gateway.rejectNip55Intent(
+      requestToken: request.requestToken,
+      error: 'User rejected ${request.method.wireName} request',
+    );
+    state = state.copyWith(
+      clearPendingIncoming: true,
+      clearPendingCryptoRequest: true,
+    );
+  }
+
+  Future<void> _completeCryptoOperation(
+    Nip55IncomingRequest request, {
+    required bool remember,
+  }) async {
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (activeIdentity == null) {
+      throw const Nip55Failure('Select an identity before completing request.');
+    }
+    final result = await _cryptoResult(request, activeIdentity.localId);
+    if (remember && !_scopeFor(request).isSensitive) {
+      await _saveGrant(
+        incoming: request,
+        identityPubkey: activeIdentity.publicKey,
+        scope: _scopeFor(request),
+        decision: Nip55PermissionDecision.allow,
+      );
+    }
+    await _gateway.completeNip55Intent(
+      requestToken: request.requestToken,
+      extras: _responseBuilder.operationResultExtras(
+        incoming: request,
+        result: result,
+        clipboardLabel: _clipboardLabelFor(request),
+      ),
+    );
+    state = state.copyWith(
+      clearPendingIncoming: true,
+      clearPendingCryptoRequest: true,
+      isLoading: false,
+      lastSuccessMessage: _cryptoCompletionMessageFor(request),
+    );
+  }
+
+  Future<String> _cryptoResult(
+    Nip55IncomingRequest request,
+    String identityLocalId,
+  ) async {
+    final payload = request.payload;
+    return switch (payload) {
+      Nip04EncryptPayload(:final content, :final peerPubkey) =>
+        _vaultService.nip04Encrypt(
+          identityLocalId: identityLocalId,
+          peerPubkeyHex: peerPubkey,
+          plaintext: content,
+        ),
+      Nip04DecryptPayload(:final content, :final peerPubkey) =>
+        _vaultService.nip04Decrypt(
+          identityLocalId: identityLocalId,
+          peerPubkeyHex: peerPubkey,
+          ciphertext: content,
+        ),
+      Nip44EncryptPayload(:final content, :final peerPubkey) =>
+        _vaultService.nip44Encrypt(
+          identityLocalId: identityLocalId,
+          peerPubkeyHex: peerPubkey,
+          plaintext: content,
+        ),
+      Nip44DecryptPayload(:final content, :final peerPubkey) =>
+        _vaultService.nip44Decrypt(
+          identityLocalId: identityLocalId,
+          peerPubkeyHex: peerPubkey,
+          ciphertext: content,
+        ),
+      DecryptZapEventPayload(:final eventJson) => _vaultService.decryptZapEvent(
+        identityLocalId: identityLocalId,
+        eventJson: eventJson,
+      ),
+      GetPublicKeyPayload() || SignEventPayload() => throw Nip55Failure(
+        '${request.method.wireName} is not a crypto operation.',
+      ),
+    };
   }
 
   Future<void> completeApprovedSigningRequest(String requestId) async {
@@ -505,6 +667,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearPendingIncoming: true,
       clearPendingSigningRequestId: true,
       clearPendingPublicKeyRequest: true,
+      clearPendingCryptoRequest: true,
       isLoading: false,
     );
   }
@@ -523,6 +686,15 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool canRememberPendingPublicKeyRequest() {
     return state.pendingPublicKeyRequest?.clientIdentity.packageName != null &&
         state.pendingPublicKeyRequest?.webReturnOptions.isBrowserFlow != true &&
+        _permissionStore != null;
+  }
+
+  bool canRememberPendingCryptoRequest() {
+    final request = state.pendingCryptoRequest;
+    if (request == null) return false;
+    return request.clientIdentity.packageName != null &&
+        request.webReturnOptions.isBrowserFlow != true &&
+        !_scopeFor(request).isSensitive &&
         _permissionStore != null;
   }
 
@@ -619,6 +791,21 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return 'Event signed locally and returned to requesting Android app.';
     }
     return 'Event signed locally and returned to requesting Android app.';
+  }
+
+  String _cryptoCompletionMessageFor(Nip55IncomingRequest incoming) {
+    if (incoming.webReturnOptions.hasCallback) {
+      return '${incoming.method.wireName} completed and returned through the browser callback.';
+    }
+    if (incoming.webReturnOptions.isBrowserFlow) {
+      return '${incoming.method.wireName} completed and copied to clipboard for the browser flow.';
+    }
+    return '${incoming.method.wireName} completed and returned to requesting Android app.';
+  }
+
+  String _clipboardLabelFor(Nip55IncomingRequest incoming) {
+    if (_scopeFor(incoming).isSensitive) return 'Sensitive NIP-55 result';
+    return 'NIP-55 ${incoming.method.wireName} result';
   }
 
   bool _canUseApprovalSession(Nip55PermissionGrant grant) {

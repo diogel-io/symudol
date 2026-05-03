@@ -32,10 +32,12 @@ final nip55ControllerProvider =
     StateNotifierProvider<Nip55Controller, Nip55State>((ref) {
       final gateway = ref.watch(nip55GatewayProvider);
       final vaultController = ref.watch(vaultControllerProvider.notifier);
+      final vaultService = ref.watch(vaultServiceProvider);
       final requestController = ref.watch(requestControllerProvider.notifier);
       return Nip55Controller(
         gateway: gateway,
         vaultController: vaultController,
+        vaultService: vaultService,
         requestController: requestController,
         permissionStore: ref.watch(nip55PermissionStoreProvider),
       );

@@ -40,6 +40,27 @@ class Nip55ResponseBuilder {
     return {'result': identity.publicKey, 'package': signerPackage};
   }
 
+  Map<String, Object?> operationResultExtras({
+    required Nip55IncomingRequest incoming,
+    required String result,
+    String clipboardLabel = 'NIP-55 result',
+  }) {
+    return {
+      'result': result,
+      if (incoming.externalId != null) 'id': incoming.externalId,
+      if (incoming.webReturnOptions.callbackUrl != null)
+        'callbackUrl': incoming.webReturnOptions.callbackUrl.toString(),
+      if (incoming.webReturnOptions.isBrowserFlow &&
+          !incoming.webReturnOptions.hasCallback)
+        'copyToClipboard': true,
+      if (incoming.webReturnOptions.isBrowserFlow &&
+          !incoming.webReturnOptions.hasCallback)
+        'clipboardLabel': clipboardLabel,
+      'returnType': incoming.webReturnOptions.returnType.name,
+      'compressionType': incoming.webReturnOptions.compressionType.name,
+    };
+  }
+
   _WebPayload _webPayload(
     Nip55WebReturnOptions options,
     String signature,

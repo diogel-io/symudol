@@ -7,10 +7,12 @@ import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/real_signer_service.dart';
+import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';
@@ -115,6 +117,7 @@ void main() {
     controller = Nip55Controller(
       gateway: gateway,
       vaultController: vaultController,
+      vaultService: vaultService,
       requestController: requestController,
     );
   });
@@ -165,6 +168,7 @@ void main() {
         final permissionController = Nip55Controller(
           gateway: gateway,
           vaultController: vaultController,
+          vaultService: vaultService,
           requestController: requestController,
           permissionStore: permissionStore,
         );
@@ -199,6 +203,7 @@ void main() {
         final permissionController = Nip55Controller(
           gateway: gateway,
           vaultController: vaultController,
+          vaultService: vaultService,
           requestController: requestController,
           permissionStore: permissionStore,
         );
@@ -231,6 +236,7 @@ void main() {
         final permissionController = Nip55Controller(
           gateway: gateway,
           vaultController: vaultController,
+          vaultService: vaultService,
           requestController: requestController,
           permissionStore: permissionStore,
         );
@@ -273,6 +279,7 @@ void main() {
         final permissionController = Nip55Controller(
           gateway: gateway,
           vaultController: vaultController,
+          vaultService: vaultService,
           requestController: requestController,
           permissionStore: permissionStore,
         );
@@ -296,6 +303,7 @@ void main() {
         final permissionController = Nip55Controller(
           gateway: gateway,
           vaultController: vaultController,
+          vaultService: vaultService,
           requestController: requestController,
           permissionStore: permissionStore,
         );
@@ -333,6 +341,7 @@ void main() {
       final permissionController = Nip55Controller(
         gateway: gateway,
         vaultController: vaultController,
+        vaultService: vaultService,
         requestController: requestController,
         permissionStore: FakeNip55PermissionStore(),
       );
@@ -458,6 +467,7 @@ void main() {
       final permissionController = Nip55Controller(
         gateway: gateway,
         vaultController: vaultController,
+        vaultService: vaultService,
         requestController: requestController,
         permissionStore: permissionStore,
       );
@@ -503,6 +513,7 @@ void main() {
       final emptyController = Nip55Controller(
         gateway: emptyGateway,
         vaultController: emptyVaultController,
+        vaultService: emptyVaultService,
         requestController: emptyRequestController,
       );
 
@@ -513,6 +524,68 @@ void main() {
 
       expect(emptyGateway.rejectedError, contains('Select an identity'));
       expect(emptyController.state.pendingPublicKeyRequest, isNull);
+    });
+
+    test('nip44_encrypt can be manually approved', () async {
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+
+      await controller.handleRawIntent({
+        'requestToken': 'crypto-token',
+        'type': 'nip44_encrypt',
+        'content': 'hello encrypted world',
+        'pubkey': bob.public,
+        'currentUser': vaultController.state.activeIdentity!.publicKey,
+      });
+
+      expect(
+        controller.state.pendingCryptoRequest?.method.wireName,
+        'nip44_encrypt',
+      );
+
+      await controller.approveCryptoRequest();
+
+      expect(gateway.completedToken, 'crypto-token');
+      final ciphertext = gateway.completedExtras?['result'] as String?;
+      expect(ciphertext, isNotNull);
+      expect(
+        const DartNostrCryptoService().nip44Decrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: vaultController.state.activeIdentity!.publicKey,
+          ciphertext: ciphertext!,
+        ),
+        'hello encrypted world',
+      );
+      expect(controller.state.pendingCryptoRequest, isNull);
+    });
+
+    test('sensitive decrypt requests cannot be remembered by default', () async {
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+      final ciphertext = const DartNostrCryptoService().nip44Encrypt(
+        privateKeyHex: bob.private,
+        peerPubkeyHex: vaultController.state.activeIdentity!.publicKey,
+        plaintext: 'secret',
+      );
+
+      await controller.handleRawIntent({
+        'requestToken': 'decrypt-token',
+        'type': 'nip44_decrypt',
+        'content': ciphertext,
+        'pubkey': bob.public,
+        'currentUser': vaultController.state.activeIdentity!.publicKey,
+        'packageName': 'com.example.app',
+      });
+
+      expect(controller.canRememberPendingCryptoRequest(), isFalse);
+
+      await controller.approveCryptoRequest(remember: true);
+
+      expect(gateway.completedExtras?['result'], 'secret');
     });
 
     test('locked vault keeps request pending until unlock', () async {
@@ -564,6 +637,7 @@ void main() {
       final timeoutController = Nip55Controller(
         gateway: timeoutGateway,
         vaultController: vaultController,
+        vaultService: vaultService,
         requestController: requestController,
         pendingUnlockTimeout: const Duration(milliseconds: 1),
       );

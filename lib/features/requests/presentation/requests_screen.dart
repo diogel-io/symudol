@@ -45,6 +45,10 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       return _buildPublicKeyRequestScaffold(context, activeIdentity);
     }
 
+    if (activeRequest == null && nip55State.pendingCryptoRequest != null) {
+      return _buildCryptoRequestScaffold(context, activeIdentity);
+    }
+
     if (activeRequest == null) {
       return Scaffold(
         body: Center(
@@ -337,6 +341,156 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                     .rejectPublicKeyRequest(remember: true),
                 icon: const Icon(Icons.block_outlined),
                 label: const Text('Reject and remember for this app'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCryptoRequestScaffold(
+    BuildContext context,
+    VaultIdentity? activeIdentity,
+  ) {
+    final nip55Request = ref
+        .watch(nip55ControllerProvider)
+        .pendingCryptoRequest!;
+    final canRemember = ref
+        .read(nip55ControllerProvider.notifier)
+        .canRememberPendingCryptoRequest();
+    final source = nip55Request.clientIdentity.displayName;
+    final method = nip55Request.method.wireName;
+    final isSensitive = method.contains('decrypt');
+    final peer = nip55Request.pubkey == null
+        ? null
+        : _shortFingerprint(nip55Request.pubkey!);
+    final preview = (nip55Request.content ?? '').trim();
+
+    return Scaffold(
+      appBar: AppBar(title: Text('NIP-55 $method')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(DiogelSpacing.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildProvenanceWarning(context, RequestTrustStatus.unknown),
+            const SizedBox(height: DiogelSpacing.space6),
+            _buildSectionHeader(context, 'REQUEST SOURCE'),
+            const SizedBox(height: DiogelSpacing.space2),
+            RequestDetailItem(
+              icon: Icons.android,
+              iconColor: DiogelColors.actionPrimary,
+              title: source,
+              subtitle: nip55Request.clientIdentity.provenanceVerified
+                  ? 'Verified Android package'
+                  : 'Caller identity could not be fully verified',
+            ),
+            const SizedBox(height: DiogelSpacing.space6),
+            _buildSectionHeader(context, 'OPERATION'),
+            const SizedBox(height: DiogelSpacing.space2),
+            RequestDetailItem(
+              icon: isSensitive
+                  ? Icons.visibility_outlined
+                  : Icons.lock_outline,
+              iconColor: isSensitive
+                  ? DiogelColors.stateWarning
+                  : DiogelColors.nostrAccentMuted,
+              title: method,
+              subtitle: isSensitive
+                  ? 'Sensitive decrypt operation — review carefully'
+                  : 'Encryption operation',
+            ),
+            if (peer != null) ...[
+              const SizedBox(height: DiogelSpacing.space4),
+              _buildSectionHeader(context, 'PEER PUBLIC KEY'),
+              const SizedBox(height: DiogelSpacing.space2),
+              Text(
+                peer,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+              ),
+            ],
+            const SizedBox(height: DiogelSpacing.space6),
+            _buildSectionHeader(context, 'USING ACCOUNT'),
+            const SizedBox(height: DiogelSpacing.space2),
+            _buildIdentityCard(context, activeIdentity),
+            if (preview.isNotEmpty) ...[
+              const SizedBox(height: DiogelSpacing.space6),
+              _buildSectionHeader(context, 'PAYLOAD PREVIEW'),
+              const SizedBox(height: DiogelSpacing.space2),
+              Text(
+                preview.length > 400
+                    ? '${preview.substring(0, 400)}…'
+                    : preview,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+              ),
+            ],
+          ],
+        ),
+      ),
+      bottomSheet: Container(
+        padding: const EdgeInsets.all(DiogelSpacing.space4),
+        decoration: BoxDecoration(
+          color: DiogelColors.surfaceBackground.withValues(alpha: 0.8),
+          border: const Border(
+            top: BorderSide(color: DiogelColors.borderSubtle),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => ref
+                        .read(nip55ControllerProvider.notifier)
+                        .rejectCryptoRequest(),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Reject'),
+                  ),
+                ),
+                const SizedBox(width: DiogelSpacing.space4),
+                if (canRemember) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: activeIdentity == null
+                          ? null
+                          : () => ref
+                                .read(nip55ControllerProvider.notifier)
+                                .approveCryptoRequest(remember: true),
+                      icon: const Icon(Icons.verified_user_outlined),
+                      label: const Text('Remember'),
+                    ),
+                  ),
+                  const SizedBox(width: DiogelSpacing.space4),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: activeIdentity == null
+                        ? null
+                        : () => ref
+                              .read(nip55ControllerProvider.notifier)
+                              .approveCryptoRequest(),
+                    icon: Icon(isSensitive ? Icons.visibility : Icons.lock),
+                    label: Text(isSensitive ? 'Decrypt' : 'Encrypt'),
+                  ),
+                ),
+              ],
+            ),
+            if (canRemember) ...[
+              const SizedBox(height: DiogelSpacing.space2),
+              Text(
+                'Remember is disabled for browser flows and sensitive decrypt scopes.',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: DiogelColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
               ),
             ],
           ],
