@@ -173,7 +173,7 @@ class MainActivity : FlutterActivity() {
         val bridgeToken = activeRequestToken
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
             activeRequestToken = null
-            return false
+            return true
         }
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
@@ -215,7 +215,7 @@ class MainActivity : FlutterActivity() {
         val error = arguments?.get("error") as? String
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
             activeRequestToken = null
-            return false
+            return true
         }
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
