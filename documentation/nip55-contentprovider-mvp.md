@@ -1,10 +1,10 @@
-# NIP-55 ContentProvider deferral status
+# NIP-55 ContentProvider warm-session support
 
-Status: **deferred safe stub**, not a complete background signing implementation.
+Status: **warm-session ContentProvider support**, not cold background signing.
 
-This pass adds the Android ContentProvider entry points required by NIP-55, but deliberately keeps provider signing disabled until the Flutter vault/policy/signing path can be safely invoked from a provider call.
+The Android ContentProvider entry points now fail closed by default, but can execute NIP-55 operations when the existing Flutter/UI engine is alive, the vault is unlocked, and the shared Dart approval policy finds a remembered allow grant inside the active approval session.
 
-Important: Dart stores remembered permissions in Flutter secure storage under `nip55_permission_grants_v1`. The current native provider does not read that store and does not mirror allow grants. It must therefore be treated as a structural entry-point stub only.
+This deliberately avoids native private-key duplication and avoids launching UI from a provider. A cold provider call still returns `null`.
 
 ## Implemented
 
@@ -15,24 +15,33 @@ Important: Dart stores remembered permissions in Flutter secure storage under `n
   - `io.threenine.androidiogel.NIP04_ENCRYPT`
   - `io.threenine.androidiogel.NIP04_DECRYPT`
   - `io.threenine.androidiogel.DECRYPT_ZAP_EVENT`
-- `SIGN_EVENT` projection decoding for event JSON and `current_user`.
 - Projection shape validation for every declared provider method:
   - `SIGN_EVENT`: event JSON + `current_user`
   - `NIP04_ENCRYPT` / `NIP04_DECRYPT`: payload + peer pubkey + `current_user`
   - `NIP44_ENCRYPT` / `NIP44_DECRYPT`: payload + peer pubkey + `current_user`
   - `DECRYPT_ZAP_EVENT`: zap event payload + `current_user`
-- NIP-55-shaped cursor helpers for `result` + lowercase `event`.
-- NIP-55-shaped cursor helper for non-signing operation `result` responses.
-- Safe null behavior for all provider calls.
-- Native reject cursor hook placeholder for future mirrored reject grants.
+- Provider queries bridge synchronously to the warm Flutter engine through `Nip55ProviderBridge` with a short timeout.
+- Dart handles provider requests through the same parser, approval policy, vault, signing, and crypto services used by manual NIP-55 requests.
+- Successful provider responses return NIP-55-shaped cursors:
+  - `SIGN_EVENT`: `result`, `event`
+  - crypto/decrypt operations: `result`
+  - remembered reject: `rejected`
+- Provider never starts an activity.
+- Provider returns `null` when:
+  - Flutter/UI engine is not attached
+  - request times out or errors
+  - vault is locked
+  - no remembered allow grant matches
+  - approval session is absent/expired
+  - caller package/certificate/current_user/event pubkey validation fails
+
+## Security model
+
+- Private key material remains in Dart/vault code; it is not persisted or mirrored to native provider code.
+- Provider caller identity is passed as package + signing certificate hash and evaluated by the existing Dart permission policy.
+- Browser flows still must not receive remembered app grants.
+- Sensitive decrypt scopes remain blocked from normal remembered/session auto-approval unless a later explicit-sensitive-grant design is added.
 
 ## Deferred intentionally
 
-Provider auto-signing is not enabled yet because the private-key and approval-policy implementation currently live in Dart/Flutter. A ContentProvider may be called while the Flutter engine is cold, and duplicating vault unlock, identity matching, signing, and signature verification native-side would weaken the trust boundary.
-
-Next provider phase should either:
-
-1. spin up a headless Flutter engine and call the existing Dart policy/signing code, or
-2. maintain a narrow native provider session cache populated only after an unlocked, reviewed Flutter approval.
-
-Until then, provider queries return `null`. This matches NIP-55's safe behavior for missing remembered permission and avoids surprise UI launches or cold native signing. Do not describe WP5 as complete background approval/signing until one of the next-phase designs above is implemented and tested.
+This is not cold-start ContentResolver support. A provider call while the app process/Flutter engine is cold still returns `null`. Full cold background support would need a reviewed architecture such as a headless Flutter service/session model or a very narrow native session cache. Do not duplicate long-lived signing capability natively without a separate security review.

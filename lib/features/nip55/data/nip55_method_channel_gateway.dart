@@ -5,6 +5,10 @@ abstract interface class Nip55Gateway {
     void Function(Map<String, Object?> raw)? handler,
   );
 
+  void setProviderQueryHandler(
+    Future<Map<String, Object?>?> Function(Map<String, Object?> raw)? handler,
+  );
+
   Future<Map<String, Object?>?> getInitialNip55Intent();
 
   Future<Map<String, Object?>?> consumeLatestNip55Intent();
@@ -21,6 +25,8 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
   static const channelName = 'io.threenine.androidiogel/nip55';
   final MethodChannel _channel;
   void Function(Map<String, Object?> raw)? _handler;
+  Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
+  _providerQueryHandler;
 
   Nip55MethodChannelGateway({MethodChannel? channel})
     : _channel = channel ?? const MethodChannel(channelName) {
@@ -34,10 +40,23 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
     _handler = handler;
   }
 
+  @override
+  void setProviderQueryHandler(
+    Future<Map<String, Object?>?> Function(Map<String, Object?> raw)? handler,
+  ) {
+    _providerQueryHandler = handler;
+  }
+
   Future<Object?> _handleNativeCall(MethodCall call) async {
     if (call.method == 'onNip55Intent') {
       final raw = _castMap(call.arguments);
       if (raw != null) _handler?.call(raw);
+      return null;
+    }
+    if (call.method == 'handleNip55ProviderQuery') {
+      final raw = _castMap(call.arguments);
+      if (raw == null) return null;
+      return _providerQueryHandler?.call(raw);
     }
     return null;
   }

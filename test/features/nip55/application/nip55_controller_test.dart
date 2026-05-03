@@ -63,12 +63,21 @@ class FakeNip55Gateway implements Nip55Gateway {
   String? rejectedError;
   String? rejectedToken;
   void Function(Map<String, Object?> raw)? handler;
+  Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
+  providerQueryHandler;
 
   @override
   void setIncomingIntentHandler(
     void Function(Map<String, Object?> raw)? handler,
   ) {
     this.handler = handler;
+  }
+
+  @override
+  void setProviderQueryHandler(
+    Future<Map<String, Object?>?> Function(Map<String, Object?> raw)? handler,
+  ) {
+    providerQueryHandler = handler;
   }
 
   @override
@@ -623,6 +632,104 @@ void main() {
       await controller.approveCryptoRequest(remember: true);
 
       expect(gateway.completedExtras?['result'], 'secret');
+    });
+
+    test('provider sign_event returns null without remembered approval session', () async {
+      final result = await controller.handleProviderQuery(signEventRaw());
+
+      expect(result, isNull);
+      expect(requestController.state.requests, isEmpty);
+    });
+
+    test('provider sign_event returns signed event during approval session', () async {
+      final permissionStore = FakeNip55PermissionStore();
+      final providerController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: permissionStore,
+      );
+      final identity = vaultController.state.activeIdentity!;
+      await permissionStore.saveGrant(
+        Nip55PermissionGrant(
+          id: 'allow-sign-1',
+          identityPubkey: identity.publicKey,
+          packageName: 'com.example.app',
+          certificateSha256: 'AA:BB',
+          scope: const SignEventScope(1),
+          decision: Nip55PermissionDecision.allow,
+          createdAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      providerController.state = providerController.state.copyWith(
+        approvalSessionExpiresAt: DateTime.now().add(
+          const Duration(minutes: 1),
+        ),
+      );
+
+      final result = await providerController.handleProviderQuery({
+        ...signEventRaw(),
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
+      });
+
+      expect(result, isNotNull);
+      expect(result?['result'], isA<String>());
+      expect(result?['event'], isA<String>());
+      expect(requestController.state.requests, isEmpty);
+    });
+
+    test('provider nip44_encrypt returns result during approval session', () async {
+      final permissionStore = FakeNip55PermissionStore();
+      final providerController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: permissionStore,
+      );
+      final identity = vaultController.state.activeIdentity!;
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+      await permissionStore.saveGrant(
+        Nip55PermissionGrant(
+          id: 'allow-nip44-1',
+          identityPubkey: identity.publicKey,
+          packageName: 'com.example.app',
+          certificateSha256: 'AA:BB',
+          scope: const Nip44EncryptScope(),
+          decision: Nip55PermissionDecision.allow,
+          createdAt: DateTime.utc(2026, 5, 1),
+        ),
+      );
+      providerController.state = providerController.state.copyWith(
+        approvalSessionExpiresAt: DateTime.now().add(
+          const Duration(minutes: 1),
+        ),
+      );
+
+      final result = await providerController.handleProviderQuery({
+        'requestToken': 'provider-token',
+        'type': 'nip44_encrypt',
+        'content': 'hello provider',
+        'pubkey': bob.public,
+        'currentUser': identity.publicKey,
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
+      });
+
+      expect(result?['result'], isA<String>());
+      expect(
+        const DartNostrCryptoService().nip44Decrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: identity.publicKey,
+          ciphertext: result!['result']! as String,
+        ),
+        'hello provider',
+      );
     });
 
     test('locked vault keeps request pending until unlock', () async {

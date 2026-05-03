@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:android_diogel/features/requests/application/request_controller.dart';
+import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
@@ -137,6 +138,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
        _now = now ?? DateTime.now,
        super(const Nip55State()) {
     _gateway.setIncomingIntentHandler((raw) => handleRawIntent(raw));
+    _gateway.setProviderQueryHandler((raw) => handleProviderQuery(raw));
   }
 
   @override
@@ -222,6 +224,54 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         );
       }
     }
+  }
+
+  Future<Map<String, Object?>?> handleProviderQuery(
+    Map<String, Object?> raw,
+  ) async {
+    if (state.hasPendingExternalRequest) return null;
+    final incoming = _parser.parse(raw);
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (_vaultController.state.vaultState is! VaultUnlocked ||
+        activeIdentity == null) {
+      return null;
+    }
+
+    final decision = await _decide(incoming, activeIdentity.publicKey);
+    if (decision is AutoReject) {
+      await _markGrantUsed(decision.grant);
+      return {'rejected': decision.reason};
+    }
+    if (decision is! AutoAllow || !_canUseApprovalSession(decision.grant)) {
+      return null;
+    }
+
+    await _markGrantUsed(decision.grant);
+    if (incoming.method == Nip55Method.getPublicKey) {
+      return _responseBuilder.getPublicKeyExtras(activeIdentity);
+    }
+    if (incoming.method == Nip55Method.signEvent) {
+      final signingRequest = _mapper.mapSignEvent(
+        incoming: incoming,
+        activeIdentity: activeIdentity,
+      );
+      final draft = const NostrEventPayloadParser().parse(signingRequest);
+      final signedEvent = await _vaultService.signNostrEvent(
+        identityLocalId: activeIdentity.localId,
+        draft: draft,
+      );
+      return _responseBuilder.signEventExtras(
+        incoming: incoming,
+        signedEvent: signedEvent,
+      );
+    }
+
+    final result = await _cryptoResult(incoming, activeIdentity.localId);
+    return _responseBuilder.operationResultExtras(
+      incoming: incoming,
+      result: result,
+      clipboardLabel: _clipboardLabelFor(incoming),
+    );
   }
 
   Future<void> resumePendingAfterUnlock() async {

@@ -33,6 +33,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        channel?.let { Nip55ProviderBridge.attach(it) }
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "getInitialNip55Intent" -> {
@@ -58,6 +59,11 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onDestroy() {
+        Nip55ProviderBridge.detach(channel)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

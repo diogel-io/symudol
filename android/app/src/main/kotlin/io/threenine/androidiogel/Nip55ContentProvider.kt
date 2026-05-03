@@ -2,8 +2,11 @@ package io.threenine.androidiogel
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
+import java.security.MessageDigest
 
 class Nip55ContentProvider : ContentProvider() {
     override fun onCreate(): Boolean = true
@@ -25,10 +28,16 @@ class Nip55ContentProvider : ContentProvider() {
 
         if (!hasRequiredProjection(method, projection)) return null
 
-        // Safe provider MVP: do not launch UI, do not duplicate key handling native-side,
-        // and do not sign while the Flutter/vault policy path is unavailable.
-        // Returning null is the NIP-55-compatible response for "no remembered permission".
-        return null
+        val result = Nip55ProviderBridge.query(providerArguments(method, projection, callerPackage))
+            ?: return null
+        val rejected = result["rejected"]?.toString()
+        if (!rejected.isNullOrBlank()) return Nip55RequestCodec.rejectedCursor(rejected)
+        val operationResult = result["result"]?.toString() ?: return null
+        if (method == "sign_event") {
+            val eventJson = result["event"]?.toString() ?: return null
+            return Nip55RequestCodec.signEventCursor(operationResult, eventJson)
+        }
+        return Nip55RequestCodec.operationResultCursor(operationResult)
     }
 
     override fun getType(uri: Uri): String? = null
@@ -78,6 +87,68 @@ class Nip55ContentProvider : ContentProvider() {
                     !Nip55RequestCodec.zapCurrentUserFromProjection(projection).isNullOrBlank()
             }
             else -> false
+        }
+    }
+
+    private fun providerArguments(
+        method: String,
+        projection: Array<out String>?,
+        callerPackage: String?
+    ): Map<String, Any?> {
+        val requestToken = "provider-${System.currentTimeMillis()}-${System.identityHashCode(projection)}"
+        val args = mutableMapOf<String, Any?>(
+            "requestToken" to requestToken,
+            "type" to method,
+            "callingPackage" to callerPackage,
+            "callerCertificateSha256" to resolveSigningCertificateSha256(callerPackage),
+            "sourceHint" to callerPackage,
+            "transport" to "content_provider"
+        )
+        when (method) {
+            "sign_event" -> {
+                args["content"] = Nip55RequestCodec.eventJsonFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+            }
+            "nip04_encrypt",
+            "nip04_decrypt",
+            "nip44_encrypt",
+            "nip44_decrypt" -> {
+                args["content"] = Nip55RequestCodec.payloadFromProjection(projection)
+                args["pubkey"] = Nip55RequestCodec.peerPubkeyFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+            }
+            "decrypt_zap_event" -> {
+                args["content"] = Nip55RequestCodec.payloadFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.zapCurrentUserFromProjection(projection)
+            }
+        }
+        return args
+    }
+
+    private fun resolveSigningCertificateSha256(packageName: String?): String? {
+        if (packageName.isNullOrBlank()) return null
+        val packageManager = context?.packageManager ?: return null
+        return try {
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val info = packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                val info = packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNATURES
+                )
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            val signature = signatures?.firstOrNull() ?: return null
+            val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+            digest.joinToString(":") { byte -> "%02X".format(byte) }
+        } catch (_: Exception) {
+            null
         }
     }
 }

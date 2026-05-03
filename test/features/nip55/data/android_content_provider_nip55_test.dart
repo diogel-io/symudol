@@ -19,7 +19,7 @@ void main() {
   });
 
   test(
-    'ContentProvider returns null rather than launching UI or cold signing',
+    'ContentProvider bridges warm-session queries without launching UI',
     () {
       final provider = File(
         'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55ContentProvider.kt',
@@ -29,15 +29,30 @@ void main() {
         provider,
         contains('class Nip55ContentProvider : ContentProvider()'),
       );
-      expect(provider, contains('return null'));
+      expect(provider, contains('Nip55ProviderBridge.query'));
+      expect(provider, contains('signEventCursor(operationResult, eventJson)'));
+      expect(provider, contains('operationResultCursor(operationResult)'));
       expect(provider, isNot(contains('startActivity')));
-      expect(provider, contains('no remembered permission'));
       expect(provider, contains('hasRequiredProjection(method, projection)'));
       expect(provider, contains('"nip44_encrypt"'));
       expect(provider, contains('"nip04_decrypt"'));
       expect(provider, contains('"decrypt_zap_event"'));
     },
   );
+
+  test('MainActivity attaches provider bridge to Flutter channel', () {
+    final mainActivity = File(
+      'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+    ).readAsStringSync();
+    final bridge = File(
+      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55ProviderBridge.kt',
+    ).readAsStringSync();
+
+    expect(mainActivity, contains('Nip55ProviderBridge.attach(it)'));
+    expect(mainActivity, contains('Nip55ProviderBridge.detach(channel)'));
+    expect(bridge, contains('handleNip55ProviderQuery'));
+    expect(bridge, contains('QUERY_TIMEOUT_MS'));
+  });
 
   test('NIP-55 codec uses lowercase event result column', () {
     final codec = File(
@@ -57,11 +72,10 @@ void main() {
       'documentation/nip55-contentprovider-mvp.md',
     ).readAsStringSync();
 
-    expect(doc, contains('Provider auto-signing is not enabled yet'));
-    expect(doc, contains('deferred safe stub'));
-    expect(doc, contains('does not read that store'));
-    expect(doc, contains('headless Flutter engine'));
-    expect(doc, contains('return `null`'));
+    expect(doc, contains('warm-session ContentProvider support'));
+    expect(doc, contains('not cold background signing'));
+    expect(doc, contains('same parser, approval policy, vault'));
+    expect(doc, contains('returns `null`'));
     expect(doc, contains('Projection shape validation'));
   });
 }
