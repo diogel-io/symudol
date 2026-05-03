@@ -382,6 +382,29 @@ void main() {
       );
     });
 
+    test('callback-less browser requests cannot be remembered', () async {
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: FakeNip55PermissionStore(),
+      );
+
+      await permissionController.handleRawIntent({
+        ...signEventRaw(id: 'browser-no-callback'),
+        'callingPackage': 'com.android.chrome',
+        'callerCertificateSha256': 'AA:BB',
+        'isBrowserFlow': true,
+      });
+      final request = requestController.state.requests.single;
+
+      expect(
+        permissionController.canRememberPendingSigningRequest(request.id),
+        isFalse,
+      );
+    });
+
     test('signing failure rejects external caller safely', () async {
       await controller.handleRawIntent({
         'requestToken': 'token-fail',
@@ -572,6 +595,18 @@ void main() {
       expect(emptyController.state.pendingPublicKeyRequest, isNull);
     });
 
+    test('get_public_key current_user mismatch rejects immediately', () async {
+      await controller.handleRawIntent({
+        'requestToken': 'pk-token-mismatch',
+        'type': 'get_public_key',
+        'currentUser': 'b' * 64,
+      });
+
+      expect(gateway.rejectedToken, 'pk-token-mismatch');
+      expect(gateway.rejectedError, contains('does not match active identity'));
+      expect(controller.state.pendingPublicKeyRequest, isNull);
+    });
+
     test('nip44_encrypt can be manually approved', () async {
       final bob = NostrKeyPairs(
         private:
@@ -639,6 +674,22 @@ void main() {
 
       expect(result, isNull);
       expect(requestController.state.requests, isEmpty);
+    });
+
+    test('provider get_public_key current_user mismatch returns rejection', () async {
+      final result = await controller.handleProviderQuery({
+        'requestToken': 'provider-pk-mismatch',
+        'type': 'get_public_key',
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
+        'currentUser': 'b' * 64,
+        'transport': 'content_provider',
+      });
+
+      expect(
+        result,
+        {'rejected': 'Requested account does not match active identity.'},
+      );
     });
 
     test('provider sign_event returns signed event during approval session', () async {

@@ -36,8 +36,22 @@ class Nip55ResponseBuilder {
     };
   }
 
-  Map<String, Object?> getPublicKeyExtras(VaultIdentity identity) {
-    return {'result': identity.publicKey, 'package': signerPackage};
+  Map<String, Object?> getPublicKeyExtras(
+    VaultIdentity identity, {
+    Nip55IncomingRequest? incoming,
+  }) {
+    final options = incoming?.webReturnOptions;
+    return {
+      'result': identity.publicKey,
+      if (incoming?.externalId != null) 'id': incoming!.externalId,
+      'package': signerPackage,
+      if (options?.callbackUrl != null)
+        'callbackUrl': options!.callbackUrl.toString(),
+      if (options != null && options.isBrowserFlow && !options.hasCallback)
+        'copyToClipboard': true,
+      if (options != null && options.isBrowserFlow && !options.hasCallback)
+        'clipboardLabel': 'NIP-55 public key result',
+    };
   }
 
   Map<String, Object?> operationResultExtras({

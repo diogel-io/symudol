@@ -236,6 +236,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         activeIdentity == null) {
       return null;
     }
+    if (!_matchesCurrentUser(incoming, activeIdentity.publicKey)) {
+      return {'rejected': 'Requested account does not match active identity.'};
+    }
 
     final decision = await _decide(incoming, activeIdentity.publicKey);
     if (decision is AutoReject) {
@@ -248,7 +251,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
     await _markGrantUsed(decision.grant);
     if (incoming.method == Nip55Method.getPublicKey) {
-      return _responseBuilder.getPublicKeyExtras(activeIdentity);
+      return _responseBuilder.getPublicKeyExtras(
+        activeIdentity,
+        incoming: incoming,
+      );
     }
     if (incoming.method == Nip55Method.signEvent) {
       final signingRequest = _mapper.mapSignEvent(
@@ -325,6 +331,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         'Select an identity before sharing a public key.',
       );
     }
+    if (!_matchesCurrentUser(incoming, activeIdentity.publicKey)) {
+      throw const Nip55Failure(
+        'Requested account does not match active identity.',
+      );
+    }
 
     final decision = await _decide(incoming, activeIdentity.publicKey);
     if (decision is AutoReject) {
@@ -348,7 +359,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _markGrantUsed(decision.grant);
       await _gateway.completeNip55Intent(
         requestToken: incoming.requestToken,
-        extras: _responseBuilder.getPublicKeyExtras(activeIdentity),
+        extras: _responseBuilder.getPublicKeyExtras(
+          activeIdentity,
+          incoming: incoming,
+        ),
       );
       state = state.copyWith(
         isLoading: false,
@@ -480,7 +494,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
     await _gateway.completeNip55Intent(
       requestToken: request.requestToken,
-      extras: _responseBuilder.getPublicKeyExtras(activeIdentity),
+      extras: _responseBuilder.getPublicKeyExtras(
+        activeIdentity,
+        incoming: request,
+      ),
     );
     final approvalSessionExpiresAt = _nextApprovalSessionExpiry();
     state = state.copyWith(
@@ -894,5 +911,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         ),
       );
     });
+  }
+
+  bool _matchesCurrentUser(
+    Nip55IncomingRequest incoming,
+    String activeIdentityPubkey,
+  ) {
+    final currentUser = incoming.currentUser;
+    return currentUser == null || currentUser == activeIdentityPubkey;
   }
 }

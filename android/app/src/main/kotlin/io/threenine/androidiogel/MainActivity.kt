@@ -107,6 +107,7 @@ class MainActivity : FlutterActivity() {
             "callbackUrl" to Nip55UriParser.queryParameter(data, "callbackUrl"),
             "returnType" to Nip55UriParser.queryParameter(data, "returnType"),
             "compressionType" to Nip55UriParser.queryParameter(data, "compressionType"),
+            "isBrowserFlow" to intent.getBooleanExtra("isBrowserFlow", false),
             "callingPackage" to callerPackage,
             "callerAppLabel" to (intent.getStringExtra("callerAppLabel") ?: resolveAppLabel(callerPackage)),
             "callerCertificateSha256" to (

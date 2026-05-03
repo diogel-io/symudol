@@ -28,9 +28,23 @@ void main() {
       contains('Nip55UriParser.queryParameter(data, "type")'),
     );
     expect(mainActivity, contains('Nip55UriParser.content(data)'));
+    expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
     expect(uriParser, contains('substringBefore("?")'));
+  });
+
+  test('Bridge marks browsable nostrsigner URLs as browser flow', () {
+    final bridgeActivity = File(
+      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55BridgeActivity.kt',
+    ).readAsStringSync();
+
+    expect(
+      bridgeActivity,
+      contains(
+        'putExtra("isBrowserFlow", original.hasCategory(Intent.CATEGORY_BROWSABLE))',
+      ),
+    );
   });
 
   test('MainActivity supports callback launch and clipboard fallback', () {
@@ -39,7 +53,10 @@ void main() {
     ).readAsStringSync();
 
     expect(mainActivity, contains('maybeLaunchCallback(extras)'));
-    expect(mainActivity, contains('buildCallbackUri(callbackUrl, result, extras)'));
+    expect(
+      mainActivity,
+      contains('buildCallbackUri(callbackUrl, result, extras)'),
+    );
     expect(mainActivity, contains('callbackUrl.endsWith("=")'));
     expect(mainActivity, contains('Uri.encode(result)'));
     expect(mainActivity, contains('appendQueryParameter("result", result)'));

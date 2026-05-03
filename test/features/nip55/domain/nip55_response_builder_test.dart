@@ -174,4 +174,51 @@ void main() {
       'package': 'io.threenine.androidiogel',
     });
   });
+
+  test('browser get_public_key callback includes callback result metadata', () {
+    final identity = VaultIdentity(
+      localId: 'local',
+      publicKey: 'a' * 64,
+      createdAt: DateTime.utc(2026, 5, 1),
+      origin: IdentityOrigin.generated,
+    );
+    final incoming = Nip55IncomingRequest(
+      localId: 'local',
+      requestToken: 'token-pk-web',
+      method: Nip55Method.getPublicKey,
+      externalId: 'caller-id',
+      receivedAt: DateTime.utc(2026, 5, 1),
+      webReturnOptions: Nip55WebReturnOptions(
+        callbackUrl: Uri.parse('https://example.com/callback'),
+      ),
+    );
+
+    final extras = builder.getPublicKeyExtras(identity, incoming: incoming);
+
+    expect(extras['result'], identity.publicKey);
+    expect(extras['id'], 'caller-id');
+    expect(extras['callbackUrl'], 'https://example.com/callback');
+    expect(extras['copyToClipboard'], isNull);
+  });
+
+  test('browser get_public_key without callback marks clipboard fallback', () {
+    final identity = VaultIdentity(
+      localId: 'local',
+      publicKey: 'a' * 64,
+      createdAt: DateTime.utc(2026, 5, 1),
+      origin: IdentityOrigin.generated,
+    );
+    final incoming = Nip55IncomingRequest(
+      localId: 'local',
+      requestToken: 'token-pk-web',
+      method: Nip55Method.getPublicKey,
+      receivedAt: DateTime.utc(2026, 5, 1),
+      webReturnOptions: const Nip55WebReturnOptions(isBrowserFlow: true),
+    );
+
+    final extras = builder.getPublicKeyExtras(identity, incoming: incoming);
+
+    expect(extras['copyToClipboard'], isTrue);
+    expect(extras['clipboardLabel'], 'NIP-55 public key result');
+  });
 }

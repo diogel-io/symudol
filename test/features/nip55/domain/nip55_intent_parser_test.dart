@@ -89,6 +89,17 @@ void main() {
       );
     });
 
+    test('parses explicit browser flow without callback metadata', () {
+      final request = parser.parse({
+        'requestToken': 'token-browser-no-callback',
+        'type': 'get_public_key',
+        'isBrowserFlow': true,
+      });
+
+      expect(request.webReturnOptions.isBrowserFlow, isTrue);
+      expect(request.webReturnOptions.hasCallback, isFalse);
+    });
+
     test('rejects unknown unsupported method', () {
       expect(
         () => parser.parse({'requestToken': 'token-3', 'type': 'unknown'}),

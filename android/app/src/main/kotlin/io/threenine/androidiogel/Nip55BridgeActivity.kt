@@ -33,6 +33,7 @@ class Nip55BridgeActivity : Activity() {
             putExtra("current_user", original.getStringExtra("current_user"))
             putExtra("pubkey", original.getStringExtra("pubkey"))
             putExtra("permissions", original.getStringExtra("permissions"))
+            putExtra("isBrowserFlow", original.hasCategory(Intent.CATEGORY_BROWSABLE))
             putExtra("callingPackage", callerPackage)
             putExtra("callerAppLabel", resolveAppLabel(callerPackage))
             putExtra("callerCertificateSha256", resolveSigningCertificateSha256(callerPackage))
