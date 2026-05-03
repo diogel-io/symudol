@@ -137,11 +137,12 @@ Expected:
 
 ## 9. Second native intent while first is active
 
-Current caveat: Diogel is strict single-flight, but `MainActivity` cannot independently settle a second native caller while it owns the first caller’s activity result. The second incoming intent is not allowed to call `setResult(...)`/`finish()` because that can poison the active request.
+Diogel is strict single-flight for interactive NIP-55 requests. `Nip55BridgeActivity` owns each caller result, so a second native caller can be rejected as busy without finishing or poisoning the active caller.
 
 Expected current behavior:
 
-- First request remains protected and can complete normally.
-- Second independent settlement is deferred to the future `Nip55BridgeActivity` work described in `documentation/nip55-bridge-activity-design.md`.
+- First request remains protected and can complete normally with its original `id`/result pairing.
+- Second request receives a deterministic busy rejection: “Diogel is already reviewing another NIP-55 request”.
+- No `results` batch array is returned because true batching is intentionally unsupported for now.
 
-Do not treat this as full concurrent caller support yet.
+See `documentation/nip55-batch-and-single-flight-decision.md` for the WP10 decision.

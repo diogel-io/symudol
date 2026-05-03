@@ -480,12 +480,50 @@ void main() {
       expect(requestController.state.requests, isEmpty);
     });
 
+    test('multiple sequential requests preserve id/result pairing', () async {
+      await controller.handleRawIntent(signEventRaw(id: 'first'));
+      final firstRequestId = controller.state.pendingSigningRequestId!;
+      await requestController.approveRequest(firstRequestId);
+      await controller.completeApprovedSigningRequest(firstRequestId);
+
+      expect(gateway.completedToken, 'token-first');
+      expect(gateway.completedExtras?['id'], 'first');
+      final firstResult = gateway.completedExtras?['result'];
+      expect(firstResult, isA<String>());
+
+      await controller.handleRawIntent(signEventRaw(id: 'second'));
+      final secondRequestId = controller.state.pendingSigningRequestId!;
+      await requestController.approveRequest(secondRequestId);
+      await controller.completeApprovedSigningRequest(secondRequestId);
+
+      expect(gateway.completedToken, 'token-second');
+      expect(gateway.completedExtras?['id'], 'second');
+      expect(gateway.completedExtras?['result'], isA<String>());
+      expect(gateway.completedExtras?['result'], isNot(firstResult));
+    });
+
     test('concurrent intent is rejected as busy', () async {
       await controller.handleRawIntent(signEventRaw());
       await controller.handleRawIntent(signEventRaw(id: 'second'));
 
+      expect(gateway.rejectedToken, 'token-second');
       expect(gateway.rejectedError, contains('already reviewing'));
       expect(requestController.state.requests, hasLength(1));
+    });
+
+    test('concurrent busy rejection does not poison first request result', () async {
+      await controller.handleRawIntent(signEventRaw(id: 'first'));
+      final firstRequestId = controller.state.pendingSigningRequestId!;
+
+      await controller.handleRawIntent(signEventRaw(id: 'second'));
+      expect(gateway.rejectedToken, 'token-second');
+
+      await requestController.approveRequest(firstRequestId);
+      await controller.completeApprovedSigningRequest(firstRequestId);
+
+      expect(gateway.completedToken, 'token-first');
+      expect(gateway.completedExtras?['id'], 'first');
+      expect(gateway.completedExtras?['event'], contains('"sig"'));
     });
 
     test('in-flight intent is rejected as busy before pending UI exists', () async {
