@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
@@ -112,6 +112,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final Duration _pendingUnlockTimeout;
   final DateTime Function() _now;
   Timer? _pendingUnlockTimer;
+  
+  // Track concurrency synchronously to avoid races in async flows
+  bool _isParsingIntent = false;
 
   Nip55Controller({
     required Nip55Gateway gateway,
@@ -161,9 +164,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   Future<void> handleRawIntent(Map<String, Object?> raw) async {
-    Nip55IncomingRequest? incoming;
-    if (state.hasPendingExternalRequest) {
-      final busyRequest = _safeParseForRejection(raw);
+    // Check busy synchronously
+    if (_isParsingIntent || state.hasPendingExternalRequest) {
+      // Rejection parsing still happens in isolate (or sync in test) to avoid jank
+      final busyRequest = await _safeParseForRejection(raw);
       if (busyRequest == null) return;
       await _gateway.rejectNip55Intent(
         requestToken: busyRequest.requestToken,
@@ -172,19 +176,35 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
 
+    _isParsingIntent = true;
     state = state.copyWith(
       isLoading: true,
       clearFailure: true,
       clearSuccess: true,
     );
+    
+    // The rest is async
     try {
-      incoming = _parser.parse(raw);
-      if (incoming.method == Nip55Method.getPublicKey) {
-        await _handleGetPublicKey(incoming);
-      } else if (incoming.method == Nip55Method.signEvent) {
-        await _handleSignEvent(incoming);
+      await _continueHandleRawIntent(raw);
+    } finally {
+      _isParsingIntent = false;
+    }
+  }
+
+  Future<void> _continueHandleRawIntent(Map<String, Object?> raw) async {
+    Nip55IncomingRequest? incoming;
+    try {
+      final parser = _parser;
+      final parsedIncoming = await ConcurrencyUtils.runTask(
+        () => parser.parse(raw),
+      );
+      incoming = parsedIncoming;
+      if (parsedIncoming.method == Nip55Method.getPublicKey) {
+        await _handleGetPublicKey(parsedIncoming);
+      } else if (parsedIncoming.method == Nip55Method.signEvent) {
+        await _handleSignEvent(parsedIncoming);
       } else {
-        await _handleCryptoOperation(incoming);
+        await _handleCryptoOperation(parsedIncoming);
       }
     } on Nip55ParseException catch (error) {
       state = state.copyWith(
@@ -230,7 +250,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Map<String, Object?> raw,
   ) async {
     if (state.hasPendingExternalRequest) return null;
-    final incoming = _parser.parse(raw);
+    final parser = _parser;
+    final incoming = await ConcurrencyUtils.runTask(() => parser.parse(raw));
     final activeIdentity = _vaultController.state.activeIdentity;
     if (_vaultController.state.vaultState is! VaultUnlocked ||
         activeIdentity == null) {
@@ -837,14 +858,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return null;
   }
 
-  Nip55IncomingRequest? _safeParseForRejection(Map<String, Object?> raw) {
-    try {
-      return _parser.parse(raw);
-    } catch (_) {
-      return null;
-    }
-  }
-
   bool _isWaitingForUnlockFailure(Nip55Failure error) {
     return error.message.startsWith('Unlock Diogel');
   }
@@ -920,5 +933,16 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) {
     final currentUser = incoming.currentUser;
     return currentUser == null || currentUser == activeIdentityPubkey;
+  }
+
+  Future<Nip55IncomingRequest?> _safeParseForRejection(
+    Map<String, Object?> raw,
+  ) async {
+    try {
+      final parser = _parser;
+      return await ConcurrencyUtils.runTask(() => parser.parse(raw));
+    } catch (_) {
+      return null;
+    }
   }
 }

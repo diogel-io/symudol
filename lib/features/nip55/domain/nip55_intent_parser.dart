@@ -35,6 +35,8 @@ class Nip55IntentParser {
     }
 
     final content = raw['content'] as String?;
+    // NOTE: This can be a heavy operation for large events.
+    // If UI jank persists, consider moving this whole method to a Future and using Isolate.run.
     final payload = _parsePayload(
       method: method,
       content: content,

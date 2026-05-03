@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,8 +44,14 @@ class _DiogelAppState extends ConsumerState<DiogelApp>
     if (vaultControllerState.vaultState is VaultUnlocked) {
       final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
       if (timeoutMinutes > 0) {
+        if (kDebugMode) {
+          dev.log('Resetting inactivity timer: $timeoutMinutes minutes');
+        }
         _inactivityTimer = Timer(Duration(minutes: timeoutMinutes), () {
           if (!mounted) return;
+          if (kDebugMode) {
+            dev.log('Inactivity timer expired');
+          }
           ref.read(vaultControllerProvider.notifier).expireSession();
         });
       }
@@ -60,17 +68,26 @@ class _DiogelAppState extends ConsumerState<DiogelApp>
     }
 
     final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
+    if (kDebugMode) {
+      dev.log('Scheduling background lock: $delayMinutes minutes');
+    }
     if (delayMinutes == -1) {
       return;
     }
 
     if (delayMinutes == 0) {
+      if (kDebugMode) {
+        dev.log('Background lock delay is 0, locking immediately');
+      }
       ref.read(vaultControllerProvider.notifier).lock();
       return;
     }
 
     _backgroundLockTimer = Timer(Duration(minutes: delayMinutes), () {
       if (!mounted) return;
+      if (kDebugMode) {
+        dev.log('Background lock timer expired');
+      }
       ref.read(vaultControllerProvider.notifier).expireSession();
     });
   }
@@ -103,10 +120,23 @@ class _DiogelAppState extends ConsumerState<DiogelApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (kDebugMode) {
+      dev.log('App lifecycle state changed: $state');
+    }
+
+    if (state == AppLifecycleState.detached) {
+      if (kDebugMode) {
+        dev.log('App is detaching, cleaning up timers');
+      }
+      _cancelLockTimers();
+      return;
+    }
+
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       _scheduleBackgroundLock();
-    } else if (state == AppLifecycleState.resumed) {
+    } else if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive) {
       _backgroundLockTimer?.cancel();
       _resetInactivityTimer();
     }

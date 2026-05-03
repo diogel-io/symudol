@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
+import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
@@ -52,6 +55,9 @@ class VaultServiceImpl implements VaultService {
 
   @override
   Future<void> init() async {
+    if (_state is VaultUnlocked) {
+      return;
+    }
     final sentinel = await _store.getSentinel();
     if (sentinel == null) {
       _state = const NoVault();
@@ -177,8 +183,8 @@ class VaultServiceImpl implements VaultService {
     final trimmedInput = keyInput.trim();
     if (trimmedInput.startsWith('nsec1')) {
       try {
-        hexPrivateKey = nostr.services.bech32.decodeNsecKeyToPrivateKey(
-          trimmedInput,
+        hexPrivateKey = await ConcurrencyUtils.runTask(
+          () => nostr.services.bech32.decodeNsecKeyToPrivateKey(trimmedInput),
         );
       } catch (e) {
         throw const VaultStorageException('Invalid nsec key format');
@@ -195,9 +201,12 @@ class VaultServiceImpl implements VaultService {
 
     late final String publicKey;
     try {
-      publicKey = nostr.services.keys
-          .generateKeyPairFromExistingPrivateKey(hexPrivateKey)
-          .public;
+      publicKey = await ConcurrencyUtils.runTask(
+        () =>
+            nostr.services.keys
+                .generateKeyPairFromExistingPrivateKey(hexPrivateKey)
+                .public,
+      );
     } catch (e) {
       // This should ideally be caught by normalization, but as a safety measure:
       throw VaultStorageException('Failed to derive public key: $e');
@@ -267,11 +276,13 @@ class VaultServiceImpl implements VaultService {
     final record = await _activeRecordFor(identityLocalId);
 
     try {
-      final signedEvent = _cryptoService.signEvent(
-        privateKeyHex: record.secretPayload,
-        draft: draft,
+      final signedEvent = await ConcurrencyUtils.runTask(
+        () => _cryptoService.signEvent(
+          privateKeyHex: record.secretPayload,
+          draft: draft,
+        ),
       );
-      if (!_cryptoService.verifySignedEvent(signedEvent)) {
+      if (!await ConcurrencyUtils.runTask(() => _cryptoService.verifySignedEvent(signedEvent))) {
         throw const VaultSigningException('Signed event failed verification');
       }
       return signedEvent;
@@ -290,10 +301,12 @@ class VaultServiceImpl implements VaultService {
   }) async {
     final record = await _activeRecordFor(identityLocalId);
     return _runCryptoOperation(
-      () => _cryptoService.nip04Encrypt(
-        privateKeyHex: record.secretPayload,
-        peerPubkeyHex: peerPubkeyHex,
-        plaintext: plaintext,
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.nip04Encrypt(
+          privateKeyHex: record.secretPayload,
+          peerPubkeyHex: peerPubkeyHex,
+          plaintext: plaintext,
+        ),
       ),
     );
   }
@@ -306,10 +319,12 @@ class VaultServiceImpl implements VaultService {
   }) async {
     final record = await _activeRecordFor(identityLocalId);
     return _runCryptoOperation(
-      () => _cryptoService.nip04Decrypt(
-        privateKeyHex: record.secretPayload,
-        peerPubkeyHex: peerPubkeyHex,
-        ciphertext: ciphertext,
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.nip04Decrypt(
+          privateKeyHex: record.secretPayload,
+          peerPubkeyHex: peerPubkeyHex,
+          ciphertext: ciphertext,
+        ),
       ),
     );
   }
@@ -322,10 +337,12 @@ class VaultServiceImpl implements VaultService {
   }) async {
     final record = await _activeRecordFor(identityLocalId);
     return _runCryptoOperation(
-      () => _cryptoService.nip44Encrypt(
-        privateKeyHex: record.secretPayload,
-        peerPubkeyHex: peerPubkeyHex,
-        plaintext: plaintext,
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.nip44Encrypt(
+          privateKeyHex: record.secretPayload,
+          peerPubkeyHex: peerPubkeyHex,
+          plaintext: plaintext,
+        ),
       ),
     );
   }
@@ -338,10 +355,12 @@ class VaultServiceImpl implements VaultService {
   }) async {
     final record = await _activeRecordFor(identityLocalId);
     return _runCryptoOperation(
-      () => _cryptoService.nip44Decrypt(
-        privateKeyHex: record.secretPayload,
-        peerPubkeyHex: peerPubkeyHex,
-        ciphertext: ciphertext,
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.nip44Decrypt(
+          privateKeyHex: record.secretPayload,
+          peerPubkeyHex: peerPubkeyHex,
+          ciphertext: ciphertext,
+        ),
       ),
     );
   }
@@ -353,9 +372,11 @@ class VaultServiceImpl implements VaultService {
   }) async {
     final record = await _activeRecordFor(identityLocalId);
     return _runCryptoOperation(
-      () => _cryptoService.decryptZapEvent(
-        privateKeyHex: record.secretPayload,
-        eventJson: eventJson,
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.decryptZapEvent(
+          privateKeyHex: record.secretPayload,
+          eventJson: eventJson,
+        ),
       ),
     );
   }
@@ -436,8 +457,8 @@ class VaultServiceImpl implements VaultService {
       throw const IdentityMismatchException();
     }
 
-    final derivedPublicKey = _cryptoService.derivePublicKey(
-      record.secretPayload,
+    final derivedPublicKey = await ConcurrencyUtils.runTask(
+      () => _cryptoService.derivePublicKey(record.secretPayload),
     );
     if (derivedPublicKey != record.publicKey) {
       throw const VaultSigningException(
@@ -447,9 +468,9 @@ class VaultServiceImpl implements VaultService {
     return record;
   }
 
-  String _runCryptoOperation(String Function() operation) {
+  Future<String> _runCryptoOperation(FutureOr<String> Function() operation) async {
     try {
-      return operation();
+      return await operation();
     } on VaultException {
       rethrow;
     } catch (_) {

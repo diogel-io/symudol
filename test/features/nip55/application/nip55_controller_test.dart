@@ -512,43 +512,81 @@ void main() {
     });
 
     test('concurrent busy rejection does not poison first request result', () async {
-      await controller.handleRawIntent(signEventRaw(id: 'first'));
-      final firstRequestId = controller.state.pendingSigningRequestId!;
+      final isolatedGateway = FakeNip55Gateway();
+      final isolatedController = Nip55Controller(
+        gateway: isolatedGateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+      );
 
-      await controller.handleRawIntent(signEventRaw(id: 'second'));
-      expect(gateway.rejectedToken, 'token-second');
+      await isolatedController.handleRawIntent(signEventRaw(id: 'first'));
+      final firstRequestId = isolatedController.state.pendingSigningRequestId!;
+
+      await isolatedController.handleRawIntent(signEventRaw(id: 'second'));
+      expect(isolatedGateway.rejectedToken, 'token-second');
 
       await requestController.approveRequest(firstRequestId);
-      await controller.completeApprovedSigningRequest(firstRequestId);
+      await isolatedController.completeApprovedSigningRequest(firstRequestId);
 
-      expect(gateway.completedToken, 'token-first');
-      expect(gateway.completedExtras?['id'], 'first');
-      expect(gateway.completedExtras?['event'], contains('"sig"'));
+      expect(isolatedGateway.completedToken, 'token-first');
+      expect(isolatedGateway.completedExtras?['id'], 'first');
+      expect(isolatedGateway.completedExtras?['event'], contains('"sig"'));
     });
 
     test('in-flight intent is rejected as busy before pending UI exists', () async {
       final slowStore = SlowNip55PermissionStore();
+      final localGateway = FakeNip55Gateway();
+      final localVaultService = VaultServiceImpl(FakeVaultStore());
+      final localVaultController = VaultController(localVaultService);
+      await localVaultController.createVault('1234');
+      await localVaultController.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+      final localRequestController = RequestController(
+        localVaultController,
+        RealSignerService(localVaultService),
+      );
+      
       final slowController = Nip55Controller(
-        gateway: gateway,
-        vaultController: vaultController,
-        vaultService: vaultService,
-        requestController: requestController,
+        gateway: localGateway,
+        vaultController: localVaultController,
+        vaultService: localVaultService,
+        requestController: localRequestController,
         permissionStore: slowStore,
       );
 
-      final first = slowController.handleRawIntent(signEventRaw(id: 'first'));
+      final firstRaw = {
+        'requestToken': 'token-first',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"first","tags":[]}',
+        'id': 'first',
+        'currentUser': localVaultController.state.activeIdentity!.publicKey,
+      };
+      final secondRaw = {
+        'requestToken': 'token-second',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"second","tags":[]}',
+        'id': 'second',
+        'currentUser': localVaultController.state.activeIdentity!.publicKey,
+      };
+
+      final first = slowController.handleRawIntent(firstRaw);
+      
+      // Since handleRawIntent is async but starts synchronously, 
+      // we check state immediately.
       expect(slowController.state.isLoading, isTrue);
 
-      await slowController.handleRawIntent(signEventRaw(id: 'second'));
+      await slowController.handleRawIntent(secondRaw);
 
-      expect(gateway.rejectedToken, 'token-second');
-      expect(gateway.rejectedError, contains('already reviewing'));
-      expect(requestController.state.requests, isEmpty);
+      expect(localGateway.rejectedToken, 'token-second');
+      expect(localGateway.rejectedError, contains('already reviewing'));
+      expect(localRequestController.state.requests, isEmpty);
 
       slowStore.allowListGrants.complete();
       await first;
-      expect(requestController.state.requests, hasLength(1));
-      expect(requestController.state.requests.single.id, isNot('second'));
+      expect(localRequestController.state.requests, hasLength(1));
+      expect(localRequestController.state.requests.single.id, isNot('second'));
     });
 
     test('get_public_key approval returns pubkey', () async {

@@ -1,3 +1,5 @@
+import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_failure.dart';
@@ -67,11 +69,26 @@ class VaultController extends StateNotifier<VaultControllerState> {
   }
 
   Future<void> initialize() async {
+    if (kDebugMode) {
+      dev.log('VaultController: initializing. State: ${state.vaultState.runtimeType}');
+    }
+
+    if (_vaultService.state is VaultUnlocked) {
+      await _refreshState();
+      return;
+    }
+
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.init();
       await _refreshState();
-    } catch (e) {
+      if (kDebugMode) {
+        dev.log('VaultController: initialized. State: ${state.vaultState.runtimeType}');
+      }
+    } catch (e, stack) {
+      if (kDebugMode) {
+        dev.log('VaultController: initialization error: $e', stackTrace: stack);
+      }
       state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);
