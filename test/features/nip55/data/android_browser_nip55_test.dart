@@ -8,10 +8,11 @@ void main() {
       'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
     ).readAsStringSync();
 
-    expect(mainActivity, contains('data.getQueryParameter("callbackUrl")'));
-    expect(mainActivity, contains('data.getQueryParameter("returnType")'));
-    expect(mainActivity, contains('data.getQueryParameter("compressionType")'));
-    expect(mainActivity, contains('data.getQueryParameter("type")'));
+    expect(mainActivity, contains('data.safeQueryParameter("callbackUrl")'));
+    expect(mainActivity, contains('data.safeQueryParameter("returnType")'));
+    expect(mainActivity, contains('data.safeQueryParameter("compressionType")'));
+    expect(mainActivity, contains('data.safeQueryParameter("type")'));
+    expect(mainActivity, contains('if (!isHierarchical) return null'));
     expect(mainActivity, contains('substringBefore("?")'));
   });
 

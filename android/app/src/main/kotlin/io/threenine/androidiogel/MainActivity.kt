@@ -88,15 +88,15 @@ class MainActivity : FlutterActivity() {
         val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
         return mapOf(
             "requestToken" to token,
-            "type" to (intent.getStringExtra("type") ?: data.getQueryParameter("type")),
+            "type" to (intent.getStringExtra("type") ?: data.safeQueryParameter("type")),
             "content" to extractContent(data),
-            "id" to (intent.getStringExtra("id") ?: data.getQueryParameter("id")),
-            "currentUser" to (intent.getStringExtra("current_user") ?: data.getQueryParameter("current_user")),
-            "pubkey" to (intent.getStringExtra("pubkey") ?: data.getQueryParameter("pubkey")),
-            "permissions" to (intent.getStringExtra("permissions") ?: data.getQueryParameter("permissions")),
-            "callbackUrl" to data.getQueryParameter("callbackUrl"),
-            "returnType" to data.getQueryParameter("returnType"),
-            "compressionType" to data.getQueryParameter("compressionType"),
+            "id" to (intent.getStringExtra("id") ?: data.safeQueryParameter("id")),
+            "currentUser" to (intent.getStringExtra("current_user") ?: data.safeQueryParameter("current_user")),
+            "pubkey" to (intent.getStringExtra("pubkey") ?: data.safeQueryParameter("pubkey")),
+            "permissions" to (intent.getStringExtra("permissions") ?: data.safeQueryParameter("permissions")),
+            "callbackUrl" to data.safeQueryParameter("callbackUrl"),
+            "returnType" to data.safeQueryParameter("returnType"),
+            "compressionType" to data.safeQueryParameter("compressionType"),
             "callingPackage" to callerPackage,
             "callerAppLabel" to (intent.getStringExtra("callerAppLabel") ?: resolveAppLabel(callerPackage)),
             "callerCertificateSha256" to (
@@ -109,6 +109,15 @@ class MainActivity : FlutterActivity() {
             "bridgeToken" to intent.getStringExtra("requestToken"),
             "dataUri" to data.toString()
         )
+    }
+
+    private fun Uri.safeQueryParameter(name: String): String? {
+        if (!isHierarchical) return null
+        return try {
+            getQueryParameter(name)
+        } catch (_: UnsupportedOperationException) {
+            null
+        }
     }
 
     private fun resolveAppLabel(packageName: String?): String? {
