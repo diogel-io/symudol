@@ -166,6 +166,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         await _handleGetPublicKey(incoming);
       } else if (incoming.method == Nip55Method.signEvent) {
         await _handleSignEvent(incoming);
+      } else {
+        throw Nip55Failure(
+          '${incoming.method.wireName} is parsed but not implemented yet.',
+        );
       }
     } on Nip55ParseException catch (error) {
       state = state.copyWith(
@@ -225,6 +229,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         await _handleGetPublicKey(incoming);
       } else if (incoming.method == Nip55Method.signEvent) {
         await _handleSignEvent(incoming);
+      } else {
+        throw Nip55Failure(
+          '${incoming.method.wireName} is parsed but not implemented yet.',
+        );
       }
     } on Nip55Failure catch (error) {
       state = state.copyWith(isLoading: false, failure: error);
@@ -569,7 +577,16 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       final kind = incoming.eventJson?['kind'];
       return SignEventScope(kind is int ? kind : null);
     }
-    return UnsupportedScope(incoming.method.wireName);
+    return switch (incoming.method) {
+      Nip55Method.nip04Encrypt => const Nip04EncryptScope(),
+      Nip55Method.nip04Decrypt => const Nip04DecryptScope(),
+      Nip55Method.nip44Encrypt => const Nip44EncryptScope(),
+      Nip55Method.nip44Decrypt => const Nip44DecryptScope(),
+      Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
+      Nip55Method.getPublicKey ||
+      Nip55Method.signEvent ||
+      Nip55Method.unsupported => UnsupportedScope(incoming.method.wireName),
+    };
   }
 
   SigningRequest? _findRequest(String requestId) {

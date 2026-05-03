@@ -1,5 +1,6 @@
 import 'nip55_client.dart';
 import 'nip55_method.dart';
+import 'nip55_payload.dart';
 import 'nip55_web_return_options.dart';
 
 class Nip55IncomingRequest {
@@ -15,6 +16,7 @@ class Nip55IncomingRequest {
   final Nip55ClientIdentity clientIdentity;
   final String? dataUri;
   final Map<String, Object?>? eventJson;
+  final Nip55Payload payload;
   final Nip55WebReturnOptions webReturnOptions;
   final DateTime receivedAt;
 
@@ -32,9 +34,16 @@ class Nip55IncomingRequest {
     this.clientIdentity = const Nip55ClientIdentity(),
     this.dataUri,
     this.eventJson,
+    Nip55Payload? payload,
     this.webReturnOptions = const Nip55WebReturnOptions(),
-  });
+  }) : payload = payload ?? const GetPublicKeyPayload();
 
   bool get isSignEvent => method == Nip55Method.signEvent;
   bool get isGetPublicKey => method == Nip55Method.getPublicKey;
+  bool get isCryptoOperation =>
+      method == Nip55Method.nip04Encrypt ||
+      method == Nip55Method.nip04Decrypt ||
+      method == Nip55Method.nip44Encrypt ||
+      method == Nip55Method.nip44Decrypt ||
+      method == Nip55Method.decryptZapEvent;
 }

@@ -3,17 +3,34 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('MainActivity parses browser NIP-55 return URL params', () {
+  test('MainActivity uses shared parser for browser NIP-55 URL params', () {
     final mainActivity = File(
       'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
     ).readAsStringSync();
+    final uriParser = File(
+      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55UriParser.kt',
+    ).readAsStringSync();
 
-    expect(mainActivity, contains('data.safeQueryParameter("callbackUrl")'));
-    expect(mainActivity, contains('data.safeQueryParameter("returnType")'));
-    expect(mainActivity, contains('data.safeQueryParameter("compressionType")'));
-    expect(mainActivity, contains('data.safeQueryParameter("type")'));
-    expect(mainActivity, contains('if (!isHierarchical) return null'));
-    expect(mainActivity, contains('substringBefore("?")'));
+    expect(
+      mainActivity,
+      contains('Nip55UriParser.queryParameter(data, "callbackUrl")'),
+    );
+    expect(
+      mainActivity,
+      contains('Nip55UriParser.queryParameter(data, "returnType")'),
+    );
+    expect(
+      mainActivity,
+      contains('Nip55UriParser.queryParameter(data, "compressionType")'),
+    );
+    expect(
+      mainActivity,
+      contains('Nip55UriParser.queryParameter(data, "type")'),
+    );
+    expect(mainActivity, contains('Nip55UriParser.content(data)'));
+    expect(uriParser, contains('if (uri.isHierarchical)'));
+    expect(uriParser, contains('uri.schemeSpecificPart'));
+    expect(uriParser, contains('substringBefore("?")'));
   });
 
   test('MainActivity supports callback launch and clipboard fallback', () {

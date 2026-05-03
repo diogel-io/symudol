@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'nip55_client.dart';
 import 'nip55_failure.dart';
 import 'nip55_incoming_request.dart';
 import 'nip55_method.dart';
+import 'nip55_payload.dart';
 import 'nip55_web_return_options.dart';
 
 class Nip55IntentParser {
@@ -28,14 +27,24 @@ class Nip55IntentParser {
       throw const Nip55ParseException('Invalid current_user pubkey');
     }
 
-    final content = raw['content'] as String?;
-    Map<String, Object?>? eventJson;
-    if (method == Nip55Method.signEvent) {
-      if (content == null || content.trim().isEmpty) {
-        throw const Nip55ParseException('Missing sign_event content');
-      }
-      eventJson = _decodeEventJson(content);
+    final pubkey = raw['pubkey'] as String?;
+    if (method.requiresPeerPubkey && !_isHex64(pubkey)) {
+      throw Nip55ParseException(
+        'Missing or invalid ${method.wireName} peer pubkey',
+      );
     }
+
+    final content = raw['content'] as String?;
+    final payload = _parsePayload(
+      method: method,
+      content: content,
+      pubkey: pubkey,
+    );
+    final eventJson = switch (payload) {
+      SignEventPayload(:final unsignedEvent) => unsignedEvent,
+      DecryptZapEventPayload(:final eventJson) => eventJson,
+      _ => null,
+    };
 
     return Nip55IncomingRequest(
       localId: 'nip55-${parsedAt.microsecondsSinceEpoch}',
@@ -44,12 +53,13 @@ class Nip55IntentParser {
       content: content,
       externalId: raw['id'] as String?,
       currentUser: currentUser,
-      pubkey: raw['pubkey'] as String?,
+      pubkey: pubkey,
       permissions: raw['permissions'] as String?,
       sourceHint: raw['sourceHint'] as String?,
       clientIdentity: _parseClientIdentity(raw),
       dataUri: raw['dataUri'] as String?,
       eventJson: eventJson,
+      payload: payload,
       webReturnOptions: Nip55WebReturnOptions.fromRaw(raw),
       receivedAt: parsedAt,
     );
@@ -78,21 +88,58 @@ class Nip55IntentParser {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
-  Map<String, Object?> _decodeEventJson(String content) {
-    try {
-      final decoded = jsonDecode(content);
-      if (decoded is! Map) {
-        throw const Nip55ParseException(
-          'sign_event content must be a JSON object',
-        );
-      }
-      return decoded.cast<String, Object?>();
-    } on Nip55ParseException {
-      rethrow;
-    } catch (error) {
-      throw Nip55ParseException('Malformed sign_event JSON: $error');
-    }
+  Nip55Payload _parsePayload({
+    required Nip55Method method,
+    required String? content,
+    required String? pubkey,
+  }) {
+    return switch (method) {
+      Nip55Method.getPublicKey => const GetPublicKeyPayload(),
+      Nip55Method.signEvent => SignEventPayload(
+        decodeNip55JsonObject(
+          methodLabel: 'sign_event',
+          content: _requiredContent(content, 'Missing sign_event content'),
+        ),
+      ),
+      Nip55Method.nip04Encrypt => Nip04EncryptPayload(
+        content: _requiredContent(content, 'Missing nip04_encrypt content'),
+        peerPubkey: pubkey!,
+      ),
+      Nip55Method.nip04Decrypt => Nip04DecryptPayload(
+        content: _requiredContent(content, 'Missing nip04_decrypt content'),
+        peerPubkey: pubkey!,
+      ),
+      Nip55Method.nip44Encrypt => Nip44EncryptPayload(
+        content: _requiredContent(content, 'Missing nip44_encrypt content'),
+        peerPubkey: pubkey!,
+      ),
+      Nip55Method.nip44Decrypt => Nip44DecryptPayload(
+        content: _requiredContent(content, 'Missing nip44_decrypt content'),
+        peerPubkey: pubkey!,
+      ),
+      Nip55Method.decryptZapEvent => DecryptZapEventPayload(
+        decodeNip55JsonObject(
+          methodLabel: 'decrypt_zap_event',
+          content: _requiredContent(
+            content,
+            'Missing decrypt_zap_event content',
+          ),
+        ),
+      ),
+      Nip55Method.unsupported => throw const Nip55ParseException(
+        'Unsupported NIP-55 request type',
+      ),
+    };
   }
 
-  bool _isHex64(String value) => RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+  String _requiredContent(String? content, String message) {
+    final trimmed = content?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      throw Nip55ParseException(message);
+    }
+    return content!;
+  }
+
+  bool _isHex64(String? value) =>
+      value != null && RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
 }

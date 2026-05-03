@@ -92,15 +92,15 @@ class MainActivity : FlutterActivity() {
         val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
         return mapOf(
             "requestToken" to token,
-            "type" to (intent.getStringExtra("type") ?: data.safeQueryParameter("type")),
-            "content" to extractContent(data),
-            "id" to (intent.getStringExtra("id") ?: data.safeQueryParameter("id")),
-            "currentUser" to (intent.getStringExtra("current_user") ?: data.safeQueryParameter("current_user")),
-            "pubkey" to (intent.getStringExtra("pubkey") ?: data.safeQueryParameter("pubkey")),
-            "permissions" to (intent.getStringExtra("permissions") ?: data.safeQueryParameter("permissions")),
-            "callbackUrl" to data.safeQueryParameter("callbackUrl"),
-            "returnType" to data.safeQueryParameter("returnType"),
-            "compressionType" to data.safeQueryParameter("compressionType"),
+            "type" to (intent.getStringExtra("type") ?: Nip55UriParser.queryParameter(data, "type")),
+            "content" to Nip55UriParser.content(data),
+            "id" to (intent.getStringExtra("id") ?: Nip55UriParser.queryParameter(data, "id")),
+            "currentUser" to (intent.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(data, "current_user")),
+            "pubkey" to (intent.getStringExtra("pubkey") ?: Nip55UriParser.queryParameter(data, "pubkey")),
+            "permissions" to (intent.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(data, "permissions")),
+            "callbackUrl" to Nip55UriParser.queryParameter(data, "callbackUrl"),
+            "returnType" to Nip55UriParser.queryParameter(data, "returnType"),
+            "compressionType" to Nip55UriParser.queryParameter(data, "compressionType"),
             "callingPackage" to callerPackage,
             "callerAppLabel" to (intent.getStringExtra("callerAppLabel") ?: resolveAppLabel(callerPackage)),
             "callerCertificateSha256" to (
@@ -113,15 +113,6 @@ class MainActivity : FlutterActivity() {
             "bridgeToken" to intent.getStringExtra("requestToken"),
             "dataUri" to data.toString()
         )
-    }
-
-    private fun Uri.safeQueryParameter(name: String): String? {
-        if (!isHierarchical) return null
-        return try {
-            getQueryParameter(name)
-        } catch (_: UnsupportedOperationException) {
-            null
-        }
     }
 
     private fun resolveAppLabel(packageName: String?): String? {
@@ -158,13 +149,6 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             null
         }
-    }
-
-    private fun extractContent(uri: Uri): String? {
-        val raw = uri.schemeSpecificPart ?: return null
-        if (raw.isBlank()) return null
-        val withoutQuery = raw.substringBefore("?")
-        return Uri.decode(withoutQuery.removePrefix("//"))
     }
 
     private fun completeNip55Intent(arguments: Map<*, *>?): CompletionAction {

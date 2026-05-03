@@ -105,7 +105,16 @@ class Nip55ApprovalPolicy {
       final kind = request.eventJson?['kind'];
       return SignEventScope(kind is int ? kind : null);
     }
-    return UnsupportedScope(request.method.wireName);
+    return switch (request.method) {
+      Nip55Method.nip04Encrypt => const Nip04EncryptScope(),
+      Nip55Method.nip04Decrypt => const Nip04DecryptScope(),
+      Nip55Method.nip44Encrypt => const Nip44EncryptScope(),
+      Nip55Method.nip44Decrypt => const Nip44DecryptScope(),
+      Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
+      Nip55Method.getPublicKey ||
+      Nip55Method.signEvent ||
+      Nip55Method.unsupported => UnsupportedScope(request.method.wireName),
+    };
   }
 
   String _reviewReasonFor(
