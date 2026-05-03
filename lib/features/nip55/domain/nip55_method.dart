@@ -3,6 +3,14 @@ enum Nip55Method {
   signEvent,
   unsupported;
 
+  String get wireName {
+    return switch (this) {
+      Nip55Method.getPublicKey => 'get_public_key',
+      Nip55Method.signEvent => 'sign_event',
+      Nip55Method.unsupported => 'unsupported',
+    };
+  }
+
   static Nip55Method fromWire(String? value) {
     return switch (value) {
       'get_public_key' => Nip55Method.getPublicKey,

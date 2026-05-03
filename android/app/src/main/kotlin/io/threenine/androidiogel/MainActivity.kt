@@ -1,9 +1,15 @@
 package io.threenine.androidiogel
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import java.security.MessageDigest
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -56,11 +62,13 @@ class MainActivity : FlutterActivity() {
         val payload = parseNip55Intent(intent)
         if (payload != null) {
             if (activeRequestToken != null) {
-                // Do not call setResult/finish here to reject the second caller.
-                // This Activity currently owns the first caller's result, and
-                // finishing here can poison the active request. A future
-                // Nip55BridgeActivity or native queue must own independent
-                // settlement for concurrent callers.
+                val requestToken = payload["requestToken"] as? String
+                if (requestToken != null) {
+                    Nip55BridgeRegistry.reject(
+                        requestToken,
+                        "Diogel is already reviewing another NIP-55 request"
+                    )
+                }
                 return
             }
             activeRequestToken = payload["requestToken"] as? String
@@ -75,29 +83,87 @@ class MainActivity : FlutterActivity() {
         val data = intent.data ?: return null
         if (data.scheme != "nostrsigner") return null
 
-        val token = "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
+        val token = intent.getStringExtra("requestToken")
+            ?: "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
+        val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
         return mapOf(
             "requestToken" to token,
-            "type" to intent.getStringExtra("type"),
+            "type" to (intent.getStringExtra("type") ?: data.getQueryParameter("type")),
             "content" to extractContent(data),
-            "id" to intent.getStringExtra("id"),
-            "currentUser" to intent.getStringExtra("current_user"),
-            "pubkey" to intent.getStringExtra("pubkey"),
-            "permissions" to intent.getStringExtra("permissions"),
-            "sourceHint" to (callingPackage ?: referrer?.host ?: intent.`package`),
+            "id" to (intent.getStringExtra("id") ?: data.getQueryParameter("id")),
+            "currentUser" to (intent.getStringExtra("current_user") ?: data.getQueryParameter("current_user")),
+            "pubkey" to (intent.getStringExtra("pubkey") ?: data.getQueryParameter("pubkey")),
+            "permissions" to (intent.getStringExtra("permissions") ?: data.getQueryParameter("permissions")),
+            "callbackUrl" to data.getQueryParameter("callbackUrl"),
+            "returnType" to data.getQueryParameter("returnType"),
+            "compressionType" to data.getQueryParameter("compressionType"),
+            "callingPackage" to callerPackage,
+            "callerAppLabel" to (intent.getStringExtra("callerAppLabel") ?: resolveAppLabel(callerPackage)),
+            "callerCertificateSha256" to (
+                intent.getStringExtra("callerCertificateSha256")
+                    ?: resolveSigningCertificateSha256(callerPackage)
+                ),
+            "referrer" to (intent.getStringExtra("referrer") ?: referrer?.toString()),
+            "intentPackage" to (intent.getStringExtra("intentPackage") ?: intent.`package`),
+            "sourceHint" to (intent.getStringExtra("sourceHint") ?: callerPackage ?: referrer?.host),
+            "bridgeToken" to intent.getStringExtra("requestToken"),
             "dataUri" to data.toString()
         )
+    }
+
+    private fun resolveAppLabel(packageName: String?): String? {
+        if (packageName.isNullOrBlank()) return null
+        return try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(appInfo).toString()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun resolveSigningCertificateSha256(packageName: String?): String? {
+        if (packageName.isNullOrBlank()) return null
+        return try {
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val info = packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                )
+                info.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                val info = packageManager.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNATURES
+                )
+                @Suppress("DEPRECATION")
+                info.signatures
+            }
+            val signature = signatures?.firstOrNull() ?: return null
+            val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+            digest.joinToString(":") { byte -> "%02X".format(byte) }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun extractContent(uri: Uri): String? {
         val raw = uri.schemeSpecificPart ?: return null
         if (raw.isBlank()) return null
-        return Uri.decode(raw.removePrefix("//"))
+        val withoutQuery = raw.substringBefore("?")
+        return Uri.decode(withoutQuery.removePrefix("//"))
     }
 
     private fun completeNip55Intent(arguments: Map<*, *>?) {
         if (!isActiveRequest(arguments)) return
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
+        maybeLaunchCallback(extras)
+        maybeCopyToClipboard(extras)
+        val bridgeToken = activeRequestToken
+        if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
+            activeRequestToken = null
+            return
+        }
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
             if (key is String && value != null) {
@@ -109,10 +175,38 @@ class MainActivity : FlutterActivity() {
         finish()
     }
 
+    private fun maybeLaunchCallback(extras: Map<*, *>) {
+        val callbackUrl = extras["callbackUrl"] as? String ?: return
+        val result = extras["result"]?.toString() ?: return
+        try {
+            val uriBuilder = Uri.parse(callbackUrl).buildUpon()
+                .appendQueryParameter("result", result)
+            extras["id"]?.toString()?.let { uriBuilder.appendQueryParameter("id", it) }
+            extras["returnType"]?.toString()?.let { uriBuilder.appendQueryParameter("returnType", it) }
+            extras["compressionType"]?.toString()?.let { uriBuilder.appendQueryParameter("compressionType", it) }
+            startActivity(Intent(Intent.ACTION_VIEW, uriBuilder.build()))
+        } catch (_: Exception) {
+            // Keep the normal result path as fallback.
+        }
+    }
+
+    private fun maybeCopyToClipboard(extras: Map<*, *>) {
+        if (extras["copyToClipboard"] != true) return
+        val result = extras["result"]?.toString() ?: return
+        val label = extras["clipboardLabel"]?.toString() ?: "NIP-55 result"
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText(label, result))
+    }
+
     private fun rejectNip55Intent(arguments: Map<*, *>?) {
         if (!isActiveRequest(arguments)) return
-        val resultIntent = Intent()
+        val bridgeToken = activeRequestToken
         val error = arguments?.get("error") as? String
+        if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
+            activeRequestToken = null
+            return
+        }
+        val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
             resultIntent.putExtra("error", error)
         }

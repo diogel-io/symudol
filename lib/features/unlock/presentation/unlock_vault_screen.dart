@@ -209,7 +209,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                         onPressed: () => _onNumberPressed(number),
                       ),
                     ),
-                    const PinButtonIcon(Icons.fingerprint, onPressed: _noop),
+                    const PinButtonIcon(Icons.fingerprint, onPressed: null),
                     PinButton('0', onPressed: () => _onNumberPressed('0')),
                     PinButtonIcon(Icons.backspace, onPressed: _onBackspace),
                   ],

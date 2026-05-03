@@ -8,10 +8,15 @@ import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 import '../data/nip55_method_channel_gateway.dart';
+import '../domain/nip55_approval_policy.dart';
+import '../domain/nip55_client_permission.dart';
 import '../domain/nip55_failure.dart';
 import '../domain/nip55_incoming_request.dart';
 import '../domain/nip55_intent_parser.dart';
 import '../domain/nip55_method.dart';
+import '../domain/nip55_permission_decision.dart';
+import '../domain/nip55_permission_scope.dart';
+import '../domain/nip55_permission_store.dart';
 import '../domain/nip55_response_builder.dart';
 import 'nip55_request_mapper.dart';
 
@@ -22,6 +27,7 @@ class Nip55State {
   final bool isLoading;
   final Nip55Failure? failure;
   final String? lastSuccessMessage;
+  final DateTime? approvalSessionExpiresAt;
 
   const Nip55State({
     this.pendingIncoming,
@@ -30,6 +36,7 @@ class Nip55State {
     this.isLoading = false,
     this.failure,
     this.lastSuccessMessage,
+    this.approvalSessionExpiresAt,
   });
 
   bool get hasPendingExternalRequest =>
@@ -49,11 +56,13 @@ class Nip55State {
     bool? isLoading,
     Nip55Failure? failure,
     String? lastSuccessMessage,
+    DateTime? approvalSessionExpiresAt,
     bool clearPendingIncoming = false,
     bool clearPendingSigningRequestId = false,
     bool clearPendingPublicKeyRequest = false,
     bool clearFailure = false,
     bool clearSuccess = false,
+    bool clearApprovalSession = false,
   }) {
     return Nip55State(
       pendingIncoming: clearPendingIncoming
@@ -70,6 +79,9 @@ class Nip55State {
       lastSuccessMessage: clearSuccess
           ? null
           : (lastSuccessMessage ?? this.lastSuccessMessage),
+      approvalSessionExpiresAt: clearApprovalSession
+          ? null
+          : (approvalSessionExpiresAt ?? this.approvalSessionExpiresAt),
     );
   }
 }
@@ -79,9 +91,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final Nip55IntentParser _parser;
   final Nip55RequestMapper _mapper;
   final Nip55ResponseBuilder _responseBuilder;
+  final Nip55PermissionStore? _permissionStore;
+  final Nip55ApprovalPolicy _approvalPolicy;
   final VaultController _vaultController;
   final RequestController _requestController;
   final Duration _pendingUnlockTimeout;
+  final DateTime Function() _now;
   Timer? _pendingUnlockTimer;
 
   Nip55Controller({
@@ -91,14 +106,20 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55IntentParser parser = const Nip55IntentParser(),
     Nip55RequestMapper mapper = const Nip55RequestMapper(),
     Nip55ResponseBuilder responseBuilder = const Nip55ResponseBuilder(),
+    Nip55PermissionStore? permissionStore,
+    Nip55ApprovalPolicy approvalPolicy = const Nip55ApprovalPolicy(),
     Duration pendingUnlockTimeout = const Duration(minutes: 5),
+    DateTime Function()? now,
   }) : _gateway = gateway,
        _vaultController = vaultController,
        _requestController = requestController,
        _parser = parser,
        _mapper = mapper,
        _responseBuilder = responseBuilder,
+       _permissionStore = permissionStore,
+       _approvalPolicy = approvalPolicy,
        _pendingUnlockTimeout = pendingUnlockTimeout,
+       _now = now ?? DateTime.now,
        super(const Nip55State()) {
     _gateway.setIncomingIntentHandler((raw) => handleRawIntent(raw));
   }
@@ -236,6 +257,38 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       );
     }
 
+    final decision = await _decide(incoming, activeIdentity.publicKey);
+    if (decision is AutoReject) {
+      await _markGrantUsed(decision.grant);
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: decision.reason,
+      );
+      state = state.copyWith(isLoading: false, clearPendingIncoming: true);
+      return;
+    }
+    if (decision is AutoAllow) {
+      if (!_canUseApprovalSession(decision.grant)) {
+        state = state.copyWith(
+          isLoading: false,
+          pendingIncoming: incoming,
+          pendingPublicKeyRequest: incoming,
+        );
+        return;
+      }
+      await _markGrantUsed(decision.grant);
+      await _gateway.completeNip55Intent(
+        requestToken: incoming.requestToken,
+        extras: _responseBuilder.getPublicKeyExtras(activeIdentity),
+      );
+      state = state.copyWith(
+        isLoading: false,
+        lastSuccessMessage:
+            'Public key shared using remembered NIP-55 permission.',
+      );
+      return;
+    }
+
     state = state.copyWith(
       isLoading: false,
       pendingIncoming: incoming,
@@ -262,6 +315,17 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       throw const Nip55Failure('Select an identity before signing.');
     }
 
+    final decision = await _decide(incoming, activeIdentity.publicKey);
+    if (decision is AutoReject) {
+      await _markGrantUsed(decision.grant);
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: decision.reason,
+      );
+      state = state.copyWith(isLoading: false, clearPendingIncoming: true);
+      return;
+    }
+
     final signingRequest = _mapper.mapSignEvent(
       incoming: incoming,
       activeIdentity: activeIdentity,
@@ -272,28 +336,59 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       pendingIncoming: incoming,
       pendingSigningRequestId: signingRequest.id,
     );
+
+    if (decision is AutoAllow) {
+      if (!_canUseApprovalSession(decision.grant)) return;
+      await _markGrantUsed(decision.grant);
+      await _requestController.approveRequest(signingRequest.id);
+      await completeApprovedSigningRequest(signingRequest.id);
+    }
   }
 
-  Future<void> approvePublicKeyRequest() async {
+  Future<void> approvePublicKeyRequest({bool remember = false}) async {
     final request = state.pendingPublicKeyRequest;
     final activeIdentity = _vaultController.state.activeIdentity;
     if (request == null || activeIdentity == null) return;
+
+    if (remember) {
+      await _saveGrant(
+        incoming: request,
+        identityPubkey: activeIdentity.publicKey,
+        scope: const GetPublicKeyScope(),
+        decision: Nip55PermissionDecision.allow,
+      );
+    }
 
     await _gateway.completeNip55Intent(
       requestToken: request.requestToken,
       extras: _responseBuilder.getPublicKeyExtras(activeIdentity),
     );
+    final approvalSessionExpiresAt = _nextApprovalSessionExpiry();
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
-      lastSuccessMessage: 'Public key shared with requesting Android app.',
+      approvalSessionExpiresAt: approvalSessionExpiresAt,
+      clearApprovalSession: approvalSessionExpiresAt == null,
+      lastSuccessMessage: remember
+          ? 'Public key shared and permission remembered.'
+          : 'Public key shared with requesting Android app.',
     );
   }
 
-  Future<void> rejectPublicKeyRequest() async {
-    if (state.pendingPublicKeyRequest == null) return;
+  Future<void> rejectPublicKeyRequest({bool remember = false}) async {
+    final request = state.pendingPublicKeyRequest;
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (request == null) return;
+    if (remember && activeIdentity != null) {
+      await _saveGrant(
+        incoming: request,
+        identityPubkey: activeIdentity.publicKey,
+        scope: const GetPublicKeyScope(),
+        decision: Nip55PermissionDecision.reject,
+      );
+    }
     await _gateway.rejectNip55Intent(
-      requestToken: state.pendingPublicKeyRequest!.requestToken,
+      requestToken: request.requestToken,
       error: 'User rejected public key request',
     );
     state = state.copyWith(
@@ -334,15 +429,50 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingSigningRequestId: true,
-      lastSuccessMessage:
-          'Event signed locally and returned to requesting Android app.',
+      lastSuccessMessage: _completionMessageFor(incoming),
     );
   }
 
-  Future<void> rejectSigningRequest(String requestId) async {
+  Future<void> approveSigningRequest(
+    String requestId, {
+    bool remember = false,
+  }) async {
+    if (state.pendingSigningRequestId != requestId) return;
+    final incoming = state.pendingIncoming;
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (incoming == null || activeIdentity == null) return;
+
+    await _requestController.approveRequest(requestId);
+    if (remember && _requestController.state.signedEvents[requestId] != null) {
+      await _saveGrant(
+        incoming: incoming,
+        identityPubkey: activeIdentity.publicKey,
+        scope: _scopeFor(incoming),
+        decision: Nip55PermissionDecision.allow,
+      );
+    }
+    await completeApprovedSigningRequest(requestId);
+    if (_requestController.state.signedEvents[requestId] != null) {
+      _extendApprovalSession();
+    }
+  }
+
+  Future<void> rejectSigningRequest(
+    String requestId, {
+    bool remember = false,
+  }) async {
     if (state.pendingSigningRequestId != requestId) return;
     final incoming = state.pendingIncoming;
     if (incoming == null) return;
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (remember && activeIdentity != null) {
+      await _saveGrant(
+        incoming: incoming,
+        identityPubkey: activeIdentity.publicKey,
+        scope: _scopeFor(incoming),
+        decision: Nip55PermissionDecision.reject,
+      );
+    }
     await _gateway.rejectNip55Intent(
       requestToken: incoming.requestToken,
       error: 'User rejected signing request',
@@ -375,6 +505,71 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(clearFailure: true, clearSuccess: true);
   }
 
+  bool canRememberPendingSigningRequest(String requestId) {
+    return state.pendingSigningRequestId == requestId &&
+        state.pendingIncoming?.clientIdentity.packageName != null &&
+        _permissionStore != null;
+  }
+
+  bool canRememberPendingPublicKeyRequest() {
+    return state.pendingPublicKeyRequest?.clientIdentity.packageName != null &&
+        _permissionStore != null;
+  }
+
+  Future<Nip55ApprovalDecision> _decide(
+    Nip55IncomingRequest incoming,
+    String activeIdentityPubkey,
+  ) async {
+    final grants = await _permissionStore?.listGrants() ?? const [];
+    return _approvalPolicy.decide(
+      request: incoming,
+      vaultState: _vaultController.state.vaultState,
+      activeIdentityPubkey: activeIdentityPubkey,
+      grants: grants,
+    );
+  }
+
+  Future<void> _saveGrant({
+    required Nip55IncomingRequest incoming,
+    required String identityPubkey,
+    required Nip55PermissionScope scope,
+    required Nip55PermissionDecision decision,
+  }) async {
+    final store = _permissionStore;
+    final packageName = incoming.clientIdentity.packageName;
+    if (store == null || packageName == null) return;
+    await store.saveGrant(
+      Nip55PermissionGrant(
+        id: 'nip55-${decision.name}-${scope.wire}-${DateTime.now().microsecondsSinceEpoch}',
+        identityPubkey: identityPubkey,
+        packageName: packageName,
+        certificateSha256: incoming.clientIdentity.certificateSha256,
+        scope: scope,
+        decision: decision,
+        createdAt: DateTime.now(),
+        lastUsedAt: DateTime.now(),
+        userLabel: incoming.clientIdentity.displayName,
+      ),
+    );
+  }
+
+  Future<void> _markGrantUsed(Nip55PermissionGrant grant) async {
+    final store = _permissionStore;
+    if (store == null) return;
+    await store.saveGrant(grant.copyWith(lastUsedAt: DateTime.now()));
+  }
+
+  Nip55PermissionScope _scopeFor(Nip55IncomingRequest incoming) {
+    if (incoming.method == Nip55Method.getPublicKey) {
+      return const GetPublicKeyScope();
+    }
+    if (incoming.method == Nip55Method.signEvent) {
+      final kind = incoming.eventJson?['kind'];
+      return SignEventScope(kind is int ? kind : null);
+    }
+    return UnsupportedScope(incoming.method.wireName);
+  }
+
   SigningRequest? _findRequest(String requestId) {
     for (final request in _requestController.state.requests) {
       if (request.id == requestId) return request;
@@ -392,6 +587,40 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   bool _isWaitingForUnlockFailure(Nip55Failure error) {
     return error.message.startsWith('Unlock Diogel');
+  }
+
+  String _completionMessageFor(Nip55IncomingRequest incoming) {
+    if (incoming.webReturnOptions.hasCallback) {
+      return 'Event signed locally and returned through the browser callback.';
+    }
+    if (incoming.webReturnOptions.isBrowserFlow) {
+      return 'Event signed locally and copied to clipboard for the browser flow.';
+    }
+    if (incoming.clientIdentity.provenanceVerified) {
+      return 'Event signed locally and returned to requesting Android app.';
+    }
+    return 'Event signed locally and returned to requesting Android app.';
+  }
+
+  bool _canUseApprovalSession(Nip55PermissionGrant grant) {
+    if (grant.scope.isSensitive || grant.scope.isBroad) return false;
+    final expiresAt = state.approvalSessionExpiresAt;
+    return expiresAt != null && expiresAt.isAfter(_now());
+  }
+
+  DateTime? _nextApprovalSessionExpiry() {
+    final minutes = _vaultController.state.approvalSessionDurationMinutes;
+    if (minutes <= 0) return null;
+    return _now().add(Duration(minutes: minutes));
+  }
+
+  void _extendApprovalSession() {
+    final expiresAt = _nextApprovalSessionExpiry();
+    if (expiresAt == null) {
+      state = state.copyWith(clearApprovalSession: true);
+      return;
+    }
+    state = state.copyWith(approvalSessionExpiresAt: expiresAt);
   }
 
   void _startPendingUnlockTimer(Nip55IncomingRequest incoming) {

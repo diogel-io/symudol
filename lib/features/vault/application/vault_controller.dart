@@ -11,6 +11,7 @@ class VaultControllerState {
   final VaultIdentity? activeIdentity;
   final int inactivityTimeoutMinutes;
   final int backgroundLockDelayMinutes;
+  final int approvalSessionDurationMinutes;
   final bool isLoading;
   final VaultFailure? failure;
 
@@ -20,6 +21,7 @@ class VaultControllerState {
     this.activeIdentity,
     this.inactivityTimeoutMinutes = 5,
     this.backgroundLockDelayMinutes = 5,
+    this.approvalSessionDurationMinutes = 0,
     this.isLoading = true,
     this.failure,
   });
@@ -30,6 +32,7 @@ class VaultControllerState {
     VaultIdentity? activeIdentity,
     int? inactivityTimeoutMinutes,
     int? backgroundLockDelayMinutes,
+    int? approvalSessionDurationMinutes,
     bool? isLoading,
     VaultFailure? failure,
     bool clearFailure = false,
@@ -45,6 +48,8 @@ class VaultControllerState {
           inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
       backgroundLockDelayMinutes:
           backgroundLockDelayMinutes ?? this.backgroundLockDelayMinutes,
+      approvalSessionDurationMinutes:
+          approvalSessionDurationMinutes ?? this.approvalSessionDurationMinutes,
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
     );
@@ -79,12 +84,15 @@ class VaultController extends StateNotifier<VaultControllerState> {
     VaultIdentity? activeIdentity;
     int timeout = 5;
     int backgroundLockDelay = 5;
+    int approvalSessionDuration = 0;
 
     if (vaultState is VaultUnlocked) {
       identities = await _vaultService.listIdentities();
       activeIdentity = _vaultService.activeIdentity;
       timeout = await _vaultService.getInactivityTimeout();
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
+      approvalSessionDuration = await _vaultService
+          .getApprovalSessionDurationMinutes();
     } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
       identities = [];
       activeIdentity = null;
@@ -92,6 +100,8 @@ class VaultController extends StateNotifier<VaultControllerState> {
       // but getInactivityTimeout is just a simple read from store for now.
       timeout = await _vaultService.getInactivityTimeout();
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
+      approvalSessionDuration = await _vaultService
+          .getApprovalSessionDurationMinutes();
     } else if (vaultState is NoVault) {
       // Ensure everything is cleared
       identities = [];
@@ -105,6 +115,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
       backgroundLockDelayMinutes: backgroundLockDelay,
+      approvalSessionDurationMinutes: approvalSessionDuration,
     );
   }
 
@@ -128,6 +139,18 @@ class VaultController extends StateNotifier<VaultControllerState> {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.setBackgroundLockDelayMinutes(minutes);
+      await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> setApprovalSessionDurationMinutes(int minutes) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      await _vaultService.setApprovalSessionDurationMinutes(minutes);
       await _refreshState();
     } catch (e) {
       state = state.copyWith(failure: _mapExceptionToFailure(e));

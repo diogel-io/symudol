@@ -1,5 +1,9 @@
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/real_signer_service.dart';
@@ -10,6 +14,32 @@ import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';
+
+class FakeNip55PermissionStore implements Nip55PermissionStore {
+  final grants = <Nip55PermissionGrant>[];
+
+  @override
+  Future<void> clearAll() async => grants.clear();
+
+  @override
+  Future<void> deleteAllForPackage(String packageName) async {
+    grants.removeWhere((grant) => grant.packageName == packageName);
+  }
+
+  @override
+  Future<void> deleteGrant(String id) async {
+    grants.removeWhere((grant) => grant.id == id);
+  }
+
+  @override
+  Future<List<Nip55PermissionGrant>> listGrants() async => List.of(grants);
+
+  @override
+  Future<void> saveGrant(Nip55PermissionGrant grant) async {
+    grants.removeWhere((existing) => existing.id == grant.id);
+    grants.add(grant);
+  }
+}
 
 class FakeNip55Gateway implements Nip55Gateway {
   Map<String, Object?>? initial;
@@ -128,6 +158,177 @@ void main() {
       expect(gateway.completedExtras?['event'], contains('"sig"'));
     });
 
+    test(
+      'sign_event approve and remember persists scoped allow grant',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          remember: true,
+        );
+
+        expect(permissionStore.grants, hasLength(1));
+        final grant = permissionStore.grants.single;
+        expect(grant.packageName, 'com.example.app');
+        expect(grant.certificateSha256, 'AA:BB');
+        expect(grant.decision, Nip55PermissionDecision.allow);
+        expect(grant.scope, isA<SignEventScope>());
+        expect((grant.scope as SignEventScope).kind, 1);
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+      },
+    );
+
+    test(
+      'sign_event reject and remember persists scoped reject grant',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+        });
+        final request = requestController.state.requests.single;
+
+        await requestController.rejectRequest(request.id);
+        await permissionController.rejectSigningRequest(
+          request.id,
+          remember: true,
+        );
+
+        expect(permissionStore.grants, hasLength(1));
+        expect(
+          permissionStore.grants.single.decision,
+          Nip55PermissionDecision.reject,
+        );
+        expect(gateway.rejectedToken, 'token-external-id');
+      },
+    );
+
+    test(
+      'failed sign_event approve and remember does not persist allow grant',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-fail',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":42,"tags":[]}',
+          'id': 'fail',
+          'currentUser': vaultController.state.activeIdentity!.publicKey,
+          'callingPackage': 'com.example.app',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          remember: true,
+        );
+
+        expect(permissionStore.grants, isEmpty);
+        expect(gateway.rejectedToken, 'token-fail');
+      },
+    );
+
+    test(
+      'remembered allow grant still asks outside approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-1',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(gateway.completedExtras, isNull);
+        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+      },
+    );
+
+    test(
+      'manual approval opens short session for remembered low-risk approvals',
+      () async {
+        await vaultController.setApprovalSessionDurationMinutes(5);
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'first'),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final first = requestController.state.requests.single;
+        await permissionController.approveSigningRequest(
+          first.id,
+          remember: true,
+        );
+
+        expect(permissionController.state.approvalSessionExpiresAt, isNotNull);
+        expect(permissionStore.grants, hasLength(1));
+        gateway.completedExtras = null;
+        gateway.completedToken = null;
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'second'),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(gateway.completedToken, 'token-second');
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+        expect(permissionController.state.pendingSigningRequestId, isNull);
+        expect(permissionStore.grants.single.lastUsedAt, isNotNull);
+      },
+    );
+
     test('signing failure rejects external caller safely', () async {
       await controller.handleRawIntent({
         'requestToken': 'token-fail',
@@ -227,6 +428,32 @@ void main() {
       );
       expect(gateway.completedToken, 'pk-token');
       expect(gateway.completedExtras?['package'], 'io.threenine.androidiogel');
+    });
+
+    test('get_public_key approve and remember persists grant', () async {
+      final permissionStore = FakeNip55PermissionStore();
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        requestController: requestController,
+        permissionStore: permissionStore,
+      );
+
+      await permissionController.handleRawIntent({
+        'requestToken': 'pk-token',
+        'type': 'get_public_key',
+        'callingPackage': 'com.example.app',
+      });
+
+      await permissionController.approvePublicKeyRequest(remember: true);
+
+      expect(permissionStore.grants, hasLength(1));
+      expect(permissionStore.grants.single.scope, isA<GetPublicKeyScope>());
+      expect(
+        permissionStore.grants.single.decision,
+        Nip55PermissionDecision.allow,
+      );
+      expect(gateway.completedToken, 'pk-token');
     });
 
     test('get_public_key rejection completes as rejected', () async {

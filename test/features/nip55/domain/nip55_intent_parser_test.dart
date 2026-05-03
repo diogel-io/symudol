@@ -1,6 +1,7 @@
 import 'package:android_diogel/features/nip55/domain/nip55_failure.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_intent_parser.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_web_return_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -39,6 +40,27 @@ void main() {
       expect(request.externalId, 'caller-id');
       expect(request.eventJson?['kind'], 1);
       expect(request.eventJson?['content'], 'hello');
+    });
+
+    test('parses browser return options', () {
+      final request = parser.parse({
+        'requestToken': 'token-web',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"hello","tags":[]}',
+        'callbackUrl': 'https://example.com/callback',
+        'returnType': 'event',
+        'compressionType': 'gzip',
+      });
+
+      expect(
+        request.webReturnOptions.callbackUrl.toString(),
+        'https://example.com/callback',
+      );
+      expect(request.webReturnOptions.returnType, Nip55WebReturnType.event);
+      expect(
+        request.webReturnOptions.compressionType,
+        Nip55WebCompressionType.gzip,
+      );
     });
 
     test('rejects unsupported method', () {

@@ -6,7 +6,9 @@ import '../../../theme/tokens.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../../nip55/application/nip55_providers.dart';
+import '../../nip55/domain/nip55_permission_parser.dart';
 import '../application/request_providers.dart';
+import '../domain/nostr_event_payload_parser.dart';
 import '../domain/request_trust_status.dart';
 import '../domain/signing_request.dart';
 import '../domain/signing_request_status.dart';
@@ -35,6 +37,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final vaultState = ref.watch(vaultControllerProvider);
     final activeIdentity = vaultState.activeIdentity;
     final nip55State = ref.watch(nip55ControllerProvider);
+    final eventReview = activeRequest == null
+        ? null
+        : const NostrEventPayloadParser().review(activeRequest.eventPayload);
 
     if (activeRequest == null && nip55State.pendingPublicKeyRequest != null) {
       return _buildPublicKeyRequestScaffold(context, activeIdentity);
@@ -144,8 +149,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               icon: Icons.edit_note,
               iconColor: DiogelColors.nostrAccentMuted,
               title: 'Sign Kind ${activeRequest.eventKind} Event',
-              subtitle: activeRequest.actionType.name,
+              subtitle:
+                  '${eventReview!.kindLabel} • ${activeRequest.actionType.name}',
             ),
+            const SizedBox(height: DiogelSpacing.space4),
+            _buildRiskNote(context, eventReview),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'SIGNING WITH ACCOUNT'),
             const SizedBox(height: DiogelSpacing.space2),
@@ -158,7 +166,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 TextButton.icon(
                   onPressed: () => setState(() => _showRawJson = !_showRawJson),
                   icon: Text(
-                    _showRawJson ? 'Hide Draft' : 'Event draft JSON',
+                    _showRawJson ? 'Hide advanced' : 'Advanced: raw JSON',
                     style: const TextStyle(
                       color: DiogelColors.actionPrimary,
                       fontSize: 12,
@@ -176,7 +184,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               _buildRawJsonDisclosure(activeRequest),
               const SizedBox(height: DiogelSpacing.space4),
             ],
-            _buildEventSummary(context, activeRequest),
+            _buildEventSummary(context, activeRequest, eventReview),
           ],
         ),
       ),
@@ -195,7 +203,13 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final nip55Request = ref
         .watch(nip55ControllerProvider)
         .pendingPublicKeyRequest!;
-    final source = nip55Request.sourceHint ?? 'External Android app';
+    final canRemember = ref
+        .read(nip55ControllerProvider.notifier)
+        .canRememberPendingPublicKeyRequest();
+    final source = nip55Request.clientIdentity.displayName;
+    final parsedPermissions = const Nip55PermissionParser().parse(
+      nip55Request.permissions,
+    );
     final pubkey = activeIdentity?.publicKey ?? 'No active identity';
     final truncatedPubkey = _shortFingerprint(pubkey);
 
@@ -214,7 +228,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               icon: Icons.android,
               iconColor: DiogelColors.actionPrimary,
               title: source,
-              subtitle: 'Source hint — not verified',
+              subtitle: nip55Request.clientIdentity.provenanceVerified
+                  ? 'Verified Android package'
+                  : 'Caller identity could not be fully verified',
             ),
             const SizedBox(height: DiogelSpacing.space6),
             _buildSectionHeader(context, 'SHARING ACCOUNT'),
@@ -222,15 +238,24 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             _buildIdentityCard(context, activeIdentity),
             const SizedBox(height: DiogelSpacing.space6),
             Text(
-              'This app wants to know your public Nostr key. No signing will happen, and requested permissions are not remembered in this version.',
+              'This app wants to know your public Nostr key. No signing will happen unless you approve a later signing request.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (nip55Request.permissions != null) ...[
+            if (parsedPermissions.scopes.isNotEmpty) ...[
               const SizedBox(height: DiogelSpacing.space4),
               Text(
-                'Requested permissions: ${nip55Request.permissions}',
+                'Requested permissions: ${parsedPermissions.scopes.map((scope) => scope.label).join(', ')}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: DiogelColors.textSecondary,
+                ),
+              ),
+            ],
+            if (parsedPermissions.warnings.isNotEmpty) ...[
+              const SizedBox(height: DiogelSpacing.space2),
+              Text(
+                parsedPermissions.warnings.join('\n'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DiogelColors.stateWarning,
                 ),
               ),
             ],
@@ -253,30 +278,59 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             top: BorderSide(color: DiogelColors.borderSubtle),
           ),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => ref
+                        .read(nip55ControllerProvider.notifier)
+                        .rejectPublicKeyRequest(),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Reject request'),
+                  ),
+                ),
+                const SizedBox(width: DiogelSpacing.space4),
+                if (canRemember) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: activeIdentity == null
+                          ? null
+                          : () => ref
+                                .read(nip55ControllerProvider.notifier)
+                                .approvePublicKeyRequest(remember: true),
+                      icon: const Icon(Icons.verified_user_outlined),
+                      label: const Text('Remember'),
+                    ),
+                  ),
+                  const SizedBox(width: DiogelSpacing.space4),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: activeIdentity == null
+                        ? null
+                        : () => ref
+                              .read(nip55ControllerProvider.notifier)
+                              .approvePublicKeyRequest(),
+                    icon: const Icon(Icons.key),
+                    label: const Text('Share public key'),
+                  ),
+                ),
+              ],
+            ),
+            if (canRemember) ...[
+              const SizedBox(height: DiogelSpacing.space2),
+              TextButton.icon(
                 onPressed: () => ref
                     .read(nip55ControllerProvider.notifier)
-                    .rejectPublicKeyRequest(),
-                icon: const Icon(Icons.close),
-                label: const Text('Reject request'),
+                    .rejectPublicKeyRequest(remember: true),
+                icon: const Icon(Icons.block_outlined),
+                label: const Text('Reject and remember for this app'),
               ),
-            ),
-            const SizedBox(width: DiogelSpacing.space4),
-            Expanded(
-              flex: 2,
-              child: FilledButton.icon(
-                onPressed: activeIdentity == null
-                    ? null
-                    : () => ref
-                          .read(nip55ControllerProvider.notifier)
-                          .approvePublicKeyRequest(),
-                icon: const Icon(Icons.key),
-                label: const Text('Share public key'),
-              ),
-            ),
+            ],
           ],
         ),
       ),
@@ -480,6 +534,51 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
   }
 
+  Widget _buildRiskNote(BuildContext context, NostrEventPayloadReview review) {
+    final isDangerous = review.isUnknownKind || review.isSensitive;
+    final color = isDangerous
+        ? DiogelColors.stateWarning
+        : DiogelColors.textSecondary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DiogelSpacing.space3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDangerous ? 0.12 : 0.06),
+        borderRadius: BorderRadius.circular(DiogelRadius.small),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isDangerous ? Icons.warning_amber_outlined : Icons.info_outline,
+            color: color,
+          ),
+          const SizedBox(width: DiogelSpacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Risk note',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(color: color),
+                ),
+                Text(
+                  review.riskNote,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: color),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionHeader(BuildContext context, String title) {
     return Text(
       title,
@@ -574,7 +673,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
   }
 
-  Widget _buildEventSummary(BuildContext context, SigningRequest request) {
+  Widget _buildEventSummary(
+    BuildContext context,
+    SigningRequest request,
+    NostrEventPayloadReview review,
+  ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -586,6 +689,54 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (request.eventPayload['permissionWarnings'] is List) ...[
+            _buildPermissionWarnings(
+              context,
+              (request.eventPayload['permissionWarnings'] as List)
+                  .map((warning) => warning.toString())
+                  .toList(),
+            ),
+            const SizedBox(height: DiogelSpacing.space4),
+          ],
+          Text('NIP-55 METHOD', style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: DiogelSpacing.space2),
+          Text(
+            request.eventPayload['nip55Method']?.toString() ?? 'sign_event',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+          ),
+          const SizedBox(height: DiogelSpacing.space4),
+          Text(
+            'PERMISSION IF REMEMBERED',
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+          const SizedBox(height: DiogelSpacing.space2),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(DiogelSpacing.space3),
+            decoration: BoxDecoration(
+              color: review.isBroadPermission
+                  ? DiogelColors.stateWarning.withValues(alpha: 0.1)
+                  : DiogelColors.surfaceBase,
+              borderRadius: BorderRadius.circular(DiogelRadius.small),
+              border: Border.all(
+                color: review.isBroadPermission
+                    ? DiogelColors.stateWarning.withValues(alpha: 0.4)
+                    : DiogelColors.borderSubtle.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              review.permissionLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: review.isBroadPermission
+                    ? DiogelColors.stateWarning
+                    : null,
+                fontWeight: review.isBroadPermission ? FontWeight.bold : null,
+              ),
+            ),
+          ),
+          const SizedBox(height: DiogelSpacing.space4),
           Text('CONTENT', style: Theme.of(context).textTheme.labelSmall),
           const SizedBox(height: DiogelSpacing.space2),
           Container(
@@ -599,7 +750,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               ),
             ),
             child: Text(
-              request.eventPayload['content']?.toString() ?? 'No content',
+              review.contentPreview,
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
@@ -631,10 +782,8 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                   children: [
                     Text('TAGS', style: Theme.of(context).textTheme.labelSmall),
                     Text(
-                      request.eventPayload['tags']?.toString() ?? '[]',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                      review.tagsSummary,
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -646,6 +795,26 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     );
   }
 
+  Widget _buildPermissionWarnings(BuildContext context, List<String> warnings) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(DiogelSpacing.space3),
+      decoration: BoxDecoration(
+        color: DiogelColors.stateWarning.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(DiogelRadius.small),
+        border: Border.all(
+          color: DiogelColors.stateWarning.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Text(
+        warnings.join('\n'),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: DiogelColors.stateWarning),
+      ),
+    );
+  }
+
   Widget _buildActionButtons(
     BuildContext context,
     SigningRequest request,
@@ -653,6 +822,13 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
   ) {
     final signerService = ref.watch(signerServiceProvider);
     final isDemo = signerService.isDemo;
+    final nip55Controller = ref.read(nip55ControllerProvider.notifier);
+    final isNip55Request =
+        ref.watch(nip55ControllerProvider).pendingSigningRequestId ==
+        request.id;
+    final canRemember = nip55Controller.canRememberPendingSigningRequest(
+      request.id,
+    );
 
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -673,9 +849,9 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                           await ref
                               .read(requestControllerProvider.notifier)
                               .rejectRequest(request.id);
-                          await ref
-                              .read(nip55ControllerProvider.notifier)
-                              .rejectSigningRequest(request.id);
+                          await nip55Controller.rejectSigningRequest(
+                            request.id,
+                          );
                         },
                   icon: const Icon(Icons.close),
                   label: const Text('Reject'),
@@ -694,18 +870,47 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 ),
               ),
               const SizedBox(width: DiogelSpacing.space4),
+              if (canRemember) ...[
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.tonalIcon(
+                    onPressed: isLoading
+                        ? null
+                        : () => nip55Controller.approveSigningRequest(
+                            request.id,
+                            remember: true,
+                          ),
+                    icon: const Icon(Icons.verified_user_outlined),
+                    label: const Text('Sign + remember'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: DiogelSpacing.space4,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          DiogelRadius.medium,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: DiogelSpacing.space4),
+              ],
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
                   onPressed: isLoading
                       ? null
                       : () async {
+                          if (isNip55Request) {
+                            await nip55Controller.approveSigningRequest(
+                              request.id,
+                            );
+                            return;
+                          }
                           await ref
                               .read(requestControllerProvider.notifier)
                               .approveRequest(request.id);
-                          await ref
-                              .read(nip55ControllerProvider.notifier)
-                              .completeApprovedSigningRequest(request.id);
                         },
                   icon: isLoading
                       ? const SizedBox(
@@ -737,6 +942,24 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             ],
           ),
           const SizedBox(height: DiogelSpacing.space2),
+          if (canRemember) ...[
+            TextButton.icon(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      await ref
+                          .read(requestControllerProvider.notifier)
+                          .rejectRequest(request.id);
+                      await nip55Controller.rejectSigningRequest(
+                        request.id,
+                        remember: true,
+                      );
+                    },
+              icon: const Icon(Icons.block_outlined),
+              label: const Text('Reject and remember for this app'),
+            ),
+            const SizedBox(height: DiogelSpacing.space2),
+          ],
           Text(
             isDemo
                 ? 'DEMO: This action uses a fake signer for development purposes.'

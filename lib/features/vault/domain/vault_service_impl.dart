@@ -14,6 +14,7 @@ import 'package:dart_nostr/dart_nostr.dart';
 class VaultServiceImpl implements VaultService {
   static const int defaultInactivityTimeoutMinutes = 5;
   static const int defaultBackgroundLockDelayMinutes = 5;
+  static const int defaultApprovalSessionDurationMinutes = 0;
   static const Set<int> supportedInactivityTimeoutMinutes = {
     0,
     1,
@@ -31,6 +32,7 @@ class VaultServiceImpl implements VaultService {
     30,
     60,
   };
+  static const Set<int> supportedApprovalSessionDurationMinutes = {0, 1, 5, 15};
 
   final VaultStore _store;
   final NostrCryptoService _cryptoService;
@@ -328,6 +330,22 @@ class VaultServiceImpl implements VaultService {
       'Unsupported background lock delay',
     );
     await _store.setBackgroundLockDelayMinutes(minutes);
+  }
+
+  @override
+  Future<int> getApprovalSessionDurationMinutes() async {
+    final duration = await _store.getApprovalSessionDurationMinutes();
+    return duration ?? defaultApprovalSessionDurationMinutes;
+  }
+
+  @override
+  Future<void> setApprovalSessionDurationMinutes(int minutes) async {
+    _validateSupportedMinutes(
+      minutes,
+      supportedApprovalSessionDurationMinutes,
+      'Unsupported approval session duration',
+    );
+    await _store.setApprovalSessionDurationMinutes(minutes);
   }
 
   void _validateSupportedMinutes(

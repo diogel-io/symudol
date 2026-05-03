@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
 import '../../vault/application/vault_providers.dart';
+import 'trusted_apps_screen.dart';
 import 'widgets/settings_tile.dart';
 
 String formatInactivityTimeout(int minutes) {
@@ -24,6 +25,14 @@ String formatBackgroundLockDelay(int minutes) {
   };
 }
 
+String formatApprovalSessionDuration(int minutes) {
+  return switch (minutes) {
+    0 => 'Ask every time',
+    1 => '1 minute',
+    _ => '$minutes minutes',
+  };
+}
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -33,6 +42,8 @@ class SettingsScreen extends ConsumerWidget {
     final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
     final backgroundLockDelayMinutes =
         vaultControllerState.backgroundLockDelayMinutes;
+    final approvalSessionDurationMinutes =
+        vaultControllerState.approvalSessionDurationMinutes;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -55,8 +66,8 @@ class SettingsScreen extends ConsumerWidget {
           SettingsTile(
             icon: Icons.fingerprint,
             title: 'Biometric Unlock',
-            subtitle: 'Use fingerprint for faster access',
-            trailing: Switch(value: true, onChanged: (value) {}),
+            subtitle: 'Not available yet — PIN unlock remains required',
+            trailing: const Switch(value: false, onChanged: null),
           ),
           SettingsTile(
             icon: Icons.timer_outlined,
@@ -115,6 +126,44 @@ class SettingsScreen extends ConsumerWidget {
                     .read(vaultControllerProvider.notifier)
                     .setBackgroundLockDelayMinutes(newValue);
               }
+            },
+          ),
+          SettingsTile(
+            icon: Icons.verified_user_outlined,
+            title: 'Approval session duration',
+            subtitle:
+                'After a manual approval, remembered low-risk NIP-55 requests '
+                'can continue for: '
+                '${formatApprovalSessionDuration(approvalSessionDurationMinutes)}',
+            onTap: () async {
+              final newValue = await showDialog<int>(
+                context: context,
+                builder: (context) => _TimeoutPickerDialog(
+                  title: 'Approval session duration',
+                  initialValue: approvalSessionDurationMinutes,
+                  options: const [
+                    _TimeoutOption(0, 'Ask every time'),
+                    _TimeoutOption(1, '1 minute'),
+                    _TimeoutOption(5, '5 minutes'),
+                    _TimeoutOption(15, '15 minutes'),
+                  ],
+                ),
+              );
+              if (newValue != null) {
+                ref
+                    .read(vaultControllerProvider.notifier)
+                    .setApprovalSessionDurationMinutes(newValue);
+              }
+            },
+          ),
+          SettingsTile(
+            icon: Icons.verified_user_outlined,
+            title: 'Trusted Nostr apps',
+            subtitle: 'Review or revoke remembered NIP-55 app permissions',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const TrustedAppsScreen()),
+              );
             },
           ),
           const SettingsTile(

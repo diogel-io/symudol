@@ -37,6 +37,15 @@ abstract class VaultStore {
   /// Sets the background lock delay in minutes.
   Future<void> setBackgroundLockDelayMinutes(int minutes);
 
+  /// Reads the in-memory approval session duration in minutes.
+  ///
+  /// `0` means ask every time. The duration setting is persisted, but the
+  /// approval session itself must remain process-local.
+  Future<int?> getApprovalSessionDurationMinutes();
+
+  /// Sets the approval session duration in minutes.
+  Future<void> setApprovalSessionDurationMinutes(int minutes);
+
   /// Reads a full identity record including secret.
   Future<VaultIdentityRecord?> getIdentityRecord(String localId);
 

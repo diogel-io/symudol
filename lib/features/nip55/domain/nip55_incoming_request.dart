@@ -1,4 +1,6 @@
+import 'nip55_client.dart';
 import 'nip55_method.dart';
+import 'nip55_web_return_options.dart';
 
 class Nip55IncomingRequest {
   final String localId;
@@ -10,8 +12,10 @@ class Nip55IncomingRequest {
   final String? pubkey;
   final String? permissions;
   final String? sourceHint;
+  final Nip55ClientIdentity clientIdentity;
   final String? dataUri;
   final Map<String, Object?>? eventJson;
+  final Nip55WebReturnOptions webReturnOptions;
   final DateTime receivedAt;
 
   const Nip55IncomingRequest({
@@ -25,8 +29,10 @@ class Nip55IncomingRequest {
     this.pubkey,
     this.permissions,
     this.sourceHint,
+    this.clientIdentity = const Nip55ClientIdentity(),
     this.dataUri,
     this.eventJson,
+    this.webReturnOptions = const Nip55WebReturnOptions(),
   });
 
   bool get isSignEvent => method == Nip55Method.signEvent;

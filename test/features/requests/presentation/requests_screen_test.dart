@@ -96,6 +96,66 @@ void main() {
       expect(find.text('1234567890'), findsOneWidget);
     });
 
+    testWidgets('shows WP8 NIP-55 review summary without requiring raw JSON', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test User');
+      final activeIdentity = vaultController.state.activeIdentity!;
+
+      final request = SigningRequest(
+        id: 'req-wp8',
+        provenance: const RequestProvenance(
+          sourceDisplayName: 'Example Nostr',
+          sourceIdentifier: 'com.example.nostr',
+          trustStatus: RequestTrustStatus.knownTrusted,
+        ),
+        actionType: SigningActionType.signEvent,
+        eventKind: 22242,
+        eventPayload: const {
+          'kind': 22242,
+          'nip55Method': 'sign_event',
+          'nip55PermissionScope': 'sign_event:22242',
+          'content': 'auth challenge',
+          'created_at': 1777618800,
+          'tags': [
+            ['relay', 'wss://relay.example'],
+            ['challenge', 'abc'],
+          ],
+        },
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
+        createdAt: DateTime.now(),
+        status: SigningRequestStatus.pending,
+      );
+
+      await requestController.acceptRequest(request);
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      expect(find.text('Client authentication • signEvent'), findsOneWidget);
+      expect(find.text('Risk note'), findsOneWidget);
+      expect(find.textContaining('proves control of this key'), findsOneWidget);
+      expect(find.text('Advanced: raw JSON'), findsOneWidget);
+
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -500),
+      );
+      await tester.pump();
+
+      expect(find.text('sign_event'), findsOneWidget);
+      expect(
+        find.text('Remember permission: sign kind 22242 only'),
+        findsOneWidget,
+      );
+      expect(find.text('2 tag(s): relay:1, challenge:1'), findsOneWidget);
+    });
+
     testWidgets('shows unknown provenance warning', (tester) async {
       final request = SigningRequest(
         id: 'req1',

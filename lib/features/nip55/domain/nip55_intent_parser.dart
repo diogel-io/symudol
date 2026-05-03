@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import 'nip55_client.dart';
 import 'nip55_failure.dart';
 import 'nip55_incoming_request.dart';
 import 'nip55_method.dart';
+import 'nip55_web_return_options.dart';
 
 class Nip55IntentParser {
   const Nip55IntentParser({DateTime Function()? now}) : _now = now;
@@ -45,10 +47,35 @@ class Nip55IntentParser {
       pubkey: raw['pubkey'] as String?,
       permissions: raw['permissions'] as String?,
       sourceHint: raw['sourceHint'] as String?,
+      clientIdentity: _parseClientIdentity(raw),
       dataUri: raw['dataUri'] as String?,
       eventJson: eventJson,
+      webReturnOptions: Nip55WebReturnOptions.fromRaw(raw),
       receivedAt: parsedAt,
     );
+  }
+
+  Nip55ClientIdentity _parseClientIdentity(Map<String, Object?> raw) {
+    final packageName =
+        _trimToNull(raw['callingPackage'] as String?) ??
+        _trimToNull(raw['intentPackage'] as String?);
+    final appLabel = _trimToNull(raw['callerAppLabel'] as String?);
+    final certificateSha256 = _trimToNull(
+      raw['callerCertificateSha256'] as String?,
+    );
+    final referrer = _trimToNull(raw['referrer'] as String?);
+    return Nip55ClientIdentity(
+      packageName: packageName,
+      appLabel: appLabel,
+      certificateSha256: certificateSha256,
+      referrer: referrer,
+      provenanceVerified: packageName != null && certificateSha256 != null,
+    );
+  }
+
+  String? _trimToNull(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   Map<String, Object?> _decodeEventJson(String content) {

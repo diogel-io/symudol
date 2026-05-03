@@ -22,7 +22,7 @@ class PinButton extends StatelessWidget {
 
 class PinButtonIcon extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const PinButtonIcon(this.icon, {super.key, required this.onPressed});
 
@@ -32,7 +32,13 @@ class PinButtonIcon extends StatelessWidget {
       onTap: onPressed,
       borderRadius: BorderRadius.circular(100),
       child: Center(
-        child: Icon(icon, size: 32, color: DiogelColors.textSecondary),
+        child: Icon(
+          icon,
+          size: 32,
+          color: onPressed == null
+              ? DiogelColors.textTertiary
+              : DiogelColors.textSecondary,
+        ),
       ),
     );
   }

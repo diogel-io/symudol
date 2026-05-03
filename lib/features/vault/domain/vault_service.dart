@@ -83,6 +83,12 @@ abstract interface class VaultService {
   /// Sets the background lock delay in minutes.
   Future<void> setBackgroundLockDelayMinutes(int minutes);
 
+  /// Gets the approval session duration in minutes.
+  Future<int> getApprovalSessionDurationMinutes();
+
+  /// Sets the approval session duration in minutes.
+  Future<void> setApprovalSessionDurationMinutes(int minutes);
+
   /// Initializes the service state from persistent storage.
   Future<void> init();
 }

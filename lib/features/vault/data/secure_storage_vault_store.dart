@@ -11,6 +11,8 @@ class SecureStorageVaultStore implements VaultStore {
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
   static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
+  static const String _keyApprovalSessionDuration =
+      'approval_session_duration_minutes';
   static const String _keyIdentitiesPrefix = 'identity_';
 
   SecureStorageVaultStore({FlutterSecureStorage? storage})
@@ -57,6 +59,18 @@ class SecureStorageVaultStore implements VaultStore {
   @override
   Future<void> setBackgroundLockDelayMinutes(int minutes) =>
       _storage.write(key: _keyBackgroundLockDelay, value: minutes.toString());
+
+  @override
+  Future<int?> getApprovalSessionDurationMinutes() async {
+    final value = await _storage.read(key: _keyApprovalSessionDuration);
+    return value != null ? int.tryParse(value) : null;
+  }
+
+  @override
+  Future<void> setApprovalSessionDurationMinutes(int minutes) => _storage.write(
+    key: _keyApprovalSessionDuration,
+    value: minutes.toString(),
+  );
 
   @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
