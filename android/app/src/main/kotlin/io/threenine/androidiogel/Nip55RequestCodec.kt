@@ -40,8 +40,21 @@ object Nip55RequestCodec {
         return projection?.firstOrNull()?.takeIf { it.isNotBlank() }
     }
 
+    fun payloadFromProjection(projection: Array<out String>?): String? {
+        return projection?.firstOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    fun peerPubkeyFromProjection(projection: Array<out String>?): String? {
+        return projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
+    }
+
     fun currentUserFromProjection(projection: Array<out String>?): String? {
         return projection?.getOrNull(2)?.takeIf { it.isNotBlank() }
+    }
+
+    fun zapCurrentUserFromProjection(projection: Array<out String>?): String? {
+        return projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
+            ?: currentUserFromProjection(projection)
     }
 
     fun rejectedCursor(reason: String = "rejected"): MatrixCursor {
@@ -53,6 +66,12 @@ object Nip55RequestCodec {
     fun signEventCursor(signature: String, eventJson: String): MatrixCursor {
         return MatrixCursor(arrayOf("result", "event")).apply {
             addRow(arrayOf(signature, eventJson))
+        }
+    }
+
+    fun operationResultCursor(result: String): MatrixCursor {
+        return MatrixCursor(arrayOf("result")).apply {
+            addRow(arrayOf(result))
         }
     }
 }

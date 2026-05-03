@@ -16,7 +16,13 @@ Important: Dart stores remembered permissions in Flutter secure storage under `n
   - `io.threenine.androidiogel.NIP04_DECRYPT`
   - `io.threenine.androidiogel.DECRYPT_ZAP_EVENT`
 - `SIGN_EVENT` projection decoding for event JSON and `current_user`.
+- Projection shape validation for every declared provider method:
+  - `SIGN_EVENT`: event JSON + `current_user`
+  - `NIP04_ENCRYPT` / `NIP04_DECRYPT`: payload + peer pubkey + `current_user`
+  - `NIP44_ENCRYPT` / `NIP44_DECRYPT`: payload + peer pubkey + `current_user`
+  - `DECRYPT_ZAP_EVENT`: zap event payload + `current_user`
 - NIP-55-shaped cursor helpers for `result` + lowercase `event`.
+- NIP-55-shaped cursor helper for non-signing operation `result` responses.
 - Safe null behavior for all provider calls.
 - Native reject cursor hook placeholder for future mirrored reject grants.
 

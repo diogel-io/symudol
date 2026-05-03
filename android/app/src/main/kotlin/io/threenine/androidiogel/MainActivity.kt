@@ -176,15 +176,23 @@ class MainActivity : FlutterActivity() {
         val callbackUrl = extras["callbackUrl"] as? String ?: return
         val result = extras["result"]?.toString() ?: return
         try {
-            val uriBuilder = Uri.parse(callbackUrl).buildUpon()
-                .appendQueryParameter("result", result)
-            extras["id"]?.toString()?.let { uriBuilder.appendQueryParameter("id", it) }
-            extras["returnType"]?.toString()?.let { uriBuilder.appendQueryParameter("returnType", it) }
-            extras["compressionType"]?.toString()?.let { uriBuilder.appendQueryParameter("compressionType", it) }
-            startActivity(Intent(Intent.ACTION_VIEW, uriBuilder.build()))
+            val callbackUri = buildCallbackUri(callbackUrl, result, extras)
+            startActivity(Intent(Intent.ACTION_VIEW, callbackUri))
         } catch (_: Exception) {
             // Keep the normal result path as fallback.
         }
+    }
+
+    private fun buildCallbackUri(callbackUrl: String, result: String, extras: Map<*, *>): Uri {
+        if (callbackUrl.endsWith("=")) {
+            return Uri.parse(callbackUrl + Uri.encode(result))
+        }
+        val uriBuilder = Uri.parse(callbackUrl).buildUpon()
+            .appendQueryParameter("result", result)
+        extras["id"]?.toString()?.let { uriBuilder.appendQueryParameter("id", it) }
+        extras["returnType"]?.toString()?.let { uriBuilder.appendQueryParameter("returnType", it) }
+        extras["compressionType"]?.toString()?.let { uriBuilder.appendQueryParameter("compressionType", it) }
+        return uriBuilder.build()
     }
 
     private fun maybeCopyToClipboard(extras: Map<*, *>) {

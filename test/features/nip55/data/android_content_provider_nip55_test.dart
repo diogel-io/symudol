@@ -32,6 +32,10 @@ void main() {
       expect(provider, contains('return null'));
       expect(provider, isNot(contains('startActivity')));
       expect(provider, contains('no remembered permission'));
+      expect(provider, contains('hasRequiredProjection(method, projection)'));
+      expect(provider, contains('"nip44_encrypt"'));
+      expect(provider, contains('"nip04_decrypt"'));
+      expect(provider, contains('"decrypt_zap_event"'));
     },
   );
 
@@ -41,8 +45,11 @@ void main() {
     ).readAsStringSync();
 
     expect(codec, contains('MatrixCursor(arrayOf("result", "event"))'));
+    expect(codec, contains('MatrixCursor(arrayOf("result"))'));
     expect(codec, contains('MatrixCursor(arrayOf("rejected"))'));
     expect(codec, contains('AUTHORITY_SIGN_EVENT'));
+    expect(codec, contains('peerPubkeyFromProjection'));
+    expect(codec, contains('zapCurrentUserFromProjection'));
   });
 
   test('ContentProvider MVP deferral is documented', () {
@@ -55,5 +62,6 @@ void main() {
     expect(doc, contains('does not read that store'));
     expect(doc, contains('headless Flutter engine'));
     expect(doc, contains('return `null`'));
+    expect(doc, contains('Projection shape validation'));
   });
 }

@@ -23,14 +23,11 @@ class Nip55ContentProvider : ContentProvider() {
             return Nip55RequestCodec.rejectedCursor()
         }
 
-        // Safe WP5 MVP: do not launch UI, do not duplicate key handling native-side,
+        if (!hasRequiredProjection(method, projection)) return null
+
+        // Safe provider MVP: do not launch UI, do not duplicate key handling native-side,
         // and do not sign while the Flutter/vault policy path is unavailable.
         // Returning null is the NIP-55-compatible response for "no remembered permission".
-        if (method == "sign_event") {
-            val eventJson = Nip55RequestCodec.eventJsonFromProjection(projection)
-            val currentUser = Nip55RequestCodec.currentUserFromProjection(projection)
-            if (eventJson.isNullOrBlank() || currentUser.isNullOrBlank()) return null
-        }
         return null
     }
 
@@ -60,5 +57,27 @@ class Nip55ContentProvider : ContentProvider() {
         val preferences = context?.getSharedPreferences("nip55_provider_permissions_v1", 0)
             ?: return false
         return preferences.getString("$packageName:$method", null) == "reject"
+    }
+
+    private fun hasRequiredProjection(method: String, projection: Array<out String>?): Boolean {
+        return when (method) {
+            "sign_event" -> {
+                !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank() &&
+                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+            }
+            "nip04_encrypt",
+            "nip04_decrypt",
+            "nip44_encrypt",
+            "nip44_decrypt" -> {
+                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
+                    !Nip55RequestCodec.peerPubkeyFromProjection(projection).isNullOrBlank() &&
+                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+            }
+            "decrypt_zap_event" -> {
+                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
+                    !Nip55RequestCodec.zapCurrentUserFromProjection(projection).isNullOrBlank()
+            }
+            else -> false
+        }
     }
 }
