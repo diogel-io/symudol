@@ -12,6 +12,12 @@ void main() {
     expect(manifest, contains('android:launchMode="singleTop"'));
     expect(manifest, contains('android:name=".Nip55BridgeActivity"'));
     expect(manifest, contains('android:exported="true"'));
+    expect(
+      manifest,
+      contains(
+        'android:name=".Nip55BridgeActivity"\n            android:exported="true"\n            android:launchMode="singleTop"',
+      ),
+    );
     expect(manifest, contains('android.intent.action.VIEW'));
     expect(manifest, contains('android.intent.category.BROWSABLE'));
     expect(manifest, contains('android:scheme="nostrsigner"'));

@@ -323,6 +323,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
             ),
             if (canRemember) ...[
               const SizedBox(height: DiogelSpacing.space2),
+              Text(
+                'Remembered allow decisions only auto-approve while your short approval session is active. Browser requests cannot be remembered.',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: DiogelColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: DiogelSpacing.space2),
               TextButton.icon(
                 onPressed: () => ref
                     .read(nip55ControllerProvider.notifier)
@@ -943,6 +951,14 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
           ),
           const SizedBox(height: DiogelSpacing.space2),
           if (canRemember) ...[
+            Text(
+              'Remembered allow decisions only auto-approve while your short approval session is active. Browser requests cannot be remembered.',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: DiogelColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: DiogelSpacing.space2),
             TextButton.icon(
               onPressed: isLoading
                   ? null

@@ -133,7 +133,7 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Approval session duration',
             subtitle:
                 'After a manual approval, remembered low-risk NIP-55 requests '
-                'can continue for: '
+                'from verified native apps can continue for: '
                 '${formatApprovalSessionDuration(approvalSessionDurationMinutes)}',
             onTap: () async {
               final newValue = await showDialog<int>(
@@ -159,7 +159,8 @@ class SettingsScreen extends ConsumerWidget {
           SettingsTile(
             icon: Icons.verified_user_outlined,
             title: 'Trusted Nostr apps',
-            subtitle: 'Review or revoke remembered NIP-55 app permissions',
+            subtitle:
+                'Review remembered NIP-55 app permissions. Allows only apply inside an active approval session.',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const TrustedAppsScreen()),

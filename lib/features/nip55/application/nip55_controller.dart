@@ -508,11 +508,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool canRememberPendingSigningRequest(String requestId) {
     return state.pendingSigningRequestId == requestId &&
         state.pendingIncoming?.clientIdentity.packageName != null &&
+        state.pendingIncoming?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
 
   bool canRememberPendingPublicKeyRequest() {
     return state.pendingPublicKeyRequest?.clientIdentity.packageName != null &&
+        state.pendingPublicKeyRequest?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
 

@@ -65,6 +65,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Example Nostr'), findsOneWidget);
+    expect(find.textContaining('not permanent silent trust'), findsOneWidget);
+    expect(
+      find.textContaining('Browser flows are not remembered'),
+      findsOneWidget,
+    );
     expect(find.text('com.example.nostr'), findsOneWidget);
     expect(find.textContaining('Identity abcdef…567890'), findsOneWidget);
     expect(find.textContaining('Allowed • Sign kind 1'), findsOneWidget);
@@ -109,7 +114,7 @@ void main() {
     expect(store.grants, isEmpty);
     expect(
       find.text(
-        'No remembered NIP-55 app permissions yet. Approvals you remember from signer requests will appear here.',
+        'No remembered NIP-55 app permissions yet. Approvals you remember from verified native app requests will appear here.',
       ),
       findsOneWidget,
     );

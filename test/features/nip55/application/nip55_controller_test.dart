@@ -329,6 +329,29 @@ void main() {
       },
     );
 
+    test('browser-style requests cannot be remembered', () async {
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        requestController: requestController,
+        permissionStore: FakeNip55PermissionStore(),
+      );
+
+      await permissionController.handleRawIntent({
+        ...signEventRaw(id: 'browser'),
+        'callingPackage': 'com.android.chrome',
+        'callerCertificateSha256': 'AA:BB',
+        'callbackUrl': 'https://example.com/callback',
+        'returnType': 'event',
+      });
+      final request = requestController.state.requests.single;
+
+      expect(
+        permissionController.canRememberPendingSigningRequest(request.id),
+        isFalse,
+      );
+    });
+
     test('signing failure rejects external caller safely', () async {
       await controller.handleRawIntent({
         'requestToken': 'token-fail',

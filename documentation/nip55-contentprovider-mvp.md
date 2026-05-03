@@ -1,6 +1,10 @@
-# NIP-55 ContentProvider MVP
+# NIP-55 ContentProvider deferral status
+
+Status: **deferred safe stub**, not a complete background signing implementation.
 
 This pass adds the Android ContentProvider entry points required by NIP-55, but deliberately keeps provider signing disabled until the Flutter vault/policy/signing path can be safely invoked from a provider call.
+
+Important: Dart stores remembered permissions in Flutter secure storage under `nip55_permission_grants_v1`. The current native provider does not read that store and does not mirror allow grants. It must therefore be treated as a structural entry-point stub only.
 
 ## Implemented
 
@@ -13,8 +17,8 @@ This pass adds the Android ContentProvider entry points required by NIP-55, but 
   - `io.threenine.androidiogel.DECRYPT_ZAP_EVENT`
 - `SIGN_EVENT` projection decoding for event JSON and `current_user`.
 - NIP-55-shaped cursor helpers for `result` + lowercase `event`.
-- Safe null behavior when no remembered provider permission exists.
-- Native reject cursor hook for future mirrored reject grants.
+- Safe null behavior for all provider calls.
+- Native reject cursor hook placeholder for future mirrored reject grants.
 
 ## Deferred intentionally
 
@@ -25,4 +29,4 @@ Next provider phase should either:
 1. spin up a headless Flutter engine and call the existing Dart policy/signing code, or
 2. maintain a narrow native provider session cache populated only after an unlocked, reviewed Flutter approval.
 
-Until then, provider queries return `null` unless a native mirrored reject decision is present. This matches NIP-55's safe behavior for missing remembered permission and avoids surprise UI launches or cold native signing.
+Until then, provider queries return `null`. This matches NIP-55's safe behavior for missing remembered permission and avoids surprise UI launches or cold native signing. Do not describe WP5 as complete background approval/signing until one of the next-phase designs above is implemented and tested.

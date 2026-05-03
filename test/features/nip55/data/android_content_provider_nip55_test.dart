@@ -51,6 +51,8 @@ void main() {
     ).readAsStringSync();
 
     expect(doc, contains('Provider auto-signing is not enabled yet'));
+    expect(doc, contains('deferred safe stub'));
+    expect(doc, contains('does not read that store'));
     expect(doc, contains('headless Flutter engine'));
     expect(doc, contains('return `null`'));
   });

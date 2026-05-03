@@ -52,6 +52,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Approval session duration'), findsOneWidget);
+    expect(find.textContaining('verified native apps'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Allows only apply inside an active approval session',
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('Ask every time'), findsOneWidget);
 
     await tester.tap(find.text('Approval session duration'));

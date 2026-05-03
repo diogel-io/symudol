@@ -33,18 +33,20 @@ class TrustedAppsScreen extends ConsumerWidget {
               child: Padding(
                 padding: EdgeInsets.all(DiogelSpacing.space4),
                 child: Text(
-                  'No remembered NIP-55 app permissions yet. Approvals you remember from signer requests will appear here.',
+                  'No remembered NIP-55 app permissions yet. Approvals you remember from verified native app requests will appear here.',
                   textAlign: TextAlign.center,
                 ),
               ),
             )
           : ListView.separated(
               padding: const EdgeInsets.all(DiogelSpacing.space4),
-              itemCount: groups.length,
+              itemCount: groups.length + 1,
               separatorBuilder: (_, _) =>
                   const SizedBox(height: DiogelSpacing.space4),
               itemBuilder: (context, index) {
-                final group = groups[index];
+                if (index == 0) return const _TrustedAppsSessionNote();
+                final groupIndex = index - 1;
+                final group = groups[groupIndex];
                 return _TrustedAppCard(
                   group: group,
                   onRevokeGrant: controller.revokeGrant,
@@ -131,6 +133,34 @@ class TrustedAppsScreen extends ConsumerWidget {
       ),
     );
     if (confirmed == true) await action();
+  }
+}
+
+class _TrustedAppsSessionNote extends StatelessWidget {
+  const _TrustedAppsSessionNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(DiogelSpacing.space3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, color: DiogelColors.textSecondary),
+            const SizedBox(width: DiogelSpacing.space3),
+            Expanded(
+              child: Text(
+                'Remembered allow decisions are not permanent silent trust. They only auto-approve low-risk requests while the vault is unlocked and an explicit approval session is active. Browser flows are not remembered because the browser package is not the website origin.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: DiogelColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
