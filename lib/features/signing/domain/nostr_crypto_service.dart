@@ -9,5 +9,34 @@ abstract interface class NostrCryptoService {
     required NostrEventDraft draft,
   });
 
+  String nip04Encrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String plaintext,
+  });
+
+  String nip04Decrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  });
+
+  String nip44Encrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String plaintext,
+  });
+
+  String nip44Decrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  });
+
+  String decryptZapEvent({
+    required String privateKeyHex,
+    required Map<String, Object?> eventJson,
+  });
+
   bool verifySignedEvent(SignedNostrEvent event);
 }

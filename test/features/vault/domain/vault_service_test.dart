@@ -442,4 +442,88 @@ void main() {
       expect(const DartNostrCryptoService().verifySignedEvent(event), isTrue);
     });
   });
+
+  group('VaultServiceImpl NIP-55 crypto', () {
+    test('crypto operations refuse while locked', () async {
+      await fakeStore.setSentinel('vault_exists');
+      await vaultService.init();
+
+      expect(
+        () => vaultService.nip44Encrypt(
+          identityLocalId: 'missing',
+          peerPubkeyHex: 'b' * 64,
+          plaintext: 'hello',
+        ),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+
+    test('NIP-04 encrypt/decrypt uses active vault identity', () async {
+      await vaultService.createVault('1234');
+      final alice = await vaultService.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+
+      final ciphertext = await vaultService.nip04Encrypt(
+        identityLocalId: alice.localId,
+        peerPubkeyHex: bob.public,
+        plaintext: 'hello from vault',
+      );
+
+      expect(
+        const DartNostrCryptoService().nip04Decrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: alice.publicKey,
+          ciphertext: ciphertext,
+        ),
+        'hello from vault',
+      );
+    });
+
+    test('NIP-44 encrypt/decrypt uses active vault identity', () async {
+      await vaultService.createVault('1234');
+      final alice = await vaultService.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+
+      final ciphertext = await vaultService.nip44Encrypt(
+        identityLocalId: alice.localId,
+        peerPubkeyHex: bob.public,
+        plaintext: 'hello nip44',
+      );
+
+      expect(
+        const DartNostrCryptoService().nip44Decrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: alice.publicKey,
+          ciphertext: ciphertext,
+        ),
+        'hello nip44',
+      );
+    });
+
+    test('crypto operations refuse active identity mismatch', () async {
+      await vaultService.createVault('1234');
+      final identity1 = await vaultService.createIdentity(displayName: 'ID 1');
+      final identity2 = await vaultService.createIdentity(displayName: 'ID 2');
+      await vaultService.setActiveIdentity(identity1.localId);
+
+      expect(
+        () => vaultService.nip44Encrypt(
+          identityLocalId: identity2.localId,
+          peerPubkeyHex: identity1.publicKey,
+          plaintext: 'hello',
+        ),
+        throwsA(isA<IdentityMismatchException>()),
+      );
+    });
+  });
 }

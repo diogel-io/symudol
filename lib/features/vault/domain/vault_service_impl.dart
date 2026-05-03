@@ -264,25 +264,7 @@ class VaultServiceImpl implements VaultService {
     required String identityLocalId,
     required NostrEventDraft draft,
   }) async {
-    _checkUnlocked();
-
-    final record = await _store.getIdentityRecord(identityLocalId);
-    if (record == null) {
-      throw const IdentityNotFoundException();
-    }
-
-    if (_activeIdentity?.localId != identityLocalId) {
-      throw const IdentityMismatchException();
-    }
-
-    final derivedPublicKey = _cryptoService.derivePublicKey(
-      record.secretPayload,
-    );
-    if (derivedPublicKey != record.publicKey) {
-      throw const VaultSigningException(
-        'Stored identity key material is invalid',
-      );
-    }
+    final record = await _activeRecordFor(identityLocalId);
 
     try {
       final signedEvent = _cryptoService.signEvent(
@@ -298,6 +280,84 @@ class VaultServiceImpl implements VaultService {
     } catch (_) {
       throw const VaultSigningException('Unable to sign event');
     }
+  }
+
+  @override
+  Future<String> nip04Encrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String plaintext,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => _cryptoService.nip04Encrypt(
+        privateKeyHex: record.secretPayload,
+        peerPubkeyHex: peerPubkeyHex,
+        plaintext: plaintext,
+      ),
+    );
+  }
+
+  @override
+  Future<String> nip04Decrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => _cryptoService.nip04Decrypt(
+        privateKeyHex: record.secretPayload,
+        peerPubkeyHex: peerPubkeyHex,
+        ciphertext: ciphertext,
+      ),
+    );
+  }
+
+  @override
+  Future<String> nip44Encrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String plaintext,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => _cryptoService.nip44Encrypt(
+        privateKeyHex: record.secretPayload,
+        peerPubkeyHex: peerPubkeyHex,
+        plaintext: plaintext,
+      ),
+    );
+  }
+
+  @override
+  Future<String> nip44Decrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => _cryptoService.nip44Decrypt(
+        privateKeyHex: record.secretPayload,
+        peerPubkeyHex: peerPubkeyHex,
+        ciphertext: ciphertext,
+      ),
+    );
+  }
+
+  @override
+  Future<String> decryptZapEvent({
+    required String identityLocalId,
+    required Map<String, Object?> eventJson,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => _cryptoService.decryptZapEvent(
+        privateKeyHex: record.secretPayload,
+        eventJson: eventJson,
+      ),
+    );
   }
 
   @override
@@ -361,6 +421,39 @@ class VaultServiceImpl implements VaultService {
   void _checkUnlocked() {
     if (_state is! VaultUnlocked) {
       throw const VaultLockedException();
+    }
+  }
+
+  Future<VaultIdentityRecord> _activeRecordFor(String identityLocalId) async {
+    _checkUnlocked();
+
+    final record = await _store.getIdentityRecord(identityLocalId);
+    if (record == null) {
+      throw const IdentityNotFoundException();
+    }
+
+    if (_activeIdentity?.localId != identityLocalId) {
+      throw const IdentityMismatchException();
+    }
+
+    final derivedPublicKey = _cryptoService.derivePublicKey(
+      record.secretPayload,
+    );
+    if (derivedPublicKey != record.publicKey) {
+      throw const VaultSigningException(
+        'Stored identity key material is invalid',
+      );
+    }
+    return record;
+  }
+
+  String _runCryptoOperation(String Function() operation) {
+    try {
+      return operation();
+    } on VaultException {
+      rethrow;
+    } catch (_) {
+      throw const VaultSigningException('Unable to complete NIP-55 operation');
     }
   }
 }

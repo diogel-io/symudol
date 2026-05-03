@@ -1,10 +1,33 @@
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
 import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:dart_nostr/dart_nostr.dart';
+import 'package:pointycastle/block/aes.dart';
+import 'package:pointycastle/block/modes/cbc.dart';
+import 'package:pointycastle/ecc/api.dart';
+import 'package:pointycastle/api.dart'
+    show KeyParameter, PaddedBlockCipherParameters, ParametersWithIV;
+import 'package:pointycastle/export.dart'
+    show PaddedBlockCipherImpl, PKCS7Padding;
+import 'package:pointycastle/stream/chacha7539.dart';
 
 class DartNostrCryptoService implements NostrCryptoService {
-  const DartNostrCryptoService();
+  static final ECDomainParameters _secp256k1 = ECDomainParameters('secp256k1');
+  static final BigInt _curveP = BigInt.parse(
+    'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F',
+    radix: 16,
+  );
+  static final BigInt _curveN = _secp256k1.n;
+
+  final Uint8List Function(int length) _randomBytes;
+
+  const DartNostrCryptoService({Uint8List Function(int length)? randomBytes})
+    : _randomBytes = randomBytes ?? _secureRandomBytes;
 
   @override
   String derivePublicKey(String privateKeyHex) {
@@ -45,6 +68,86 @@ class DartNostrCryptoService implements NostrCryptoService {
   }
 
   @override
+  String nip04Encrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String plaintext,
+  }) {
+    _validatePlaintext(plaintext);
+    final sharedX = _sharedSecretX(privateKeyHex, peerPubkeyHex);
+    final iv = _randomBytes(16);
+    final encrypted = _aes256Cbc(true, sharedX, iv, utf8.encode(plaintext));
+    return '${base64Encode(encrypted)}?iv=${base64Encode(iv)}';
+  }
+
+  @override
+  String nip04Decrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  }) {
+    final match = RegExp(r'^(.*)\?iv=([^&]+)$').firstMatch(ciphertext);
+    if (match == null) {
+      throw const NostrCryptoException('Malformed NIP-04 ciphertext');
+    }
+    final encrypted = base64Decode(match.group(1)!);
+    final iv = base64Decode(match.group(2)!);
+    if (iv.length != 16) {
+      throw const NostrCryptoException('Malformed NIP-04 IV');
+    }
+    final sharedX = _sharedSecretX(privateKeyHex, peerPubkeyHex);
+    final decrypted = _aes256Cbc(false, sharedX, iv, encrypted);
+    return utf8.decode(decrypted);
+  }
+
+  @override
+  String nip44Encrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String plaintext,
+  }) {
+    final conversationKey = _nip44ConversationKey(privateKeyHex, peerPubkeyHex);
+    return _nip44EncryptWithConversationKey(
+      conversationKey: conversationKey,
+      nonce: _randomBytes(32),
+      plaintext: plaintext,
+    );
+  }
+
+  @override
+  String nip44Decrypt({
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  }) {
+    final conversationKey = _nip44ConversationKey(privateKeyHex, peerPubkeyHex);
+    return _nip44DecryptWithConversationKey(
+      conversationKey: conversationKey,
+      payload: ciphertext,
+    );
+  }
+
+  @override
+  String decryptZapEvent({
+    required String privateKeyHex,
+    required Map<String, Object?> eventJson,
+  }) {
+    final content = eventJson['content'];
+    final pubkey = eventJson['pubkey'];
+    if (content is! String || content.trim().isEmpty) {
+      throw const NostrCryptoException('Zap event content is missing');
+    }
+    if (pubkey is! String || !_isHex64(pubkey)) {
+      throw const NostrCryptoException('Zap event pubkey is invalid');
+    }
+    return nip44Decrypt(
+      privateKeyHex: privateKeyHex,
+      peerPubkeyHex: pubkey,
+      ciphertext: content,
+    );
+  }
+
+  @override
   bool verifySignedEvent(SignedNostrEvent event) {
     final createdAt = DateTime.fromMillisecondsSinceEpoch(
       event.createdAt * 1000,
@@ -62,6 +165,245 @@ class DartNostrCryptoService implements NostrCryptoService {
 
     return NostrKeyPairs.verify(event.pubkey, event.id, event.sig);
   }
+
+  String _nip44EncryptWithConversationKey({
+    required Uint8List conversationKey,
+    required Uint8List nonce,
+    required String plaintext,
+  }) {
+    if (nonce.length != 32) {
+      throw const NostrCryptoException('Invalid NIP-44 nonce length');
+    }
+    final keys = _nip44MessageKeys(conversationKey, nonce);
+    final padded = _nip44Pad(plaintext);
+    final ciphertext = _chacha20(keys.chachaKey, keys.chachaNonce, padded);
+    final mac = _hmacSha256(
+      keys.hmacKey,
+      Uint8List.fromList(nonce + ciphertext),
+    );
+    return base64Encode(Uint8List.fromList([2] + nonce + ciphertext + mac));
+  }
+
+  String _nip44DecryptWithConversationKey({
+    required Uint8List conversationKey,
+    required String payload,
+  }) {
+    if (payload.isEmpty || payload.startsWith('#')) {
+      throw const NostrCryptoException('Unsupported NIP-44 payload version');
+    }
+    if (payload.length < 132 || payload.length > 87472) {
+      throw const NostrCryptoException('Invalid NIP-44 payload size');
+    }
+    final data = base64Decode(payload);
+    if (data.length < 99 || data.length > 65603) {
+      throw const NostrCryptoException('Invalid NIP-44 data size');
+    }
+    if (data.first != 2) {
+      throw const NostrCryptoException('Unsupported NIP-44 payload version');
+    }
+    final nonce = Uint8List.fromList(data.sublist(1, 33));
+    final ciphertext = Uint8List.fromList(data.sublist(33, data.length - 32));
+    final mac = Uint8List.fromList(data.sublist(data.length - 32));
+    final keys = _nip44MessageKeys(conversationKey, nonce);
+    final calculatedMac = _hmacSha256(
+      keys.hmacKey,
+      Uint8List.fromList(nonce + ciphertext),
+    );
+    if (!_constantTimeEquals(mac, calculatedMac)) {
+      throw const NostrCryptoException('Invalid NIP-44 MAC');
+    }
+    final padded = _chacha20(keys.chachaKey, keys.chachaNonce, ciphertext);
+    return _nip44Unpad(padded);
+  }
+
+  Uint8List _nip44ConversationKey(String privateKeyHex, String peerPubkeyHex) {
+    final sharedX = _sharedSecretX(privateKeyHex, peerPubkeyHex);
+    return _hkdfExtract(utf8.encode('nip44-v2'), sharedX);
+  }
+
+  _Nip44MessageKeys _nip44MessageKeys(
+    Uint8List conversationKey,
+    Uint8List nonce,
+  ) {
+    if (conversationKey.length != 32 || nonce.length != 32) {
+      throw const NostrCryptoException('Invalid NIP-44 key material');
+    }
+    final expanded = _hkdfExpand(conversationKey, nonce, 76);
+    return _Nip44MessageKeys(
+      chachaKey: Uint8List.fromList(expanded.sublist(0, 32)),
+      chachaNonce: Uint8List.fromList(expanded.sublist(32, 44)),
+      hmacKey: Uint8List.fromList(expanded.sublist(44, 76)),
+    );
+  }
+
+  Uint8List _nip44Pad(String plaintext) {
+    final bytes = utf8.encode(plaintext);
+    final length = bytes.length;
+    if (length < 1 || length > 65535) {
+      throw const NostrCryptoException('Invalid NIP-44 plaintext length');
+    }
+    final paddedLength = _nip44PaddedLength(length);
+    return Uint8List.fromList([
+      (length >> 8) & 0xff,
+      length & 0xff,
+      ...bytes,
+      ...List<int>.filled(paddedLength - length, 0),
+    ]);
+  }
+
+  String _nip44Unpad(Uint8List padded) {
+    if (padded.length < 34) {
+      throw const NostrCryptoException('Invalid NIP-44 padding');
+    }
+    final length = (padded[0] << 8) | padded[1];
+    if (length < 1 || length > 65535) {
+      throw const NostrCryptoException('Invalid NIP-44 plaintext length');
+    }
+    if (padded.length != 2 + _nip44PaddedLength(length)) {
+      throw const NostrCryptoException('Invalid NIP-44 padding length');
+    }
+    return utf8.decode(padded.sublist(2, 2 + length));
+  }
+
+  int _nip44PaddedLength(int unpaddedLength) {
+    if (unpaddedLength <= 32) return 32;
+    final nextPower = 1 << (unpaddedLength - 1).bitLength;
+    final chunk = nextPower <= 256 ? 32 : nextPower ~/ 8;
+    return chunk * (((unpaddedLength - 1) ~/ chunk) + 1);
+  }
+
+  Uint8List _sharedSecretX(String privateKeyHex, String peerPubkeyHex) {
+    final privateScalar = _privateScalar(privateKeyHex);
+    final peerPoint = _xOnlyPublicKeyToPoint(peerPubkeyHex);
+    final sharedPoint = (peerPoint * privateScalar)!;
+    if (sharedPoint.isInfinity) {
+      throw const NostrCryptoException('Invalid shared secret');
+    }
+    return _bigIntTo32Bytes(sharedPoint.x!.toBigInteger()!);
+  }
+
+  BigInt _privateScalar(String privateKeyHex) {
+    if (!_isHex64(privateKeyHex)) {
+      throw const NostrCryptoException('Invalid private key');
+    }
+    final scalar = BigInt.parse(privateKeyHex, radix: 16);
+    if (scalar < BigInt.one || scalar >= _curveN) {
+      throw const NostrCryptoException('Invalid private key');
+    }
+    return scalar;
+  }
+
+  ECPoint _xOnlyPublicKeyToPoint(String publicKeyHex) {
+    if (!_isHex64(publicKeyHex)) {
+      throw const NostrCryptoException('Invalid public key');
+    }
+    final x = BigInt.parse(publicKeyHex, radix: 16);
+    if (x >= _curveP) {
+      throw const NostrCryptoException('Invalid public key');
+    }
+    final ySq = (x.modPow(BigInt.from(3), _curveP) + BigInt.from(7)) % _curveP;
+    final y = ySq.modPow((_curveP + BigInt.one) ~/ BigInt.from(4), _curveP);
+    if (y.modPow(BigInt.two, _curveP) != ySq) {
+      throw const NostrCryptoException('Invalid public key');
+    }
+    final evenY = y.isEven ? y : _curveP - y;
+    return _secp256k1.curve.createPoint(x, evenY);
+  }
+
+  Uint8List _aes256Cbc(
+    bool forEncryption,
+    Uint8List key,
+    Uint8List iv,
+    List<int> input,
+  ) {
+    final cipher =
+        PaddedBlockCipherImpl(PKCS7Padding(), CBCBlockCipher(AESEngine()))
+          ..init(
+            forEncryption,
+            PaddedBlockCipherParameters<
+              ParametersWithIV<KeyParameter>,
+              KeyParameter
+            >(ParametersWithIV<KeyParameter>(KeyParameter(key), iv), null),
+          );
+    return cipher.process(Uint8List.fromList(input));
+  }
+
+  Uint8List _chacha20(Uint8List key, Uint8List nonce, Uint8List input) {
+    final cipher = ChaCha7539Engine()
+      ..init(true, ParametersWithIV<KeyParameter>(KeyParameter(key), nonce));
+    return cipher.process(input);
+  }
+
+  Uint8List _hkdfExtract(List<int> salt, List<int> ikm) {
+    return Uint8List.fromList(
+      crypto.Hmac(crypto.sha256, salt).convert(ikm).bytes,
+    );
+  }
+
+  Uint8List _hkdfExpand(List<int> prk, List<int> info, int length) {
+    final result = <int>[];
+    var previous = <int>[];
+    var counter = 1;
+    while (result.length < length) {
+      previous = crypto.Hmac(
+        crypto.sha256,
+        prk,
+      ).convert([...previous, ...info, counter]).bytes;
+      result.addAll(previous);
+      counter += 1;
+    }
+    return Uint8List.fromList(result.take(length).toList());
+  }
+
+  Uint8List _hmacSha256(List<int> key, List<int> message) {
+    return Uint8List.fromList(
+      crypto.Hmac(crypto.sha256, key).convert(message).bytes,
+    );
+  }
+
+  bool _constantTimeEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i += 1) {
+      diff |= a[i] ^ b[i];
+    }
+    return diff == 0;
+  }
+
+  Uint8List _bigIntTo32Bytes(BigInt value) {
+    final hex = value.toRadixString(16).padLeft(64, '0');
+    return Uint8List.fromList([
+      for (var i = 0; i < hex.length; i += 2)
+        int.parse(hex.substring(i, i + 2), radix: 16),
+    ]);
+  }
+
+  static Uint8List _secureRandomBytes(int length) {
+    final random = Random.secure();
+    return Uint8List.fromList(
+      List<int>.generate(length, (_) => random.nextInt(256)),
+    );
+  }
+
+  void _validatePlaintext(String plaintext) {
+    if (plaintext.isEmpty) {
+      throw const NostrCryptoException('Plaintext must not be empty');
+    }
+  }
+
+  bool _isHex64(String value) => RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+}
+
+class _Nip44MessageKeys {
+  final Uint8List chachaKey;
+  final Uint8List chachaNonce;
+  final Uint8List hmacKey;
+
+  const _Nip44MessageKeys({
+    required this.chachaKey,
+    required this.chachaNonce,
+    required this.hmacKey,
+  });
 }
 
 class NostrCryptoException implements Exception {

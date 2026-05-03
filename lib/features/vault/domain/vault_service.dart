@@ -71,6 +71,35 @@ abstract interface class VaultService {
     required NostrEventDraft draft,
   });
 
+  Future<String> nip04Encrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String plaintext,
+  });
+
+  Future<String> nip04Decrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  });
+
+  Future<String> nip44Encrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String plaintext,
+  });
+
+  Future<String> nip44Decrypt({
+    required String identityLocalId,
+    required String peerPubkeyHex,
+    required String ciphertext,
+  });
+
+  Future<String> decryptZapEvent({
+    required String identityLocalId,
+    required Map<String, Object?> eventJson,
+  });
+
   /// Gets the inactivity timeout in minutes.
   Future<int> getInactivityTimeout();
 
