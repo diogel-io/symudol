@@ -114,6 +114,51 @@ void main() {
     expect(jsonDecode(extras['result']! as String)['sig'], 'signature');
   });
 
+  test('browser crypto callback returns generic operation result extras', () {
+    final incoming = Nip55IncomingRequest(
+      localId: 'local',
+      requestToken: 'token-crypto-web',
+      method: Nip55Method.nip44Encrypt,
+      externalId: 'caller-id',
+      receivedAt: DateTime.utc(2026, 5, 1),
+      webReturnOptions: Nip55WebReturnOptions(
+        callbackUrl: Uri.parse('https://example.com/callback'),
+      ),
+    );
+
+    final extras = builder.operationResultExtras(
+      incoming: incoming,
+      result: 'encrypted-payload',
+    );
+
+    expect(extras['result'], 'encrypted-payload');
+    expect(extras['id'], 'caller-id');
+    expect(extras['callbackUrl'], 'https://example.com/callback');
+    expect(extras['copyToClipboard'], isNull);
+    expect(extras['returnType'], 'signature');
+    expect(extras['compressionType'], 'none');
+  });
+
+  test('browser crypto flow without callback marks sensitive clipboard label', () {
+    final incoming = Nip55IncomingRequest(
+      localId: 'local',
+      requestToken: 'token-crypto-web',
+      method: Nip55Method.nip44Decrypt,
+      receivedAt: DateTime.utc(2026, 5, 1),
+      webReturnOptions: const Nip55WebReturnOptions(isBrowserFlow: true),
+    );
+
+    final extras = builder.operationResultExtras(
+      incoming: incoming,
+      result: 'plaintext secret',
+      clipboardLabel: 'Sensitive NIP-55 result',
+    );
+
+    expect(extras['result'], 'plaintext secret');
+    expect(extras['copyToClipboard'], isTrue);
+    expect(extras['clipboardLabel'], 'Sensitive NIP-55 result');
+  });
+
   test('returns exact NIP-55 extras for get_public_key', () {
     final identity = VaultIdentity(
       localId: 'local',
