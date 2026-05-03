@@ -44,12 +44,14 @@ class MainActivity : FlutterActivity() {
                     result.success(payload)
                 }
                 "completeNip55Intent" -> {
-                    completeNip55Intent(call.arguments as? Map<*, *>)
+                    val shouldFinish = completeNip55Intent(call.arguments as? Map<*, *>)
                     result.success(null)
+                    if (shouldFinish) finishAfterMethodResponse()
                 }
                 "rejectNip55Intent" -> {
-                    rejectNip55Intent(call.arguments as? Map<*, *>)
+                    val shouldFinish = rejectNip55Intent(call.arguments as? Map<*, *>)
                     result.success(null)
+                    if (shouldFinish) finishAfterMethodResponse()
                 }
                 else -> result.notImplemented()
             }
@@ -163,15 +165,15 @@ class MainActivity : FlutterActivity() {
         return Uri.decode(withoutQuery.removePrefix("//"))
     }
 
-    private fun completeNip55Intent(arguments: Map<*, *>?) {
-        if (!isActiveRequest(arguments)) return
+    private fun completeNip55Intent(arguments: Map<*, *>?): Boolean {
+        if (!isActiveRequest(arguments)) return false
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
         maybeLaunchCallback(extras)
         maybeCopyToClipboard(extras)
         val bridgeToken = activeRequestToken
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
             activeRequestToken = null
-            return
+            return false
         }
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
@@ -181,7 +183,7 @@ class MainActivity : FlutterActivity() {
         }
         setResult(Activity.RESULT_OK, resultIntent)
         activeRequestToken = null
-        finish()
+        return true
     }
 
     private fun maybeLaunchCallback(extras: Map<*, *>) {
@@ -207,13 +209,13 @@ class MainActivity : FlutterActivity() {
         clipboard?.setPrimaryClip(ClipData.newPlainText(label, result))
     }
 
-    private fun rejectNip55Intent(arguments: Map<*, *>?) {
-        if (!isActiveRequest(arguments)) return
+    private fun rejectNip55Intent(arguments: Map<*, *>?): Boolean {
+        if (!isActiveRequest(arguments)) return false
         val bridgeToken = activeRequestToken
         val error = arguments?.get("error") as? String
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
             activeRequestToken = null
-            return
+            return false
         }
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
@@ -221,7 +223,11 @@ class MainActivity : FlutterActivity() {
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
         activeRequestToken = null
-        finish()
+        return true
+    }
+
+    private fun finishAfterMethodResponse() {
+        window?.decorView?.post { finish() } ?: finish()
     }
 
     private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
