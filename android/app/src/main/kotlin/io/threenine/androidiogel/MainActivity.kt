@@ -237,7 +237,14 @@ class MainActivity : FlutterActivity() {
                 CompletionAction.NONE -> Unit
             }
         }
-        window?.decorView?.post(runnable) ?: runnable.run()
+        // Give Flutter and plugins a short grace period to deliver MethodChannel
+        // responses before we background/finish the activity for the caller handoff.
+        val view = window?.decorView
+        if (view != null) {
+            view.postDelayed(runnable, 500L)
+        } else {
+            runnable.run()
+        }
     }
 
     private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
