@@ -44,6 +44,7 @@ class Nip55State {
   });
 
   bool get hasPendingExternalRequest =>
+      isLoading ||
       pendingIncoming != null ||
       pendingSigningRequestId != null ||
       pendingPublicKeyRequest != null ||

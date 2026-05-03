@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
@@ -40,6 +42,16 @@ class FakeNip55PermissionStore implements Nip55PermissionStore {
   Future<void> saveGrant(Nip55PermissionGrant grant) async {
     grants.removeWhere((existing) => existing.id == grant.id);
     grants.add(grant);
+  }
+}
+
+class SlowNip55PermissionStore extends FakeNip55PermissionStore {
+  final allowListGrants = Completer<void>();
+
+  @override
+  Future<List<Nip55PermissionGrant>> listGrants() async {
+    await allowListGrants.future;
+    return super.listGrants();
   }
 }
 
@@ -442,6 +454,31 @@ void main() {
 
       expect(gateway.rejectedError, contains('already reviewing'));
       expect(requestController.state.requests, hasLength(1));
+    });
+
+    test('in-flight intent is rejected as busy before pending UI exists', () async {
+      final slowStore = SlowNip55PermissionStore();
+      final slowController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: slowStore,
+      );
+
+      final first = slowController.handleRawIntent(signEventRaw(id: 'first'));
+      expect(slowController.state.isLoading, isTrue);
+
+      await slowController.handleRawIntent(signEventRaw(id: 'second'));
+
+      expect(gateway.rejectedToken, 'token-second');
+      expect(gateway.rejectedError, contains('already reviewing'));
+      expect(requestController.state.requests, isEmpty);
+
+      slowStore.allowListGrants.complete();
+      await first;
+      expect(requestController.state.requests, hasLength(1));
+      expect(requestController.state.requests.single.id, isNot('second'));
     });
 
     test('get_public_key approval returns pubkey', () async {
