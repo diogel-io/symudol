@@ -22,6 +22,8 @@ void main() {
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
+    expect(mainActivity, contains('CompletionAction.BACKGROUND'));
+    expect(mainActivity, contains('moveTaskToBack(true)'));
     expect(registry, contains('ConcurrentHashMap'));
   });
 

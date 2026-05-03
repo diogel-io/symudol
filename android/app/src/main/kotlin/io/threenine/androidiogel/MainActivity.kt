@@ -15,6 +15,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private enum class CompletionAction { NONE, FINISH, BACKGROUND }
+
     private val channelName = "io.threenine.androidiogel/nip55"
     private var channel: MethodChannel? = null
     private var initialNip55Intent: Map<String, Any?>? = null
@@ -44,14 +46,14 @@ class MainActivity : FlutterActivity() {
                     result.success(payload)
                 }
                 "completeNip55Intent" -> {
-                    val shouldFinish = completeNip55Intent(call.arguments as? Map<*, *>)
+                    val action = completeNip55Intent(call.arguments as? Map<*, *>)
                     result.success(null)
-                    if (shouldFinish) finishAfterMethodResponse()
+                    runAfterMethodResponse(action)
                 }
                 "rejectNip55Intent" -> {
-                    val shouldFinish = rejectNip55Intent(call.arguments as? Map<*, *>)
+                    val action = rejectNip55Intent(call.arguments as? Map<*, *>)
                     result.success(null)
-                    if (shouldFinish) finishAfterMethodResponse()
+                    runAfterMethodResponse(action)
                 }
                 else -> result.notImplemented()
             }
@@ -165,15 +167,15 @@ class MainActivity : FlutterActivity() {
         return Uri.decode(withoutQuery.removePrefix("//"))
     }
 
-    private fun completeNip55Intent(arguments: Map<*, *>?): Boolean {
-        if (!isActiveRequest(arguments)) return false
+    private fun completeNip55Intent(arguments: Map<*, *>?): CompletionAction {
+        if (!isActiveRequest(arguments)) return CompletionAction.NONE
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
         maybeLaunchCallback(extras)
         maybeCopyToClipboard(extras)
         val bridgeToken = activeRequestToken
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
             activeRequestToken = null
-            return true
+            return CompletionAction.BACKGROUND
         }
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
@@ -183,7 +185,7 @@ class MainActivity : FlutterActivity() {
         }
         setResult(Activity.RESULT_OK, resultIntent)
         activeRequestToken = null
-        return true
+        return CompletionAction.FINISH
     }
 
     private fun maybeLaunchCallback(extras: Map<*, *>) {
@@ -209,13 +211,13 @@ class MainActivity : FlutterActivity() {
         clipboard?.setPrimaryClip(ClipData.newPlainText(label, result))
     }
 
-    private fun rejectNip55Intent(arguments: Map<*, *>?): Boolean {
-        if (!isActiveRequest(arguments)) return false
+    private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {
+        if (!isActiveRequest(arguments)) return CompletionAction.NONE
         val bridgeToken = activeRequestToken
         val error = arguments?.get("error") as? String
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
             activeRequestToken = null
-            return true
+            return CompletionAction.BACKGROUND
         }
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
@@ -223,11 +225,19 @@ class MainActivity : FlutterActivity() {
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
         activeRequestToken = null
-        return true
+        return CompletionAction.FINISH
     }
 
-    private fun finishAfterMethodResponse() {
-        window?.decorView?.post { finish() } ?: finish()
+    private fun runAfterMethodResponse(action: CompletionAction) {
+        if (action == CompletionAction.NONE) return
+        val runnable = Runnable {
+            when (action) {
+                CompletionAction.BACKGROUND -> moveTaskToBack(true)
+                CompletionAction.FINISH -> finish()
+                CompletionAction.NONE -> Unit
+            }
+        }
+        window?.decorView?.post(runnable) ?: runnable.run()
     }
 
     private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
