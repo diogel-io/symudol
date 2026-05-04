@@ -5,29 +5,29 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('MainActivity uses shared parser for browser NIP-55 URL params', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
     ).readAsStringSync();
     final uriParser = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55UriParser.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55UriParser.kt',
     ).readAsStringSync();
 
     expect(
       mainActivity,
-      contains('Nip55UriParser.queryParameter(data, "callbackUrl")'),
+      contains('Nip55UriParser.queryParameter(it, "callbackUrl")'),
     );
     expect(
       mainActivity,
-      contains('Nip55UriParser.queryParameter(data, "returnType")'),
+      contains('Nip55UriParser.queryParameter(it, "returnType")'),
     );
     expect(
       mainActivity,
-      contains('Nip55UriParser.queryParameter(data, "compressionType")'),
+      contains('Nip55UriParser.queryParameter(it, "compressionType")'),
     );
     expect(
       mainActivity,
-      contains('Nip55UriParser.queryParameter(data, "type")'),
+      contains('Nip55UriParser.queryParameter(it, "type")'),
     );
-    expect(mainActivity, contains('Nip55UriParser.content(data)'));
+    expect(mainActivity, contains('Nip55UriParser.content(it)'));
     expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
@@ -36,7 +36,7 @@ void main() {
 
   test('Bridge marks browsable nostrsigner URLs as browser flow', () {
     final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55BridgeActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
     ).readAsStringSync();
 
     expect(
@@ -49,7 +49,7 @@ void main() {
 
   test('MainActivity supports callback launch and clipboard fallback', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
     ).readAsStringSync();
 
     expect(mainActivity, contains('maybeLaunchCallback(extras)'));

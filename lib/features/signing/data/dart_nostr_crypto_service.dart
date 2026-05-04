@@ -48,6 +48,11 @@ class DartNostrCryptoService implements NostrCryptoService {
       createdAt: draft.createdAt,
     );
 
+    final sig = event.sig;
+    if (sig == null || sig.isEmpty) {
+      throw const NostrCryptoException('DartNostr returned an empty signature');
+    }
+
     final signed = SignedNostrEvent(
       id: event.id!,
       pubkey: event.pubkey,
@@ -55,7 +60,7 @@ class DartNostrCryptoService implements NostrCryptoService {
       kind: event.kind!,
       tags: event.tags ?? const [],
       content: event.content ?? '',
-      sig: event.sig!,
+      sig: sig,
     );
 
     if (!verifySignedEvent(signed)) {

@@ -604,7 +604,7 @@ void main() {
         vaultController.state.activeIdentity!.publicKey,
       );
       expect(gateway.completedToken, 'pk-token');
-      expect(gateway.completedExtras?['package'], 'io.threenine.androidiogel');
+      expect(gateway.completedExtras?['package'], 'io.threenine.diogel');
     });
 
     test('get_public_key approve and remember persists grant', () async {

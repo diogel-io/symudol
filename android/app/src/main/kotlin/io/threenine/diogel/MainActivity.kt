@@ -1,4 +1,4 @@
-package io.threenine.androidiogel
+package io.threenine.diogel
 
 import android.app.Activity
 import android.content.ClipData
@@ -10,31 +10,48 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import java.security.MessageDigest
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : FlutterActivity() {
+    private val TAG = "Diogel-MainActivity"
     private enum class CompletionAction { NONE, FINISH, BACKGROUND }
 
-    private val channelName = "io.threenine.androidiogel/nip55"
+    companion object {
+        private val appLabelCache = ConcurrentHashMap<String, String>()
+        private val certificateCache = ConcurrentHashMap<String, String>()
+    }
+
+    private val channelName = "io.threenine.diogel/nip55"
     private var channel: MethodChannel? = null
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
     private var activeRequestToken: String? = null
     private var nextRequestNumber = 0L
+    private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG, "onCreate: intent=$intent")
         super.onCreate(savedInstanceState)
         initialNip55Intent = parseNip55Intent(intent)
         activeRequestToken = initialNip55Intent?.get("requestToken") as? String
+        Log.d(TAG, "onCreate: initialNip55Intent=$initialNip55Intent, activeRequestToken=$activeRequestToken")
+        
+        // Asynchronously resolve app label and certificate if they are missing
+        initialNip55Intent?.let { resolveMetadataAsync(it) { updated -> initialNip55Intent = updated } }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        Log.d(TAG, "configureFlutterEngine")
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.let { Nip55ProviderBridge.attach(it) }
         channel?.setMethodCallHandler { call, result ->
+            Log.d(TAG, "onMethodCall: ${call.method}")
             when (call.method) {
                 "getInitialNip55Intent" -> {
                     val payload = initialNip55Intent
@@ -67,12 +84,18 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        Log.d(TAG, "onNewIntent: intent=$intent")
         super.onNewIntent(intent)
         setIntent(intent)
         val payload = parseNip55Intent(intent)
         if (payload != null) {
             if (activeRequestToken != null) {
                 val requestToken = payload["requestToken"] as? String
+                if (requestToken == activeRequestToken) {
+                    Log.d(TAG, "onNewIntent: Received same request token, ignoring")
+                    return
+                }
+                Log.d(TAG, "onNewIntent: Already have active request, rejecting new one")
                 if (requestToken != null) {
                     Nip55BridgeRegistry.reject(
                         requestToken,
@@ -83,50 +106,103 @@ class MainActivity : FlutterActivity() {
             }
             activeRequestToken = payload["requestToken"] as? String
             latestNip55Intent = payload
-            channel?.invokeMethod("onNip55Intent", payload)
+            
+            // Asynchronously resolve metadata before sending to Dart
+            resolveMetadataAsync(payload) { updated ->
+                latestNip55Intent = updated
+                Log.d(TAG, "onNewIntent: Sending onNip55Intent to Dart")
+                runOnUiThread {
+                    channel?.invokeMethod("onNip55Intent", updated)
+                }
+            }
         }
     }
 
     private fun parseNip55Intent(intent: Intent?): Map<String, Any?>? {
         if (intent == null) return null
-        if (intent.action != Intent.ACTION_VIEW) return null
-        val data = intent.data ?: return null
-        if (data.scheme != "nostrsigner") return null
+        val data = intent.data
+        
+        // If it's a handoff from Nip55BridgeActivity, it might not have the VIEW action or data set on the intent itself,
+        // but it will have the requestToken and either parsed extras or dataUri.
+        val hasNip55Extras = intent.hasExtra("requestToken") && intent.hasExtra("type")
+        
+        if (intent.action != Intent.ACTION_VIEW || data?.scheme != "nostrsigner") {
+            if (!hasNip55Extras) return null
+        }
 
         val token = intent.getStringExtra("requestToken")
-            ?: "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
+            ?: if (data != null && data.scheme == "nostrsigner") {
+                 "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
+               } else {
+                 return null
+               }
+        
         val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
+        
+        val parsedType = intent.getStringExtra("type") 
+            ?: (data?.let { Nip55UriParser.queryParameter(it, "type") })
+        val parsedContent = intent.getStringExtra("content") 
+            ?: (data?.let { Nip55UriParser.content(it) })
+            
+        if (parsedType == null) return null
+
         return mapOf(
             "requestToken" to token,
-            "type" to (intent.getStringExtra("type") ?: Nip55UriParser.queryParameter(data, "type")),
-            "content" to (intent.getStringExtra("content") ?: Nip55UriParser.content(data)),
-            "id" to (intent.getStringExtra("id") ?: Nip55UriParser.queryParameter(data, "id")),
-            "currentUser" to (intent.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(data, "current_user")),
-            "pubkey" to (intent.getStringExtra("pubkey") ?: Nip55UriParser.queryParameter(data, "pubkey")),
-            "permissions" to (intent.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(data, "permissions")),
-            "callbackUrl" to (intent.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(data, "callbackUrl")),
-            "returnType" to (intent.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(data, "returnType")),
-            "compressionType" to (intent.getStringExtra("compressionType") ?: Nip55UriParser.queryParameter(data, "compressionType")),
+            "type" to parsedType,
+            "content" to parsedContent,
+            "id" to (intent.getStringExtra("id") ?: (data?.let { Nip55UriParser.queryParameter(it, "id") })),
+            "currentUser" to (intent.getStringExtra("currentUser") ?: intent.getStringExtra("current_user") ?: (data?.let { Nip55UriParser.queryParameter(it, "current_user") })),
+            "pubkey" to (intent.getStringExtra("pubkey") ?: (data?.let { Nip55UriParser.queryParameter(it, "pubkey") })),
+            "permissions" to (intent.getStringExtra("permissions") ?: (data?.let { Nip55UriParser.queryParameter(it, "permissions") })),
+            "callbackUrl" to (intent.getStringExtra("callbackUrl") ?: (data?.let { Nip55UriParser.queryParameter(it, "callbackUrl") })),
+            "returnType" to (intent.getStringExtra("returnType") ?: (data?.let { Nip55UriParser.queryParameter(it, "returnType") })),
+            "compressionType" to (intent.getStringExtra("compressionType") ?: (data?.let { Nip55UriParser.queryParameter(it, "compressionType") })),
             "isBrowserFlow" to intent.getBooleanExtra("isBrowserFlow", false),
             "callingPackage" to callerPackage,
-            "callerAppLabel" to (intent.getStringExtra("callerAppLabel") ?: resolveAppLabel(callerPackage)),
-            "callerCertificateSha256" to (
-                intent.getStringExtra("callerCertificateSha256")
-                    ?: resolveSigningCertificateSha256(callerPackage)
-                ),
+            "callerAppLabel" to intent.getStringExtra("callerAppLabel"),
+            "callerCertificateSha256" to intent.getStringExtra("callerCertificateSha256"),
             "referrer" to (intent.getStringExtra("referrer") ?: referrer?.toString()),
             "intentPackage" to (intent.getStringExtra("intentPackage") ?: intent.`package`),
             "sourceHint" to (intent.getStringExtra("sourceHint") ?: callerPackage ?: referrer?.host),
             "bridgeToken" to intent.getStringExtra("requestToken"),
-            "dataUri" to data.toString()
+            "dataUri" to (intent.getStringExtra("dataUri") ?: data?.toString())
         )
+    }
+
+    private fun resolveMetadataAsync(payload: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
+        val callerPackage = payload["callingPackage"] as? String
+        if (callerPackage.isNullOrBlank()) {
+            callback(payload)
+            return
+        }
+
+        val hasLabel = payload["callerAppLabel"] != null
+        val hasCert = payload["callerCertificateSha256"] != null
+        if (hasLabel && hasCert) {
+            callback(payload)
+            return
+        }
+
+        backgroundExecutor.execute {
+            val updated = payload.toMutableMap()
+            if (!hasLabel) {
+                updated["callerAppLabel"] = resolveAppLabel(callerPackage)
+            }
+            if (!hasCert) {
+                updated["callerCertificateSha256"] = resolveSigningCertificateSha256(callerPackage)
+            }
+            callback(updated)
+        }
     }
 
     private fun resolveAppLabel(packageName: String?): String? {
         if (packageName.isNullOrBlank()) return null
+        appLabelCache[packageName]?.let { return it }
         return try {
             val appInfo = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(appInfo).toString()
+            val label = packageManager.getApplicationLabel(appInfo).toString()
+            appLabelCache[packageName] = label
+            label
         } catch (_: Exception) {
             null
         }
@@ -134,6 +210,7 @@ class MainActivity : FlutterActivity() {
 
     private fun resolveSigningCertificateSha256(packageName: String?): String? {
         if (packageName.isNullOrBlank()) return null
+        certificateCache[packageName]?.let { return it }
         return try {
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val info = packageManager.getPackageInfo(
@@ -152,7 +229,9 @@ class MainActivity : FlutterActivity() {
             }
             val signature = signatures?.firstOrNull() ?: return null
             val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
-            digest.joinToString(":") { byte -> "%02X".format(byte) }
+            val cert = digest.joinToString(":") { byte -> "%02X".format(byte) }
+            certificateCache[packageName] = cert
+            cert
         } catch (_: Exception) {
             null
         }
@@ -191,10 +270,11 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun buildCallbackUri(callbackUrl: String, result: String, extras: Map<*, *>): Uri {
+        val uri = Uri.parse(callbackUrl)
         if (callbackUrl.endsWith("=")) {
             return Uri.parse(callbackUrl + Uri.encode(result))
         }
-        val uriBuilder = Uri.parse(callbackUrl).buildUpon()
+        val uriBuilder = uri.buildUpon()
             .appendQueryParameter("result", result)
         extras["id"]?.toString()?.let { uriBuilder.appendQueryParameter("id", it) }
         extras["returnType"]?.toString()?.let { uriBuilder.appendQueryParameter("returnType", it) }
@@ -228,8 +308,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun runAfterMethodResponse(action: CompletionAction) {
+        Log.d(TAG, "runAfterMethodResponse: action=$action")
         if (action == CompletionAction.NONE) return
         val runnable = Runnable {
+            Log.d(TAG, "Executing completion action: $action")
             when (action) {
                 CompletionAction.BACKGROUND -> moveTaskToBack(true)
                 CompletionAction.FINISH -> finish()
@@ -240,7 +322,7 @@ class MainActivity : FlutterActivity() {
         // responses before we background/finish the activity for the caller handoff.
         val view = window?.decorView
         if (view != null) {
-            view.postDelayed(runnable, 500L)
+            view.postDelayed(runnable, 150L)
         } else {
             runnable.run()
         }

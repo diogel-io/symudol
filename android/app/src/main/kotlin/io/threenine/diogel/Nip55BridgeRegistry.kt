@@ -1,4 +1,4 @@
-package io.threenine.androidiogel
+package io.threenine.diogel
 
 import android.content.Intent
 import java.lang.ref.WeakReference

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/unlock/presentation/unlock_vault_screen.dart';
 import '../features/vault/presentation/setup_vault_screen.dart';
 import '../features/navigation/presentation/main_navigation_screen.dart';
+import '../features/nip55/application/nip55_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
 import '../features/vault/domain/vault_state.dart';
@@ -28,6 +29,9 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(nip55ControllerProvider.notifier).consumePendingNativeIntent();
+    });
   }
 
   @override
@@ -123,6 +127,15 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    // Handle NIP-55 resume after unlock
+    final nip55State = ref.read(nip55ControllerProvider);
+    if (nip55State.isWaitingForUnlock) {
+      if (kDebugMode) {
+        dev.log('Vault unlocked while NIP-55 request is pending. Resuming...');
+      }
+      ref.read(nip55ControllerProvider.notifier).resumePendingAfterUnlock();
+    }
+
     final timeoutChanged =
         previous != null &&
         previous.inactivityTimeoutMinutes != next.inactivityTimeoutMinutes;
@@ -160,6 +173,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   @override
   Widget build(BuildContext context) {
+    dev.log('DiogelApp build', name: 'Diogel');
     ref.listen(vaultControllerProvider, _handleVaultControllerChanged);
 
     final controllerState = ref.watch(vaultControllerProvider);

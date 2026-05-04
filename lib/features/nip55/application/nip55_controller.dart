@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
@@ -167,7 +168,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // Check busy synchronously
     if (_isParsingIntent || state.hasPendingExternalRequest) {
       // Rejection parsing still happens in isolate (or sync in test) to avoid jank
-      final busyRequest = await _safeParseForRejection(raw);
+      final busyRequest = _safeParseForRejection(raw);
       if (busyRequest == null) return;
       await _gateway.rejectNip55Intent(
         requestToken: busyRequest.requestToken,
@@ -251,7 +252,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) async {
     if (state.hasPendingExternalRequest) return null;
     final parser = _parser;
-    final incoming = await ConcurrencyUtils.runTask(() => parser.parse(raw));
+    final incoming = parser.parse(raw);
     final activeIdentity = _vaultController.state.activeIdentity;
     if (_vaultController.state.vaultState is! VaultUnlocked ||
         activeIdentity == null) {
@@ -702,16 +703,22 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (incoming == null || activeIdentity == null) return;
 
     await _requestController.approveRequest(requestId);
-    if (remember && _requestController.state.signedEvents[requestId] != null) {
-      await _saveGrant(
-        incoming: incoming,
-        identityPubkey: activeIdentity.publicKey,
-        scope: _scopeFor(incoming),
-        decision: Nip55PermissionDecision.allow,
-      );
+    final signedEvent = _requestController.state.signedEvents[requestId];
+
+    if (remember && signedEvent != null) {
+      try {
+        await _saveGrant(
+          incoming: incoming,
+          identityPubkey: activeIdentity.publicKey,
+          scope: _scopeFor(incoming),
+          decision: Nip55PermissionDecision.allow,
+        );
+      } catch (e) {
+        dev.log('Failed to save permission grant: $e', name: 'Diogel');
+      }
     }
     await completeApprovedSigningRequest(requestId);
-    if (_requestController.state.signedEvents[requestId] != null) {
+    if (signedEvent != null) {
       _extendApprovalSession();
     }
   }
@@ -935,12 +942,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return currentUser == null || currentUser == activeIdentityPubkey;
   }
 
-  Future<Nip55IncomingRequest?> _safeParseForRejection(
+  Nip55IncomingRequest? _safeParseForRejection(
     Map<String, Object?> raw,
-  ) async {
+  ) {
     try {
       final parser = _parser;
-      return await ConcurrencyUtils.runTask(() => parser.parse(raw));
+      return parser.parse(raw);
     } catch (_) {
       return null;
     }

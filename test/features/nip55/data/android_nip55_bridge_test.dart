@@ -5,13 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('NIP-55 bridge owns caller results and MainActivity settles by token', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
     ).readAsStringSync();
     final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55BridgeActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
     ).readAsStringSync();
     final registry = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55BridgeRegistry.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeRegistry.kt',
     ).readAsStringSync();
 
     expect(bridgeActivity, contains('class Nip55BridgeActivity : Activity()'));
@@ -24,7 +24,7 @@ void main() {
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
     expect(mainActivity, contains('moveTaskToBack(true)'));
-    expect(mainActivity, contains('postDelayed(runnable, 500L)'));
+    expect(mainActivity, contains('postDelayed(runnable, 150L)'));
     expect(registry, contains('ConcurrentHashMap'));
   });
 
@@ -32,7 +32,7 @@ void main() {
     'busy NIP-55 bridge request is rejected without finishing MainActivity',
     () {
       final mainActivity = File(
-        'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+        'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
       ).readAsStringSync();
 
       expect(mainActivity, contains('if (activeRequestToken != null)'));

@@ -20,7 +20,7 @@ void main() {
       externalId: 'external-id',
       receivedAt: DateTime.utc(2026, 5, 1),
     );
-    const event = SignedNostrEvent(
+    final event = SignedNostrEvent(
       id: 'event-id',
       pubkey: 'pubkey',
       createdAt: 1777618800,
@@ -56,7 +56,7 @@ void main() {
         compressionType: Nip55WebCompressionType.gzip,
       ),
     );
-    const event = SignedNostrEvent(
+    final event = SignedNostrEvent(
       id: 'event-id',
       pubkey: 'pubkey',
       createdAt: 1777618800,
@@ -94,7 +94,7 @@ void main() {
         isBrowserFlow: true,
       ),
     );
-    const event = SignedNostrEvent(
+    final event = SignedNostrEvent(
       id: 'event-id',
       pubkey: 'pubkey',
       createdAt: 1777618800,
@@ -171,7 +171,7 @@ void main() {
 
     expect(extras, {
       'result': identity.publicKey,
-      'package': 'io.threenine.androidiogel',
+      'package': 'io.threenine.diogel',
     });
   });
 

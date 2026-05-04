@@ -30,23 +30,15 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(nip55ControllerProvider.notifier).consumePendingNativeIntent();
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     final activeRequest = ref.watch(activeRequestProvider);
     final nip55State = ref.watch(nip55ControllerProvider);
-    final vaultState = ref.watch(vaultControllerProvider);
-    if (nip55State.isWaitingForUnlock &&
-        vaultState.vaultState is VaultUnlocked) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(nip55ControllerProvider.notifier).resumePendingAfterUnlock();
-      });
-    }
-    if ((activeRequest != null || nip55State.pendingPublicKeyRequest != null) &&
+    if ((activeRequest != null ||
+            nip55State.pendingPublicKeyRequest != null ||
+            nip55State.pendingCryptoRequest != null) &&
         _currentIndex != 1) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _currentIndex = 1);

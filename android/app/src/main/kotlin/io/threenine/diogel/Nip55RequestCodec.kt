@@ -1,15 +1,15 @@
-package io.threenine.androidiogel
+package io.threenine.diogel
 
 import android.database.MatrixCursor
 import android.net.Uri
 
 object Nip55RequestCodec {
-    const val AUTHORITY_SIGN_EVENT = "io.threenine.androidiogel.SIGN_EVENT"
-    const val AUTHORITY_NIP44_ENCRYPT = "io.threenine.androidiogel.NIP44_ENCRYPT"
-    const val AUTHORITY_NIP44_DECRYPT = "io.threenine.androidiogel.NIP44_DECRYPT"
-    const val AUTHORITY_NIP04_ENCRYPT = "io.threenine.androidiogel.NIP04_ENCRYPT"
-    const val AUTHORITY_NIP04_DECRYPT = "io.threenine.androidiogel.NIP04_DECRYPT"
-    const val AUTHORITY_DECRYPT_ZAP_EVENT = "io.threenine.androidiogel.DECRYPT_ZAP_EVENT"
+    const val AUTHORITY_SIGN_EVENT = "io.threenine.diogel.SIGN_EVENT"
+    const val AUTHORITY_NIP44_ENCRYPT = "io.threenine.diogel.NIP44_ENCRYPT"
+    const val AUTHORITY_NIP44_DECRYPT = "io.threenine.diogel.NIP44_DECRYPT"
+    const val AUTHORITY_NIP04_ENCRYPT = "io.threenine.diogel.NIP04_ENCRYPT"
+    const val AUTHORITY_NIP04_DECRYPT = "io.threenine.diogel.NIP04_DECRYPT"
+    const val AUTHORITY_DECRYPT_ZAP_EVENT = "io.threenine.diogel.DECRYPT_ZAP_EVENT"
 
     private val supportedAuthorities = setOf(
         AUTHORITY_SIGN_EVENT,

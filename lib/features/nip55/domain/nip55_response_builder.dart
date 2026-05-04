@@ -8,7 +8,7 @@ import 'nip55_incoming_request.dart';
 import 'nip55_web_return_options.dart';
 
 class Nip55ResponseBuilder {
-  static const signerPackage = 'io.threenine.androidiogel';
+  static const signerPackage = 'io.threenine.diogel';
 
   const Nip55ResponseBuilder();
 

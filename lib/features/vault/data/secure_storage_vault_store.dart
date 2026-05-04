@@ -15,66 +15,85 @@ class SecureStorageVaultStore implements VaultStore {
       'approval_session_duration_minutes';
   static const String _keyIdentitiesPrefix = 'identity_';
 
+  // In-memory cache
+  final Map<String, String?> _cache = {};
+
   SecureStorageVaultStore({FlutterSecureStorage? storage})
     : _storage = storage ?? const FlutterSecureStorage();
 
-  @override
-  Future<String?> getVersion() => _storage.read(key: _keyVersion);
+  Future<String?> _readCached(String key) async {
+    if (_cache.containsKey(key)) return _cache[key];
+    final value = await _storage.read(key: key);
+    _cache[key] = value;
+    return value;
+  }
+
+  Future<void> _writeCached(String key, String value) async {
+    _cache[key] = value;
+    await _storage.write(key: key, value: value);
+  }
 
   @override
-  Future<void> setVersion(String version) =>
-      _storage.write(key: _keyVersion, value: version);
+  Future<String?> getVersion() => _readCached(_keyVersion);
 
   @override
-  Future<String?> getSentinel() => _storage.read(key: _keySentinel);
+  Future<void> setVersion(String version) => _writeCached(_keyVersion, version);
+
+  @override
+  Future<String?> getSentinel() => _readCached(_keySentinel);
 
   @override
   Future<void> setSentinel(String sentinel) =>
-      _storage.write(key: _keySentinel, value: sentinel);
+      _writeCached(_keySentinel, sentinel);
 
   @override
-  Future<String?> getActiveIdentityId() =>
-      _storage.read(key: _keyActiveIdentityId);
+  Future<String?> getActiveIdentityId() => _readCached(_keyActiveIdentityId);
 
   @override
   Future<void> setActiveIdentityId(String id) =>
-      _storage.write(key: _keyActiveIdentityId, value: id);
+      _writeCached(_keyActiveIdentityId, id);
 
   @override
   Future<int?> getInactivityTimeout() async {
-    final value = await _storage.read(key: _keyInactivityTimeout);
+    final value = await _readCached(_keyInactivityTimeout);
     return value != null ? int.tryParse(value) : null;
   }
 
   @override
   Future<void> setInactivityTimeout(int minutes) =>
-      _storage.write(key: _keyInactivityTimeout, value: minutes.toString());
+      _writeCached(_keyInactivityTimeout, minutes.toString());
 
   @override
   Future<int?> getBackgroundLockDelayMinutes() async {
-    final value = await _storage.read(key: _keyBackgroundLockDelay);
+    final value = await _readCached(_keyBackgroundLockDelay);
     return value != null ? int.tryParse(value) : null;
   }
 
   @override
   Future<void> setBackgroundLockDelayMinutes(int minutes) =>
-      _storage.write(key: _keyBackgroundLockDelay, value: minutes.toString());
+      _writeCached(_keyBackgroundLockDelay, minutes.toString());
 
   @override
   Future<int?> getApprovalSessionDurationMinutes() async {
-    final value = await _storage.read(key: _keyApprovalSessionDuration);
+    final value = await _readCached(_keyApprovalSessionDuration);
     return value != null ? int.tryParse(value) : null;
   }
 
   @override
-  Future<void> setApprovalSessionDurationMinutes(int minutes) => _storage.write(
-    key: _keyApprovalSessionDuration,
-    value: minutes.toString(),
+  Future<void> setApprovalSessionDurationMinutes(int minutes) => _writeCached(
+    _keyApprovalSessionDuration,
+    minutes.toString(),
   );
 
   @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
+    // We don't cache all identities in a single map key yet,
+    // but readAll is only called here.
     final all = await _storage.readAll();
+    // Sync cache with readAll results
+    all.forEach((key, value) {
+      _cache[key] = value;
+    });
     return all.entries
         .where((e) => e.key.startsWith(_keyIdentitiesPrefix))
         .map((e) => VaultIdentityRecord.fromJson(jsonDecode(e.value)))
@@ -83,7 +102,8 @@ class SecureStorageVaultStore implements VaultStore {
 
   @override
   Future<VaultIdentityRecord?> getIdentityRecord(String localId) async {
-    final data = await _storage.read(key: '$_keyIdentitiesPrefix$localId');
+    final key = '$_keyIdentitiesPrefix$localId';
+    final data = await _readCached(key);
     if (data == null) return null;
     return VaultIdentityRecord.fromJson(jsonDecode(data));
   }
@@ -91,13 +111,19 @@ class SecureStorageVaultStore implements VaultStore {
   @override
   Future<void> saveIdentityRecord(VaultIdentityRecord record) async {
     final key = '$_keyIdentitiesPrefix${record.identityId}';
-    await _storage.write(key: key, value: jsonEncode(record.toJson()));
+    await _writeCached(key, jsonEncode(record.toJson()));
   }
 
   @override
-  Future<void> deleteIdentity(String localId) =>
-      _storage.delete(key: '$_keyIdentitiesPrefix$localId');
+  Future<void> deleteIdentity(String localId) async {
+    final key = '$_keyIdentitiesPrefix$localId';
+    _cache.remove(key);
+    await _storage.delete(key: key);
+  }
 
   @override
-  Future<void> clearAll() => _storage.deleteAll();
+  Future<void> clearAll() async {
+    _cache.clear();
+    await _storage.deleteAll();
+  }
 }

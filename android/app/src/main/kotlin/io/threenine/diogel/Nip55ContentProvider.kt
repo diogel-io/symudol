@@ -1,4 +1,4 @@
-package io.threenine.androidiogel
+package io.threenine.diogel
 
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -7,8 +7,12 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 class Nip55ContentProvider : ContentProvider() {
+    companion object {
+        private val certificateCache = ConcurrentHashMap<String, String>()
+    }
     override fun onCreate(): Boolean = true
 
     override fun query(
@@ -127,6 +131,7 @@ class Nip55ContentProvider : ContentProvider() {
 
     private fun resolveSigningCertificateSha256(packageName: String?): String? {
         if (packageName.isNullOrBlank()) return null
+        certificateCache[packageName]?.let { return it }
         val packageManager = context?.packageManager ?: return null
         return try {
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -146,7 +151,9 @@ class Nip55ContentProvider : ContentProvider() {
             }
             val signature = signatures?.firstOrNull() ?: return null
             val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
-            digest.joinToString(":") { byte -> "%02X".format(byte) }
+            val cert = digest.joinToString(":") { byte -> "%02X".format(byte) }
+            certificateCache[packageName] = cert
+            cert
         } catch (_: Exception) {
             null
         }

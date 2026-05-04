@@ -11,7 +11,7 @@ adb shell am start \
   -a android.intent.action.VIEW \
   -d 'nostrsigner:' \
   --es type get_public_key \
-  io.threenine.androidiogel
+  io.threenine.diogel
 ```
 
 Expected UI:
@@ -23,7 +23,7 @@ Expected UI:
 
 Expected caller result:
 
-- Approve returns `RESULT_OK` with `result=<active-pubkey>` and `package=io.threenine.androidiogel`.
+- Approve returns `RESULT_OK` with `result=<active-pubkey>` and `package=io.threenine.diogel`.
 - Reject returns non-OK.
 
 ## 2. `sign_event` while unlocked
@@ -35,7 +35,7 @@ adb shell am start \
   --es type sign_event \
   --es id test-event-1 \
   --es current_user <active-pubkey> \
-  io.threenine.androidiogel
+  io.threenine.diogel
 ```
 
 Expected UI:
@@ -92,7 +92,7 @@ adb shell am start \
   --es type sign_event \
   --es id malformed-content \
   --es current_user <active-pubkey> \
-  io.threenine.androidiogel
+  io.threenine.diogel
 ```
 
 Expected:
@@ -110,7 +110,7 @@ adb shell am start \
   --es type sign_event \
   --es id pubkey-mismatch \
   --es current_user <active-pubkey> \
-  io.threenine.androidiogel
+  io.threenine.diogel
 ```
 
 Expected:
@@ -127,7 +127,7 @@ adb shell am start \
   --es type sign_event \
   --es id current-user-mismatch \
   --es current_user bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-  io.threenine.androidiogel
+  io.threenine.diogel
 ```
 
 Expected:

@@ -10,19 +10,19 @@ void main() {
 
     expect(manifest, contains('android:name=".Nip55ContentProvider"'));
     expect(manifest, contains('android:exported="true"'));
-    expect(manifest, contains('io.threenine.androidiogel.SIGN_EVENT'));
-    expect(manifest, contains('io.threenine.androidiogel.NIP44_ENCRYPT'));
-    expect(manifest, contains('io.threenine.androidiogel.NIP44_DECRYPT'));
-    expect(manifest, contains('io.threenine.androidiogel.NIP04_ENCRYPT'));
-    expect(manifest, contains('io.threenine.androidiogel.NIP04_DECRYPT'));
-    expect(manifest, contains('io.threenine.androidiogel.DECRYPT_ZAP_EVENT'));
+    expect(manifest, contains('io.threenine.diogel.SIGN_EVENT'));
+    expect(manifest, contains('io.threenine.diogel.NIP44_ENCRYPT'));
+    expect(manifest, contains('io.threenine.diogel.NIP44_DECRYPT'));
+    expect(manifest, contains('io.threenine.diogel.NIP04_ENCRYPT'));
+    expect(manifest, contains('io.threenine.diogel.NIP04_DECRYPT'));
+    expect(manifest, contains('io.threenine.diogel.DECRYPT_ZAP_EVENT'));
   });
 
   test(
     'ContentProvider bridges warm-session queries without launching UI',
     () {
       final provider = File(
-        'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55ContentProvider.kt',
+        'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
       ).readAsStringSync();
 
       expect(
@@ -42,10 +42,10 @@ void main() {
 
   test('MainActivity attaches provider bridge to Flutter channel', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
     ).readAsStringSync();
     final bridge = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55ProviderBridge.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ProviderBridge.kt',
     ).readAsStringSync();
 
     expect(mainActivity, contains('Nip55ProviderBridge.attach(it)'));
@@ -56,7 +56,7 @@ void main() {
 
   test('NIP-55 codec uses lowercase event result column', () {
     final codec = File(
-      'android/app/src/main/kotlin/io/threenine/androidiogel/Nip55RequestCodec.kt',
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
     ).readAsStringSync();
 
     expect(codec, contains('MatrixCursor(arrayOf("result", "event"))'));

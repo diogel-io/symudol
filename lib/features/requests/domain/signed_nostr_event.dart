@@ -7,7 +7,7 @@ class SignedNostrEvent {
   final String content;
   final String sig;
 
-  const SignedNostrEvent({
+  SignedNostrEvent({
     required this.id,
     required this.pubkey,
     required this.createdAt,
@@ -15,7 +15,10 @@ class SignedNostrEvent {
     required this.tags,
     required this.content,
     required this.sig,
-  });
+  }) {
+    if (id.isEmpty) throw ArgumentError('Event id cannot be empty');
+    if (sig.isEmpty) throw ArgumentError('Event signature cannot be empty');
+  }
 
   Map<String, Object?> toJson() {
     return {

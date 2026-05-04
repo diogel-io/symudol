@@ -9,12 +9,12 @@ This deliberately avoids native private-key duplication and avoids launching UI 
 ## Implemented
 
 - Exported `Nip55ContentProvider` authorities:
-  - `io.threenine.androidiogel.SIGN_EVENT`
-  - `io.threenine.androidiogel.NIP44_ENCRYPT`
-  - `io.threenine.androidiogel.NIP44_DECRYPT`
-  - `io.threenine.androidiogel.NIP04_ENCRYPT`
-  - `io.threenine.androidiogel.NIP04_DECRYPT`
-  - `io.threenine.androidiogel.DECRYPT_ZAP_EVENT`
+  - `io.threenine.diogel.SIGN_EVENT`
+  - `io.threenine.diogel.NIP44_ENCRYPT`
+  - `io.threenine.diogel.NIP44_DECRYPT`
+  - `io.threenine.diogel.NIP04_ENCRYPT`
+  - `io.threenine.diogel.NIP04_DECRYPT`
+  - `io.threenine.diogel.DECRYPT_ZAP_EVENT`
 - Projection shape validation for every declared provider method:
   - `SIGN_EVENT`: event JSON + `current_user`
   - `NIP04_ENCRYPT` / `NIP04_DECRYPT`: payload + peer pubkey + `current_user`

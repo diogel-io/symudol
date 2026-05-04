@@ -1,4 +1,4 @@
-package io.threenine.androidiogel
+package io.threenine.diogel
 
 import android.app.Activity
 import android.content.Intent
@@ -24,15 +24,17 @@ class Nip55BridgeActivity : Activity() {
 
         val callerPackage = callingPackage ?: original.`package`
         val mainIntent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            data = original.data
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("requestToken", token)
-            putExtra("type", original.getStringExtra("type"))
-            putExtra("id", original.getStringExtra("id"))
-            putExtra("current_user", original.getStringExtra("current_user"))
-            putExtra("pubkey", original.getStringExtra("pubkey"))
-            putExtra("permissions", original.getStringExtra("permissions"))
+            putExtra("type", original.getStringExtra("type") ?: Nip55UriParser.queryParameter(original.data!!, "type"))
+            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(original.data!!))
+            putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(original.data!!, "id"))
+            putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(original.data!!, "current_user"))
+            putExtra("pubkey", original.getStringExtra("pubkey") ?: Nip55UriParser.queryParameter(original.data!!, "pubkey"))
+            putExtra("permissions", original.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(original.data!!, "permissions"))
+            putExtra("callbackUrl", original.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(original.data!!, "callbackUrl"))
+            putExtra("returnType", original.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(original.data!!, "returnType"))
+            putExtra("compressionType", original.getStringExtra("compressionType") ?: Nip55UriParser.queryParameter(original.data!!, "compressionType"))
             putExtra("isBrowserFlow", original.hasCategory(Intent.CATEGORY_BROWSABLE))
             putExtra("callingPackage", callerPackage)
             putExtra("callerAppLabel", resolveAppLabel(callerPackage))
@@ -40,6 +42,7 @@ class Nip55BridgeActivity : Activity() {
             putExtra("referrer", referrer?.toString())
             putExtra("intentPackage", original.`package`)
             putExtra("sourceHint", callerPackage ?: referrer?.host)
+            putExtra("dataUri", original.data?.toString())
         }
         startActivity(mainIntent)
     }
