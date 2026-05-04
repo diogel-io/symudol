@@ -10,6 +10,7 @@ void main() {
 
     expect(manifest, contains('android:name=".MainActivity"'));
     expect(manifest, contains('android:launchMode="singleTop"'));
+    expect(manifest, isNot(contains('android:taskAffinity=""')));
     expect(manifest, contains('android:name=".Nip55BridgeActivity"'));
     expect(manifest, contains('android:exported="true"'));
     expect(

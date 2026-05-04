@@ -85,6 +85,17 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    // A NIP-55 approval flow intentionally bounces between another app,
+    // Diogel's bridge Activity, and Flutter. Treat that as active work, not
+    // ordinary backgrounding, otherwise an "immediate" background-lock setting
+    // can lock the vault halfway through a signing request.
+    if (ref.read(nip55ControllerProvider).hasPendingExternalRequest) {
+      if (kDebugMode) {
+        dev.log('Skipping background lock while NIP-55 request is active');
+      }
+      return;
+    }
+
     final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
     if (kDebugMode) {
       dev.log('Scheduling background lock: $delayMinutes minutes');

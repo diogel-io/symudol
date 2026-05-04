@@ -26,9 +26,12 @@ class Nip55BridgeActivity : Activity() {
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
-            // which leaves the caller waiting until its NIP-55 timeout. REORDER_TO_FRONT
-            // reuses the existing unlocked Flutter activity without removing this bridge.
-            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // which leaves the caller waiting until its NIP-55 timeout. NEW_TASK keeps
+            // Diogel's Flutter UI in Diogel's own task instead of putting it inside the
+            // caller app's task; otherwise moveTaskToBack can background the caller.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("requestToken", token)
             putExtra("type", original.getStringExtra("type") ?: Nip55UriParser.queryParameter(original.data!!, "type"))
             putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(original.data!!))

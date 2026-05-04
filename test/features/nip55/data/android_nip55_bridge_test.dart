@@ -13,6 +13,7 @@ void main() {
     final registry = File(
       'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeRegistry.kt',
     ).readAsStringSync();
+    final app = File('lib/app/app.dart').readAsStringSync();
 
     expect(bridgeActivity, contains('class Nip55BridgeActivity : Activity()'));
     expect(
@@ -20,6 +21,7 @@ void main() {
       contains('Nip55BridgeRegistry.register(token, this)'),
     );
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
+    expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
     expect(bridgeActivity, contains('MainActivity.deliverNip55BridgeIntent'));
@@ -34,6 +36,11 @@ void main() {
     expect(mainActivity, contains('moveTaskToBack(true)'));
     expect(mainActivity, contains('postDelayed(runnable, 150L)'));
     expect(registry, contains('ConcurrentHashMap'));
+    expect(app, contains('hasPendingExternalRequest'));
+    expect(
+      app,
+      contains('Skipping background lock while NIP-55 request is active'),
+    );
   });
 
   test(
