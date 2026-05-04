@@ -31,7 +31,7 @@
             android:name=".Nip55BridgeActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/NormalTheme"
+            android:theme="@style/Nip55BridgeTheme"
             android:noHistory="false">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

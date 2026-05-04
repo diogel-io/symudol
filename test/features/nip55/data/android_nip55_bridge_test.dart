@@ -20,6 +20,8 @@ void main() {
       contains('Nip55BridgeRegistry.register(token, this)'),
     );
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
+    expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
+    expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
@@ -35,7 +37,15 @@ void main() {
         'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
       ).readAsStringSync();
 
+      final bridgeActivity = File(
+        'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
+      ).readAsStringSync();
+
       expect(mainActivity, contains('if (activeRequestToken != null)'));
+      expect(
+        bridgeActivity,
+        contains('Keep this bridge activity alive because it owns the caller'),
+      );
       expect(
         mainActivity,
         contains('Diogel is already reviewing another NIP-55 request'),

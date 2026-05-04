@@ -21,5 +21,17 @@ void main() {
     expect(manifest, contains('android.intent.action.VIEW'));
     expect(manifest, contains('android.intent.category.BROWSABLE'));
     expect(manifest, contains('android:scheme="nostrsigner"'));
+    expect(manifest, contains('android:theme="@style/Nip55BridgeTheme"'));
+
+    final lightStyles = File(
+      'android/app/src/main/res/values/styles.xml',
+    ).readAsStringSync();
+    final nightStyles = File(
+      'android/app/src/main/res/values-night/styles.xml',
+    ).readAsStringSync();
+    expect(lightStyles, contains('style name="Nip55BridgeTheme"'));
+    expect(lightStyles, contains('android:windowIsTranslucent'));
+    expect(nightStyles, contains('style name="Nip55BridgeTheme"'));
+    expect(nightStyles, contains('android:windowIsTranslucent'));
   });
 }
