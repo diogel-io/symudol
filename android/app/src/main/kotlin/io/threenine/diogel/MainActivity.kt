@@ -16,6 +16,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentHashMap
+import java.lang.ref.WeakReference
 
 class MainActivity : FlutterActivity() {
     private val TAG = "Diogel-MainActivity"
@@ -24,6 +25,12 @@ class MainActivity : FlutterActivity() {
     companion object {
         private val appLabelCache = ConcurrentHashMap<String, String>()
         private val certificateCache = ConcurrentHashMap<String, String>()
+        @Volatile private var currentActivity: WeakReference<MainActivity>? = null
+
+        fun deliverNip55BridgeIntent(intent: Intent): Boolean {
+            val activity = currentActivity?.get() ?: return false
+            return activity.deliverNip55IntentFromBridge(intent)
+        }
     }
 
     private val channelName = "io.threenine.diogel/nip55"
@@ -36,6 +43,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "onCreate: intent=$intent")
+        currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
         initialNip55Intent = parseNip55Intent(intent)
         activeRequestToken = initialNip55Intent?.get("requestToken") as? String
@@ -79,8 +87,16 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        if (currentActivity?.get() == this) {
+            currentActivity = null
+        }
         Nip55ProviderBridge.detach(channel)
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        currentActivity = WeakReference(this)
+        super.onResume()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -88,34 +104,43 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val payload = parseNip55Intent(intent)
-        if (payload != null) {
-            if (activeRequestToken != null) {
-                val requestToken = payload["requestToken"] as? String
-                if (requestToken == activeRequestToken) {
-                    Log.d(TAG, "onNewIntent: Received same request token, ignoring")
-                    return
-                }
-                Log.d(TAG, "onNewIntent: Already have active request, rejecting new one")
-                if (requestToken != null) {
-                    Nip55BridgeRegistry.reject(
-                        requestToken,
-                        "Diogel is already reviewing another NIP-55 request"
-                    )
-                }
-                return
+        if (payload != null) deliverNip55Payload(payload)
+    }
+
+    private fun deliverNip55IntentFromBridge(intent: Intent): Boolean {
+        val payload = parseNip55Intent(intent) ?: return false
+        return deliverNip55Payload(payload)
+    }
+
+    private fun deliverNip55Payload(payload: Map<String, Any?>): Boolean {
+        if (channel == null) return false
+        if (activeRequestToken != null) {
+            val requestToken = payload["requestToken"] as? String
+            if (requestToken == activeRequestToken) {
+                Log.d(TAG, "deliverNip55Payload: Received same request token, ignoring")
+                return true
             }
-            activeRequestToken = payload["requestToken"] as? String
-            latestNip55Intent = payload
-            
-            // Asynchronously resolve metadata before sending to Dart
-            resolveMetadataAsync(payload) { updated ->
-                latestNip55Intent = updated
-                Log.d(TAG, "onNewIntent: Sending onNip55Intent to Dart")
-                runOnUiThread {
-                    channel?.invokeMethod("onNip55Intent", updated)
-                }
+            Log.d(TAG, "deliverNip55Payload: Already have active request, rejecting new one")
+            if (requestToken != null) {
+                Nip55BridgeRegistry.reject(
+                    requestToken,
+                    "Diogel is already reviewing another NIP-55 request"
+                )
+            }
+            return true
+        }
+        activeRequestToken = payload["requestToken"] as? String
+        latestNip55Intent = payload
+
+        // Asynchronously resolve metadata before sending to Dart.
+        resolveMetadataAsync(payload) { updated ->
+            latestNip55Intent = updated
+            Log.d(TAG, "deliverNip55Payload: Sending onNip55Intent to Dart")
+            runOnUiThread {
+                channel?.invokeMethod("onNip55Intent", updated)
             }
         }
+        return true
     }
 
     private fun parseNip55Intent(intent: Intent?): Map<String, Any?>? {

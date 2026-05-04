@@ -48,6 +48,10 @@ class Nip55BridgeActivity : Activity() {
             putExtra("sourceHint", callerPackage ?: referrer?.host)
             putExtra("dataUri", original.data?.toString())
         }
+        // If Flutter is already alive, deliver directly. REORDER_TO_FRONT is not
+        // guaranteed to call onNewIntent for an existing activity, so relying only
+        // on startActivity can leave the caller waiting forever.
+        MainActivity.deliverNip55BridgeIntent(mainIntent)
         startActivity(mainIntent)
     }
 

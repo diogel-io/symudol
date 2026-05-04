@@ -22,6 +22,12 @@ void main() {
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
+    expect(bridgeActivity, contains('MainActivity.deliverNip55BridgeIntent'));
+    expect(
+      mainActivity,
+      contains('fun deliverNip55BridgeIntent(intent: Intent)'),
+    );
+    expect(mainActivity, contains('private fun deliverNip55Payload'));
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
