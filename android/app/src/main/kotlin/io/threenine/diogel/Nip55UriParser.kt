@@ -3,7 +3,7 @@ package io.threenine.diogel
 import android.net.Uri
 
 object Nip55UriParser {
-    fun content(uri: Uri): String? {
+    fun content(uri: Uri, method: String? = null): String? {
         val raw = uri.schemeSpecificPart ?: return null
         if (raw.isBlank()) return null
         val withoutQuery = if (raw.contains('?')) {
@@ -14,7 +14,13 @@ object Nip55UriParser {
         val normalized = withoutQuery.removePrefix("//")
         if (normalized.isBlank()) return null
         return try {
-            Uri.decode(normalized)
+            val decodedPayload = Uri.decode(normalized)
+            val rawIv = rawQueryParameter(uri, "iv")
+            if (method == "nip04_decrypt" && !rawIv.isNullOrBlank()) {
+                "$decodedPayload?iv=${Uri.decode(rawIv)}"
+            } else {
+                decodedPayload
+            }
         } catch (_: Exception) {
             null
         }
@@ -36,6 +42,18 @@ object Nip55UriParser {
         } catch (_: Exception) {
             parseQueryStrictly(query)
         }
+    }
+
+    private fun rawQueryParameter(uri: Uri, name: String): String? {
+        val query = queryString(uri) ?: return null
+        query.split('&').forEach { pair ->
+            if (pair.isBlank()) return@forEach
+            val key = pair.substringBefore('=')
+            if (Uri.decode(key) == name) {
+                return pair.substringAfter('=', "")
+            }
+        }
+        return null
     }
 
     private fun queryString(uri: Uri): String? {

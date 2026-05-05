@@ -511,83 +511,93 @@ void main() {
       expect(requestController.state.requests, hasLength(1));
     });
 
-    test('concurrent busy rejection does not poison first request result', () async {
-      final isolatedGateway = FakeNip55Gateway();
-      final isolatedController = Nip55Controller(
-        gateway: isolatedGateway,
-        vaultController: vaultController,
-        vaultService: vaultService,
-        requestController: requestController,
-      );
+    test(
+      'concurrent busy rejection does not poison first request result',
+      () async {
+        final isolatedGateway = FakeNip55Gateway();
+        final isolatedController = Nip55Controller(
+          gateway: isolatedGateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+        );
 
-      await isolatedController.handleRawIntent(signEventRaw(id: 'first'));
-      final firstRequestId = isolatedController.state.pendingSigningRequestId!;
+        await isolatedController.handleRawIntent(signEventRaw(id: 'first'));
+        final firstRequestId =
+            isolatedController.state.pendingSigningRequestId!;
 
-      await isolatedController.handleRawIntent(signEventRaw(id: 'second'));
-      expect(isolatedGateway.rejectedToken, 'token-second');
+        await isolatedController.handleRawIntent(signEventRaw(id: 'second'));
+        expect(isolatedGateway.rejectedToken, 'token-second');
 
-      await requestController.approveRequest(firstRequestId);
-      await isolatedController.completeApprovedSigningRequest(firstRequestId);
+        await requestController.approveRequest(firstRequestId);
+        await isolatedController.completeApprovedSigningRequest(firstRequestId);
 
-      expect(isolatedGateway.completedToken, 'token-first');
-      expect(isolatedGateway.completedExtras?['id'], 'first');
-      expect(isolatedGateway.completedExtras?['event'], contains('"sig"'));
-    });
+        expect(isolatedGateway.completedToken, 'token-first');
+        expect(isolatedGateway.completedExtras?['id'], 'first');
+        expect(isolatedGateway.completedExtras?['event'], contains('"sig"'));
+      },
+    );
 
-    test('in-flight intent is rejected as busy before pending UI exists', () async {
-      final slowStore = SlowNip55PermissionStore();
-      final localGateway = FakeNip55Gateway();
-      final localVaultService = VaultServiceImpl(FakeVaultStore());
-      final localVaultController = VaultController(localVaultService);
-      await localVaultController.createVault('1234');
-      await localVaultController.importIdentity(
-        '0000000000000000000000000000000000000000000000000000000000000001',
-      );
-      final localRequestController = RequestController(
-        localVaultController,
-        RealSignerService(localVaultService),
-      );
-      
-      final slowController = Nip55Controller(
-        gateway: localGateway,
-        vaultController: localVaultController,
-        vaultService: localVaultService,
-        requestController: localRequestController,
-        permissionStore: slowStore,
-      );
+    test(
+      'in-flight intent is rejected as busy before pending UI exists',
+      () async {
+        final slowStore = SlowNip55PermissionStore();
+        final localGateway = FakeNip55Gateway();
+        final localVaultService = VaultServiceImpl(FakeVaultStore());
+        final localVaultController = VaultController(localVaultService);
+        await localVaultController.createVault('1234');
+        await localVaultController.importIdentity(
+          '0000000000000000000000000000000000000000000000000000000000000001',
+        );
+        final localRequestController = RequestController(
+          localVaultController,
+          RealSignerService(localVaultService),
+        );
 
-      final firstRaw = {
-        'requestToken': 'token-first',
-        'type': 'sign_event',
-        'content': '{"kind":1,"content":"first","tags":[]}',
-        'id': 'first',
-        'currentUser': localVaultController.state.activeIdentity!.publicKey,
-      };
-      final secondRaw = {
-        'requestToken': 'token-second',
-        'type': 'sign_event',
-        'content': '{"kind":1,"content":"second","tags":[]}',
-        'id': 'second',
-        'currentUser': localVaultController.state.activeIdentity!.publicKey,
-      };
+        final slowController = Nip55Controller(
+          gateway: localGateway,
+          vaultController: localVaultController,
+          vaultService: localVaultService,
+          requestController: localRequestController,
+          permissionStore: slowStore,
+        );
 
-      final first = slowController.handleRawIntent(firstRaw);
-      
-      // Since handleRawIntent is async but starts synchronously, 
-      // we check state immediately.
-      expect(slowController.state.isLoading, isTrue);
+        final firstRaw = {
+          'requestToken': 'token-first',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":"first","tags":[]}',
+          'id': 'first',
+          'currentUser': localVaultController.state.activeIdentity!.publicKey,
+        };
+        final secondRaw = {
+          'requestToken': 'token-second',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":"second","tags":[]}',
+          'id': 'second',
+          'currentUser': localVaultController.state.activeIdentity!.publicKey,
+        };
 
-      await slowController.handleRawIntent(secondRaw);
+        final first = slowController.handleRawIntent(firstRaw);
 
-      expect(localGateway.rejectedToken, 'token-second');
-      expect(localGateway.rejectedError, contains('already reviewing'));
-      expect(localRequestController.state.requests, isEmpty);
+        // Since handleRawIntent is async but starts synchronously,
+        // we check state immediately.
+        expect(slowController.state.isLoading, isTrue);
 
-      slowStore.allowListGrants.complete();
-      await first;
-      expect(localRequestController.state.requests, hasLength(1));
-      expect(localRequestController.state.requests.single.id, isNot('second'));
-    });
+        await slowController.handleRawIntent(secondRaw);
+
+        expect(localGateway.rejectedToken, 'token-second');
+        expect(localGateway.rejectedError, contains('already reviewing'));
+        expect(localRequestController.state.requests, isEmpty);
+
+        slowStore.allowListGrants.complete();
+        await first;
+        expect(localRequestController.state.requests, hasLength(1));
+        expect(
+          localRequestController.state.requests.single.id,
+          isNot('second'),
+        );
+      },
+    );
 
     test('get_public_key approval returns pubkey', () async {
       await controller.handleRawIntent({
@@ -745,119 +755,149 @@ void main() {
       expect(gateway.completedExtras?['result'], 'secret');
     });
 
-    test('provider sign_event returns null without remembered approval session', () async {
-      final result = await controller.handleProviderQuery(signEventRaw());
+    test(
+      'crypto approval failure rejects caller instead of escaping',
+      () async {
+        await controller.handleRawIntent({
+          'requestToken': 'bad-nip04-token',
+          'type': 'nip04_decrypt',
+          'content': 'ciphertext-without-iv',
+          'pubkey': 'b' * 64,
+          'currentUser': vaultController.state.activeIdentity!.publicKey,
+        });
 
-      expect(result, isNull);
-      expect(requestController.state.requests, isEmpty);
-    });
+        await controller.approveCryptoRequest();
 
-    test('provider get_public_key current_user mismatch returns rejection', () async {
-      final result = await controller.handleProviderQuery({
-        'requestToken': 'provider-pk-mismatch',
-        'type': 'get_public_key',
-        'callingPackage': 'com.example.app',
-        'callerCertificateSha256': 'AA:BB',
-        'currentUser': 'b' * 64,
-        'transport': 'content_provider',
-      });
+        expect(gateway.rejectedToken, 'bad-nip04-token');
+        expect(gateway.rejectedError, 'Unable to complete NIP-55 operation');
+        expect(controller.state.pendingCryptoRequest, isNull);
+      },
+    );
 
-      expect(
-        result,
-        {'rejected': 'Requested account does not match active identity.'},
-      );
-    });
+    test(
+      'provider sign_event returns null without remembered approval session',
+      () async {
+        final result = await controller.handleProviderQuery(signEventRaw());
 
-    test('provider sign_event returns signed event during approval session', () async {
-      final permissionStore = FakeNip55PermissionStore();
-      final providerController = Nip55Controller(
-        gateway: gateway,
-        vaultController: vaultController,
-        vaultService: vaultService,
-        requestController: requestController,
-        permissionStore: permissionStore,
-      );
-      final identity = vaultController.state.activeIdentity!;
-      await permissionStore.saveGrant(
-        Nip55PermissionGrant(
-          id: 'allow-sign-1',
-          identityPubkey: identity.publicKey,
-          packageName: 'com.example.app',
-          certificateSha256: 'AA:BB',
-          scope: const SignEventScope(1),
-          decision: Nip55PermissionDecision.allow,
-          createdAt: DateTime.utc(2026, 5, 1),
-        ),
-      );
-      providerController.state = providerController.state.copyWith(
-        approvalSessionExpiresAt: DateTime.now().add(
-          const Duration(minutes: 1),
-        ),
-      );
+        expect(result, isNull);
+        expect(requestController.state.requests, isEmpty);
+      },
+    );
 
-      final result = await providerController.handleProviderQuery({
-        ...signEventRaw(),
-        'callingPackage': 'com.example.app',
-        'callerCertificateSha256': 'AA:BB',
-      });
+    test(
+      'provider get_public_key current_user mismatch returns rejection',
+      () async {
+        final result = await controller.handleProviderQuery({
+          'requestToken': 'provider-pk-mismatch',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'currentUser': 'b' * 64,
+          'transport': 'content_provider',
+        });
 
-      expect(result, isNotNull);
-      expect(result?['result'], isA<String>());
-      expect(result?['event'], isA<String>());
-      expect(requestController.state.requests, isEmpty);
-    });
+        expect(result, {
+          'rejected': 'Requested account does not match active identity.',
+        });
+      },
+    );
 
-    test('provider nip44_encrypt returns result during approval session', () async {
-      final permissionStore = FakeNip55PermissionStore();
-      final providerController = Nip55Controller(
-        gateway: gateway,
-        vaultController: vaultController,
-        vaultService: vaultService,
-        requestController: requestController,
-        permissionStore: permissionStore,
-      );
-      final identity = vaultController.state.activeIdentity!;
-      final bob = NostrKeyPairs(
-        private:
-            '0000000000000000000000000000000000000000000000000000000000000002',
-      );
-      await permissionStore.saveGrant(
-        Nip55PermissionGrant(
-          id: 'allow-nip44-1',
-          identityPubkey: identity.publicKey,
-          packageName: 'com.example.app',
-          certificateSha256: 'AA:BB',
-          scope: const Nip44EncryptScope(),
-          decision: Nip55PermissionDecision.allow,
-          createdAt: DateTime.utc(2026, 5, 1),
-        ),
-      );
-      providerController.state = providerController.state.copyWith(
-        approvalSessionExpiresAt: DateTime.now().add(
-          const Duration(minutes: 1),
-        ),
-      );
+    test(
+      'provider sign_event returns signed event during approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final providerController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+        final identity = vaultController.state.activeIdentity!;
+        await permissionStore.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-sign-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        providerController.state = providerController.state.copyWith(
+          approvalSessionExpiresAt: DateTime.now().add(
+            const Duration(minutes: 1),
+          ),
+        );
 
-      final result = await providerController.handleProviderQuery({
-        'requestToken': 'provider-token',
-        'type': 'nip44_encrypt',
-        'content': 'hello provider',
-        'pubkey': bob.public,
-        'currentUser': identity.publicKey,
-        'callingPackage': 'com.example.app',
-        'callerCertificateSha256': 'AA:BB',
-      });
+        final result = await providerController.handleProviderQuery({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
 
-      expect(result?['result'], isA<String>());
-      expect(
-        const DartNostrCryptoService().nip44Decrypt(
-          privateKeyHex: bob.private,
-          peerPubkeyHex: identity.publicKey,
-          ciphertext: result!['result']! as String,
-        ),
-        'hello provider',
-      );
-    });
+        expect(result, isNotNull);
+        expect(result?['result'], isA<String>());
+        expect(result?['event'], isA<String>());
+        expect(requestController.state.requests, isEmpty);
+      },
+    );
+
+    test(
+      'provider nip44_encrypt returns result during approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final providerController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+        final identity = vaultController.state.activeIdentity!;
+        final bob = NostrKeyPairs(
+          private:
+              '0000000000000000000000000000000000000000000000000000000000000002',
+        );
+        await permissionStore.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-nip44-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const Nip44EncryptScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        providerController.state = providerController.state.copyWith(
+          approvalSessionExpiresAt: DateTime.now().add(
+            const Duration(minutes: 1),
+          ),
+        );
+
+        final result = await providerController.handleProviderQuery({
+          'requestToken': 'provider-token',
+          'type': 'nip44_encrypt',
+          'content': 'hello provider',
+          'pubkey': bob.public,
+          'currentUser': identity.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(result?['result'], isA<String>());
+        expect(
+          const DartNostrCryptoService().nip44Decrypt(
+            privateKeyHex: bob.private,
+            peerPubkeyHex: identity.publicKey,
+            ciphertext: result!['result']! as String,
+          ),
+          'hello provider',
+        );
+      },
+    );
 
     test('locked vault keeps request pending until unlock', () async {
       final activePubkey = vaultController.state.activeIdentity!.publicKey;

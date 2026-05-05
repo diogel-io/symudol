@@ -166,10 +166,10 @@ class MainActivity : FlutterActivity() {
         
         val parsedType = intent.getStringExtra("type") 
             ?: (data?.let { Nip55UriParser.queryParameter(it, "type") })
-        val parsedContent = intent.getStringExtra("content") 
-            ?: (data?.let { Nip55UriParser.content(it) })
-            
         if (parsedType == null) return null
+
+        val parsedContent = intent.getStringExtra("content")
+            ?: (data?.let { Nip55UriParser.content(it, parsedType) })
 
         return mapOf(
             "requestToken" to token,

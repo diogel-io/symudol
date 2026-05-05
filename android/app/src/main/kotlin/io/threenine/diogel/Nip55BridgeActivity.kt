@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import java.security.MessageDigest
 
 class Nip55BridgeActivity : Activity() {
@@ -23,6 +25,8 @@ class Nip55BridgeActivity : Activity() {
         Nip55BridgeRegistry.register(token, this)
 
         val callerPackage = callingPackage ?: original.`package`
+        val originalData = original.data!!
+        val originalType = original.getStringExtra("type") ?: Nip55UriParser.queryParameter(originalData, "type")
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
@@ -33,15 +37,15 @@ class Nip55BridgeActivity : Activity() {
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("requestToken", token)
-            putExtra("type", original.getStringExtra("type") ?: Nip55UriParser.queryParameter(original.data!!, "type"))
-            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(original.data!!))
-            putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(original.data!!, "id"))
-            putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(original.data!!, "current_user"))
-            putExtra("pubkey", original.getStringExtra("pubkey") ?: original.getStringExtra("pubKey") ?: Nip55UriParser.queryParameter(original.data!!, "pubkey"))
-            putExtra("permissions", original.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(original.data!!, "permissions"))
-            putExtra("callbackUrl", original.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(original.data!!, "callbackUrl"))
-            putExtra("returnType", original.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(original.data!!, "returnType"))
-            putExtra("compressionType", original.getStringExtra("compressionType") ?: Nip55UriParser.queryParameter(original.data!!, "compressionType"))
+            putExtra("type", originalType)
+            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(originalData, originalType))
+            putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(originalData, "id"))
+            putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(originalData, "current_user"))
+            putExtra("pubkey", original.getStringExtra("pubkey") ?: original.getStringExtra("pubKey") ?: Nip55UriParser.queryParameter(originalData, "pubkey"))
+            putExtra("permissions", original.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(originalData, "permissions"))
+            putExtra("callbackUrl", original.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(originalData, "callbackUrl"))
+            putExtra("returnType", original.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(originalData, "returnType"))
+            putExtra("compressionType", original.getStringExtra("compressionType") ?: Nip55UriParser.queryParameter(originalData, "compressionType"))
             putExtra("isBrowserFlow", original.hasCategory(Intent.CATEGORY_BROWSABLE))
             putExtra("callingPackage", callerPackage)
             putExtra("callerAppLabel", resolveAppLabel(callerPackage))
@@ -51,11 +55,14 @@ class Nip55BridgeActivity : Activity() {
             putExtra("sourceHint", callerPackage ?: referrer?.host)
             putExtra("dataUri", original.data?.toString())
         }
-        // If Flutter is already alive, deliver directly. REORDER_TO_FRONT is not
-        // guaranteed to call onNewIntent for an existing activity, so relying only
-        // on startActivity can leave the caller waiting forever.
-        MainActivity.deliverNip55BridgeIntent(mainIntent)
         startActivity(mainIntent)
+        // If Flutter is already alive, deliver directly as a fallback after asking
+        // Android to bring Diogel forward. REORDER_TO_FRONT is not guaranteed to
+        // call onNewIntent for an existing activity, but delivering before the
+        // startActivity handoff can leave the request waiting in a background UI.
+        Handler(Looper.getMainLooper()).postDelayed({
+            MainActivity.deliverNip55BridgeIntent(mainIntent)
+        }, 150L)
     }
 
     override fun onDestroy() {

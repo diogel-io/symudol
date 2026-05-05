@@ -6,6 +6,7 @@ import 'package:android_diogel/features/requests/domain/nostr_event_payload_pars
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
+import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
@@ -113,7 +114,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final Duration _pendingUnlockTimeout;
   final DateTime Function() _now;
   Timer? _pendingUnlockTimer;
-  
+
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
 
@@ -183,7 +184,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearFailure: true,
       clearSuccess: true,
     );
-    
+
     // The rest is async
     try {
       await _continueHandleRawIntent(raw);
@@ -558,8 +559,32 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   Future<void> approveCryptoRequest({bool remember = false}) async {
     final request = state.pendingCryptoRequest;
     if (request == null) return;
-    await _completeCryptoOperation(request, remember: remember);
-    _extendApprovalSession();
+    try {
+      await _completeCryptoOperation(request, remember: remember);
+      _extendApprovalSession();
+    } on VaultException catch (error) {
+      await _gateway.rejectNip55Intent(
+        requestToken: request.requestToken,
+        error: error.message,
+      );
+      state = state.copyWith(
+        isLoading: false,
+        failure: Nip55Failure(error.message, error),
+        clearPendingIncoming: true,
+        clearPendingCryptoRequest: true,
+      );
+    } catch (error) {
+      await _gateway.rejectNip55Intent(
+        requestToken: request.requestToken,
+        error: 'Unable to complete NIP-55 operation',
+      );
+      state = state.copyWith(
+        isLoading: false,
+        failure: Nip55Failure('Unable to complete NIP-55 operation', error),
+        clearPendingIncoming: true,
+        clearPendingCryptoRequest: true,
+      );
+    }
   }
 
   Future<void> rejectCryptoRequest({bool remember = false}) async {
@@ -942,9 +967,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return currentUser == null || currentUser == activeIdentityPubkey;
   }
 
-  Nip55IncomingRequest? _safeParseForRejection(
-    Map<String, Object?> raw,
-  ) {
+  Nip55IncomingRequest? _safeParseForRejection(Map<String, Object?> raw) {
     try {
       final parser = _parser;
       return parser.parse(raw);

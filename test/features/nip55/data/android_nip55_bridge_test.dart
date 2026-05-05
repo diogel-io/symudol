@@ -13,6 +13,9 @@ void main() {
     final registry = File(
       'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeRegistry.kt',
     ).readAsStringSync();
+    final uriParser = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55UriParser.kt',
+    ).readAsStringSync();
     final app = File('lib/app/app.dart').readAsStringSync();
 
     expect(bridgeActivity, contains('class Nip55BridgeActivity : Activity()'));
@@ -26,7 +29,15 @@ void main() {
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
+    expect(bridgeActivity, contains('startActivity(mainIntent)'));
+    expect(bridgeActivity, contains('postDelayed({'));
     expect(bridgeActivity, contains('MainActivity.deliverNip55BridgeIntent'));
+    expect(
+      bridgeActivity,
+      contains('Nip55UriParser.content(originalData, originalType)'),
+    );
+    expect(uriParser, contains('rawQueryParameter(uri, "iv")'));
+    expect(uriParser, contains(r'"$decodedPayload?iv=${Uri.decode(rawIv)}"'));
     expect(
       mainActivity,
       contains('fun deliverNip55BridgeIntent(intent: Intent)'),
