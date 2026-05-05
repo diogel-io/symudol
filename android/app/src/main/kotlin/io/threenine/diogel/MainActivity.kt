@@ -164,12 +164,14 @@ class MainActivity : FlutterActivity() {
         
         val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
         
-        val parsedType = intent.getStringExtra("type") 
+        val parsedTypeExtra = intent.getStringExtra("type")
+        val parsedType = parsedTypeExtra
             ?: (data?.let { Nip55UriParser.queryParameter(it, "type") })
         if (parsedType == null) return null
 
+        val shouldUseControlQueryForContent = parsedTypeExtra == null || parsedType == "nip04_decrypt"
         val parsedContent = intent.getStringExtra("content")
-            ?: (data?.let { Nip55UriParser.content(it, parsedType) })
+            ?: (data?.let { Nip55UriParser.content(it, parsedType, shouldUseControlQueryForContent) })
 
         return mapOf(
             "requestToken" to token,

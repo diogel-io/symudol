@@ -32,10 +32,16 @@ void main() {
     expect(bridgeActivity, contains('startActivity(mainIntent)'));
     expect(bridgeActivity, contains('postDelayed({'));
     expect(bridgeActivity, contains('MainActivity.deliverNip55BridgeIntent'));
+    expect(bridgeActivity, contains('originalTypeExtra'));
+    expect(bridgeActivity, contains('shouldUseControlQueryForContent'));
     expect(
       bridgeActivity,
-      contains('Nip55UriParser.content(originalData, originalType)'),
+      contains(
+        'Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent)',
+      ),
     );
+    expect(mainActivity, contains('parsedTypeExtra'));
+    expect(uriParser, contains('controlQueryStart(raw)'));
     expect(uriParser, contains('rawQueryParameter(uri, "iv")'));
     expect(uriParser, contains(r'"$decodedPayload?iv=${Uri.decode(rawIv)}"'));
     expect(

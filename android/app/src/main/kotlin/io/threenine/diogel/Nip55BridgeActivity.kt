@@ -26,7 +26,9 @@ class Nip55BridgeActivity : Activity() {
 
         val callerPackage = callingPackage ?: original.`package`
         val originalData = original.data!!
-        val originalType = original.getStringExtra("type") ?: Nip55UriParser.queryParameter(originalData, "type")
+        val originalTypeExtra = original.getStringExtra("type")
+        val originalType = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, "type")
+        val shouldUseControlQueryForContent = originalTypeExtra == null || originalType == "nip04_decrypt"
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
@@ -38,7 +40,7 @@ class Nip55BridgeActivity : Activity() {
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("requestToken", token)
             putExtra("type", originalType)
-            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(originalData, originalType))
+            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent))
             putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(originalData, "id"))
             putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(originalData, "current_user"))
             putExtra("pubkey", original.getStringExtra("pubkey") ?: original.getStringExtra("pubKey") ?: Nip55UriParser.queryParameter(originalData, "pubkey"))

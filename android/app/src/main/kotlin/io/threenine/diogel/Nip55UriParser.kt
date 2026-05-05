@@ -3,14 +3,23 @@ package io.threenine.diogel
 import android.net.Uri
 
 object Nip55UriParser {
-    fun content(uri: Uri, method: String? = null): String? {
+    private val controlQueryKeys = setOf(
+        "type",
+        "id",
+        "current_user",
+        "pubkey",
+        "permissions",
+        "callbackUrl",
+        "returnType",
+        "compressionType",
+        "iv",
+    )
+
+    fun content(uri: Uri, method: String? = null, useControlQuery: Boolean = true): String? {
         val raw = uri.schemeSpecificPart ?: return null
         if (raw.isBlank()) return null
-        val withoutQuery = if (raw.contains('?')) {
-            raw.substringBeforeLast('?')
-        } else {
-            raw
-        }
+        val queryStart = if (useControlQuery) controlQueryStart(raw) else -1
+        val withoutQuery = if (queryStart >= 0) raw.substring(0, queryStart) else raw
         val normalized = withoutQuery.removePrefix("//")
         if (normalized.isBlank()) return null
         return try {
@@ -61,9 +70,33 @@ object Nip55UriParser {
             return uri.encodedQuery
         }
         val raw = uri.schemeSpecificPart ?: return null
-        val marker = raw.lastIndexOf('?')
+        val marker = controlQueryStart(raw)
         if (marker < 0 || marker == raw.lastIndex) return null
         return raw.substring(marker + 1)
+    }
+
+    private fun controlQueryStart(raw: String): Int {
+        var marker = raw.indexOf('?')
+        while (marker >= 0 && marker < raw.lastIndex) {
+            if (containsControlQueryKey(raw.substring(marker + 1))) {
+                return marker
+            }
+            marker = raw.indexOf('?', marker + 1)
+        }
+        return -1
+    }
+
+    private fun containsControlQueryKey(query: String): Boolean {
+        query.split('&').forEach { pair ->
+            if (pair.isBlank()) return@forEach
+            val key = pair.substringBefore('=')
+            try {
+                if (controlQueryKeys.contains(Uri.decode(key))) return true
+            } catch (_: Exception) {
+                // Ignore malformed keys and keep scanning.
+            }
+        }
+        return false
     }
 
     private fun parseQueryStrictly(query: String): Map<String, String> {
