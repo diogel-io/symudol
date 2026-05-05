@@ -1,5 +1,4 @@
 import 'dart:developer' as dev;
-import 'package:flutter/foundation.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_failure.dart';

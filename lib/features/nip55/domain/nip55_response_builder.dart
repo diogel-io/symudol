@@ -45,7 +45,7 @@ class Nip55ResponseBuilder {
       'result': identity.publicKey,
       if (incoming?.externalId != null) 'id': incoming!.externalId,
       'package': signerPackage,
-      if (permissionsResultsJson != null) 'results': permissionsResultsJson,
+      'results': ?permissionsResultsJson,
       if (options?.callbackUrl != null)
         'callbackUrl': options!.callbackUrl.toString(),
       if (options != null && options.isBrowserFlow && !options.hasCallback)

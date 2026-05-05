@@ -7,8 +7,6 @@ import '../../nip55/application/nip55_providers.dart';
 import '../../requests/application/request_providers.dart';
 import '../../requests/presentation/requests_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
-import '../../vault/application/vault_providers.dart';
-import '../../vault/domain/vault_state.dart';
 
 class MainNavigationScreen extends ConsumerStatefulWidget {
   const MainNavigationScreen({super.key});
