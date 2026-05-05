@@ -37,7 +37,7 @@ class Nip55BridgeActivity : Activity() {
             putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(original.data!!))
             putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(original.data!!, "id"))
             putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(original.data!!, "current_user"))
-            putExtra("pubkey", original.getStringExtra("pubkey") ?: Nip55UriParser.queryParameter(original.data!!, "pubkey"))
+            putExtra("pubkey", original.getStringExtra("pubkey") ?: original.getStringExtra("pubKey") ?: Nip55UriParser.queryParameter(original.data!!, "pubkey"))
             putExtra("permissions", original.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(original.data!!, "permissions"))
             putExtra("callbackUrl", original.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(original.data!!, "callbackUrl"))
             putExtra("returnType", original.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(original.data!!, "returnType"))

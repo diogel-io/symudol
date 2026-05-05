@@ -68,6 +68,19 @@ void main() {
       }
     });
 
+    test('accepts Quartz/Amethyst foreground pubKey alias', () {
+      final peerPubkey = 'c' * 64;
+      final request = parser.parse({
+        'requestToken': 'token-quartz-pubKey',
+        'type': 'nip04_decrypt',
+        'content': 'ciphertext',
+        'pubKey': peerPubkey,
+      });
+
+      expect(request.pubkey, peerPubkey);
+      expect(request.payload, isA<Nip04DecryptPayload>());
+    });
+
     test('parses browser return options', () {
       final request = parser.parse({
         'requestToken': 'token-web',

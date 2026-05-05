@@ -27,7 +27,7 @@ class Nip55IntentParser {
       throw const Nip55ParseException('Invalid current_user pubkey');
     }
 
-    final pubkey = raw['pubkey'] as String?;
+    final pubkey = (raw['pubkey'] ?? raw['pubKey']) as String?;
     if (method.requiresPeerPubkey && !_isHex64(pubkey)) {
       throw Nip55ParseException(
         'Missing or invalid ${method.wireName} peer pubkey',

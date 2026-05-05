@@ -177,7 +177,7 @@ class MainActivity : FlutterActivity() {
             "content" to parsedContent,
             "id" to (intent.getStringExtra("id") ?: (data?.let { Nip55UriParser.queryParameter(it, "id") })),
             "currentUser" to (intent.getStringExtra("currentUser") ?: intent.getStringExtra("current_user") ?: (data?.let { Nip55UriParser.queryParameter(it, "current_user") })),
-            "pubkey" to (intent.getStringExtra("pubkey") ?: (data?.let { Nip55UriParser.queryParameter(it, "pubkey") })),
+            "pubkey" to (intent.getStringExtra("pubkey") ?: intent.getStringExtra("pubKey") ?: (data?.let { Nip55UriParser.queryParameter(it, "pubkey") })),
             "permissions" to (intent.getStringExtra("permissions") ?: (data?.let { Nip55UriParser.queryParameter(it, "permissions") })),
             "callbackUrl" to (intent.getStringExtra("callbackUrl") ?: (data?.let { Nip55UriParser.queryParameter(it, "callbackUrl") })),
             "returnType" to (intent.getStringExtra("returnType") ?: (data?.let { Nip55UriParser.queryParameter(it, "returnType") })),

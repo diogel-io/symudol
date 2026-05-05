@@ -21,6 +21,8 @@ void main() {
       contains('Nip55BridgeRegistry.register(token, this)'),
     );
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
+    expect(bridgeActivity, contains('original.getStringExtra("pubKey")'));
+    expect(mainActivity, contains('intent.getStringExtra("pubKey")'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
