@@ -185,7 +185,7 @@ class MainActivity : FlutterActivity() {
             "callbackUrl" to (intent.getStringExtra("callbackUrl") ?: (data?.let { Nip55UriParser.queryParameter(it, "callbackUrl") })),
             "returnType" to (intent.getStringExtra("returnType") ?: (data?.let { Nip55UriParser.queryParameter(it, "returnType") })),
             "compressionType" to (intent.getStringExtra("compressionType") ?: (data?.let { Nip55UriParser.queryParameter(it, "compressionType") })),
-            "isBrowserFlow" to (intent.getBooleanExtra("isBrowserFlow", false) || intent.hasCategory(Intent.CATEGORY_BROWSABLE)),
+            "isBrowserFlow" to intent.getBooleanExtra("isBrowserFlow", false),
             "callingPackage" to callerPackage,
             "callerAppLabel" to intent.getStringExtra("callerAppLabel"),
             "callerCertificateSha256" to intent.getStringExtra("callerCertificateSha256"),

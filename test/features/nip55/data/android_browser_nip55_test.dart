@@ -23,12 +23,12 @@ void main() {
       mainActivity,
       contains('Nip55UriParser.queryParameter(it, "compressionType")'),
     );
-    expect(mainActivity, contains('Nip55UriParser.queryParameter(it, "type")'));
-    expect(mainActivity, contains('Nip55UriParser.content(it'));
     expect(
       mainActivity,
-      contains('intent.hasCategory(Intent.CATEGORY_BROWSABLE)'),
+      contains('Nip55UriParser.queryParameter(it, "type")'),
     );
+    expect(mainActivity, contains('Nip55UriParser.content(it'));
+    expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
     expect(uriParser, contains('controlQueryStart(raw)'));
@@ -60,7 +60,10 @@ void main() {
     expect(mainActivity, contains('callbackUrl.endsWith("=")'));
     expect(mainActivity, contains('Uri.encode(result)'));
     expect(mainActivity, contains('appendQueryParameter("result", result)'));
-    expect(mainActivity, contains('Intent(Intent.ACTION_VIEW, callbackUri)'));
+    expect(
+      mainActivity,
+      contains('Intent(Intent.ACTION_VIEW, callbackUri)'),
+    );
     expect(mainActivity, contains('maybeCopyToClipboard(extras)'));
     expect(mainActivity, contains('ClipboardManager'));
     expect(mainActivity, contains('ClipData.newPlainText'));

@@ -25,6 +25,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+        </activity>
+        <activity
+            android:name=".Nip55BridgeActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Nip55BridgeTheme"
+            android:noHistory="false">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -32,12 +39,6 @@
                 <data android:scheme="nostrsigner" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".Nip55BridgeActivity"
-            android:exported="false"
-            android:launchMode="singleTop"
-            android:theme="@style/Nip55BridgeTheme"
-            android:noHistory="false" />
         <provider
             android:name=".Nip55ContentProvider"
             android:authorities="io.threenine.diogel.SIGN_EVENT;io.threenine.diogel.NIP44_ENCRYPT;io.threenine.diogel.NIP44_DECRYPT;io.threenine.diogel.NIP04_ENCRYPT;io.threenine.diogel.NIP04_DECRYPT;io.threenine.diogel.DECRYPT_ZAP_EVENT;io.threenine.diogel.GET_PUBLIC_KEY;io.threenine.diogel.PING"
