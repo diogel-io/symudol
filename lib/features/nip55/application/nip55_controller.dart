@@ -212,6 +212,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       state = state.copyWith(
         isLoading: false,
         failure: Nip55Failure(error.message, error),
+        clearPendingIncoming: true,
+        clearPendingSigningRequestId: true,
+        clearPendingPublicKeyRequest: true,
+        clearPendingCryptoRequest: true,
       );
       final requestToken = raw['requestToken'] as String?;
       if (requestToken != null) {
@@ -221,8 +225,15 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         );
       }
     } on Nip55Failure catch (error) {
-      state = state.copyWith(isLoading: false, failure: error);
       if (incoming == null || !_isWaitingForUnlockFailure(error)) {
+        state = state.copyWith(
+          isLoading: false,
+          failure: error,
+          clearPendingIncoming: true,
+          clearPendingSigningRequestId: true,
+          clearPendingPublicKeyRequest: true,
+          clearPendingCryptoRequest: true,
+        );
         final requestToken =
             incoming?.requestToken ?? raw['requestToken'] as String?;
         if (requestToken != null) {
@@ -231,11 +242,17 @@ class Nip55Controller extends StateNotifier<Nip55State> {
             error: error.message,
           );
         }
+      } else {
+        state = state.copyWith(isLoading: false, failure: error);
       }
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
         failure: Nip55Failure('Unable to handle NIP-55 request', error),
+        clearPendingIncoming: true,
+        clearPendingSigningRequestId: true,
+        clearPendingPublicKeyRequest: true,
+        clearPendingCryptoRequest: true,
       );
       final requestToken =
           incoming?.requestToken ?? raw['requestToken'] as String?;
@@ -529,6 +546,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
+      clearPendingCryptoRequest: true,
+      clearPendingSigningRequestId: true,
       approvalSessionExpiresAt: approvalSessionExpiresAt,
       clearApprovalSession: approvalSessionExpiresAt == null,
       lastSuccessMessage: remember

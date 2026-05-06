@@ -66,6 +66,22 @@ void main() {
     expect(codec, contains('AUTHORITY_SIGN_EVENT'));
     expect(codec, contains('peerPubkeyFromProjection'));
     expect(codec, contains('zapCurrentUserFromProjection'));
+
+    // Workstream E: Exact authority/mapping assertions
+    expect(codec, contains('const val AUTHORITY_GET_PUBLIC_KEY = "io.threenine.diogel.GET_PUBLIC_KEY"'));
+    expect(codec, contains('AUTHORITY_GET_PUBLIC_KEY -> "get_public_key"'));
+    expect(codec, contains('const val AUTHORITY_PING = "io.threenine.diogel.PING"'));
+    expect(codec, contains('AUTHORITY_PING -> "ping"'));
+  });
+
+  test('PING is treated as a capability probe and documented', () {
+    final provider = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+    ).readAsStringSync();
+
+    expect(provider, contains('if (method == "ping")'));
+    expect(provider, contains('operationResultCursor("pong")'));
+    expect(provider, contains('PING is treated as a stateless capability probe'));
   });
 
   test('ContentProvider MVP deferral is documented', () {

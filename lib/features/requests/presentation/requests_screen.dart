@@ -275,11 +275,44 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               ),
             ],
             if (parsedPermissions.warnings.isNotEmpty) ...[
-              const SizedBox(height: DiogelSpacing.space2),
-              Text(
-                parsedPermissions.warnings.join('\n'),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: DiogelColors.stateWarning,
+              const SizedBox(height: DiogelSpacing.space4),
+              Container(
+                padding: const EdgeInsets.all(DiogelSpacing.space3),
+                decoration: BoxDecoration(
+                  color: DiogelColors.stateWarning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(DiogelRadius.medium),
+                  border: Border.all(
+                    color: DiogelColors.stateWarning.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: DiogelColors.stateWarning,
+                        ),
+                        const SizedBox(width: DiogelSpacing.space2),
+                        Text(
+                          'Note',
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: DiogelColors.stateWarning,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: DiogelSpacing.space1),
+                    Text(
+                      parsedPermissions.warnings.join('\n'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: DiogelColors.stateWarning,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

@@ -35,4 +35,9 @@ void main() {
     expect(nightStyles, contains('style name="Nip55BridgeTheme"'));
     expect(nightStyles, contains('android:windowIsTranslucent'));
   });
+
+  test('manifest intentionally does not advertise SIGN_MESSAGE until implemented', () {
+    final manifest = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, isNot(contains('io.threenine.diogel.SIGN_MESSAGE')));
+  });
 }

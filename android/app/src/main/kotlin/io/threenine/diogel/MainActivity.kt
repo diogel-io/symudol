@@ -9,6 +9,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import java.security.MessageDigest
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -38,7 +40,10 @@ class MainActivity : FlutterActivity() {
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
     private var activeRequestToken: String? = null
+    private var lastDeliveredToken: String? = null
     private var nextRequestNumber = 0L
+    private var pendingCompletionRunnable: Runnable? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,14 +119,17 @@ class MainActivity : FlutterActivity() {
 
     private fun deliverNip55Payload(payload: Map<String, Any?>): Boolean {
         if (channel == null) return false
+        val requestToken = payload["requestToken"] as? String
+
+        if (requestToken != null && requestToken == lastDeliveredToken) {
+            Log.d(TAG, "deliverNip55Payload: Token $requestToken already delivered, ignoring")
+            return true
+        }
+
         if (activeRequestToken != null) {
-            val requestToken = payload["requestToken"] as? String
-            if (requestToken == activeRequestToken) {
-                Log.d(TAG, "deliverNip55Payload: Received same request token, ignoring")
-                return true
-            }
-            Log.d(TAG, "deliverNip55Payload: Already have active request, rejecting new one")
+            Log.d(TAG, "deliverNip55Payload: Already have active request ($activeRequestToken), rejecting new one ($requestToken)")
             if (requestToken != null) {
+                lastDeliveredToken = requestToken
                 Nip55BridgeRegistry.reject(
                     requestToken,
                     "Diogel is already reviewing another NIP-55 request"
@@ -129,7 +137,8 @@ class MainActivity : FlutterActivity() {
             }
             return true
         }
-        activeRequestToken = payload["requestToken"] as? String
+        activeRequestToken = requestToken
+        lastDeliveredToken = requestToken
         latestNip55Intent = payload
 
         // Asynchronously resolve metadata before sending to Dart.
@@ -337,7 +346,20 @@ class MainActivity : FlutterActivity() {
     private fun runAfterMethodResponse(action: CompletionAction) {
         Log.d(TAG, "runAfterMethodResponse: action=$action")
         if (action == CompletionAction.NONE) return
+
+        // Cancel any existing pending completion to avoid finishing/backgrounding
+        // if a second request arrived during the grace period of the first.
+        pendingCompletionRunnable?.let { mainHandler.removeCallbacks(it) }
+
         val runnable = Runnable {
+            pendingCompletionRunnable = null
+
+            // Double check that no new request has become active during the delay.
+            if (activeRequestToken != null) {
+                Log.d(TAG, "runAfterMethodResponse: Skipping $action because a new request is active")
+                return@Runnable
+            }
+
             Log.d(TAG, "Executing completion action: $action")
             when (action) {
                 CompletionAction.BACKGROUND -> moveTaskToBack(true)
@@ -345,14 +367,11 @@ class MainActivity : FlutterActivity() {
                 CompletionAction.NONE -> Unit
             }
         }
+        pendingCompletionRunnable = runnable
+
         // Give Flutter and plugins a short grace period to deliver MethodChannel
         // responses before we background/finish the activity for the caller handoff.
-        val view = window?.decorView
-        if (view != null) {
-            view.postDelayed(runnable, 150L)
-        } else {
-            runnable.run()
-        }
+        mainHandler.postDelayed(runnable, 150L)
     }
 
     private fun isActiveRequest(arguments: Map<*, *>?): Boolean {

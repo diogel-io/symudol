@@ -19,9 +19,37 @@ sealed class Nip55PermissionScope {
       'nip04_encrypt' => Nip04EncryptScope(peerPubkey),
       'nip04_decrypt' => Nip04DecryptScope(peerPubkey),
       'decrypt_zap_event' => const DecryptZapEventScope(),
+      'connect' => const ConnectScope(),
+      'sign_message' => const SignMessageScope(),
       _ => UnsupportedScope(json['wire'] as String? ?? type ?? 'unknown'),
     };
   }
+}
+
+final class ConnectScope extends Nip55PermissionScope {
+  const ConnectScope();
+
+  @override
+  String get wire => 'connect';
+
+  @override
+  String get label => 'Connect to signer';
+
+  @override
+  Map<String, Object?> toJson() => {'type': wire};
+}
+
+final class SignMessageScope extends Nip55PermissionScope {
+  const SignMessageScope();
+
+  @override
+  String get wire => 'sign_message';
+
+  @override
+  String get label => 'Sign message';
+
+  @override
+  Map<String, Object?> toJson() => {'type': wire};
 }
 
 final class GetPublicKeyScope extends Nip55PermissionScope {

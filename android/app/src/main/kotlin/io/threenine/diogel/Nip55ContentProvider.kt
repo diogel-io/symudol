@@ -32,7 +32,9 @@ class Nip55ContentProvider : ContentProvider() {
 
         if (!hasRequiredProjection(method, projection)) return null
 
-        // Fast-path ping without engaging the bridge
+        // PING is treated as a stateless capability probe. It does not grant access
+        // to keys or signing operations, so it intentionally does not require an
+        // approval session. Protected operations still go through the bridge/policy path.
         if (method == "ping") {
             return Nip55RequestCodec.operationResultCursor("pong")
         }

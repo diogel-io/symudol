@@ -43,7 +43,6 @@ class Nip55PermissionParser {
       final scope = _parseToken(token);
       if (scope == null) {
         warnings.add('Unsupported permission: $token');
-        scopes.add(UnsupportedScope(token));
         continue;
       }
       scopes.add(scope);
@@ -74,6 +73,8 @@ class Nip55PermissionParser {
       'nip04_encrypt' => const Nip04EncryptScope(),
       'nip04_decrypt' => const Nip04DecryptScope(),
       'decrypt_zap_event' => const DecryptZapEventScope(),
+      'connect' => const ConnectScope(),
+      'sign_message' => const SignMessageScope(),
       _ => null,
     };
   }

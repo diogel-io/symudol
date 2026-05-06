@@ -96,6 +96,7 @@ void main() {
       expect(find.text('1234567890'), findsOneWidget);
     });
 
+
     testWidgets('shows WP8 NIP-55 review summary without requiring raw JSON', (
       tester,
     ) async {
