@@ -152,14 +152,14 @@ The list of relevant NIPs:
    - NIP-55 explicitly says Android signers use:
    - Intents for manual accept/reject flows.
    - ContentResolver / ContentProvider for automatic/background decisions when already allowed.
-   - get_public_key is the initial connection flow.
-   - Client saves signer package + pubkey and should avoid repeating get_public_key.
+   - `get_public_key` is the initial connection flow.
+   - Client saves signer package + pubkey and should avoid repeating `get_public_key`.
    - Content resolver returns null when not remembered/allowed.
    - Rejected provider result uses a rejected column.
    - sign_event returns result and event.
    - Other crypto methods return result.
    - nostrsigner: intent = manual UI approval path.
-   - content://io.threenine.diogel.GET_PUBLIC_KEY etc. = provider/warm-session path.
+   - `content://io.threenine.diogel.GET_PUBLIC_KEY` etc. = provider/warm-session path.
    - ContentProvider.getCallingPackage() = how Diogel identifies the calling app.
    - AndroidManifest.xml authorities = what clients can query.
    - BAL_BLOCK logs = Android refusing background UI launch.
