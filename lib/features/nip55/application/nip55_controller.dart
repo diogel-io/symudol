@@ -118,6 +118,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
+  final List<Nip55IncomingRequest> _deferredClientAuthRequests = [];
 
   Nip55Controller({
     required Nip55Gateway gateway,
@@ -172,6 +173,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       final busyRequest = _safeParseForRejection(raw);
       if (busyRequest == null) return;
       if (await _tryCompleteRememberedBusyRequest(busyRequest)) return;
+      if (_shouldDeferClientAuthenticationRequest(busyRequest)) {
+        _deferClientAuthenticationRequest(busyRequest);
+        return;
+      }
       await _gateway.rejectNip55Intent(
         requestToken: busyRequest.requestToken,
         error: 'Diogel is already reviewing another NIP-55 request',
@@ -269,9 +274,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   Future<Map<String, Object?>?> handleProviderQuery(
     Map<String, Object?> raw,
   ) async {
-    if (state.hasPendingExternalRequest) return null;
     final parser = _parser;
     final incoming = parser.parse(raw);
+    if (state.hasPendingExternalRequest &&
+        !_isClientAuthenticationRequest(incoming)) {
+      return null;
+    }
     final activeIdentity = _vaultController.state.activeIdentity;
     if (_vaultController.state.vaultState is! VaultUnlocked ||
         activeIdentity == null) {
@@ -793,6 +801,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await completeApprovedSigningRequest(requestId);
     if (signedEvent != null) {
       _extendApprovalSession();
+      if (remember) {
+        await _completeDeferredClientAuthenticationRequests();
+      }
     }
   }
 
@@ -906,6 +917,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       requestToken: incoming.requestToken,
       error: 'User rejected signing request',
     );
+    if (_isClientAuthenticationRequest(incoming)) {
+      await _rejectDeferredClientAuthenticationRequests(
+        'User rejected signing request',
+      );
+    }
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingSigningRequestId: true,
@@ -1125,6 +1141,100 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) {
     final currentUser = incoming.currentUser;
     return currentUser == null || currentUser == activeIdentityPubkey;
+  }
+
+  bool _shouldDeferClientAuthenticationRequest(Nip55IncomingRequest incoming) {
+    if (!_isClientAuthenticationRequest(incoming)) return false;
+    final pending = state.pendingIncoming;
+    if (pending == null) return _isParsingIntent;
+    if (!_isClientAuthenticationRequest(pending)) return false;
+    return _sameClientAndIdentity(incoming, pending);
+  }
+
+  void _deferClientAuthenticationRequest(Nip55IncomingRequest incoming) {
+    final token = incoming.requestToken;
+    if (_deferredClientAuthRequests.any(
+      (request) => request.requestToken == token,
+    )) {
+      return;
+    }
+    _deferredClientAuthRequests.add(incoming);
+  }
+
+  Future<void> _completeDeferredClientAuthenticationRequests() async {
+    if (_deferredClientAuthRequests.isEmpty) return;
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (_vaultController.state.vaultState is! VaultUnlocked ||
+        activeIdentity == null) {
+      return;
+    }
+
+    final deferred = List<Nip55IncomingRequest>.from(
+      _deferredClientAuthRequests,
+    );
+    _deferredClientAuthRequests.clear();
+    for (final incoming in deferred) {
+      if (!_matchesCurrentUser(incoming, activeIdentity.publicKey)) {
+        await _gateway.rejectNip55Intent(
+          requestToken: incoming.requestToken,
+          error: 'Requested account does not match active identity.',
+        );
+        continue;
+      }
+      final decision = await _decide(incoming, activeIdentity.publicKey);
+      if (decision is AutoAllow &&
+          _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+        await _completeRememberedSignEvent(
+          incoming: incoming,
+          activeIdentity: activeIdentity,
+          grant: decision.grant,
+        );
+      } else if (decision is AutoReject) {
+        await _markGrantUsed(decision.grant);
+        await _gateway.rejectNip55Intent(
+          requestToken: incoming.requestToken,
+          error: decision.reason,
+        );
+      } else {
+        await _gateway.rejectNip55Intent(
+          requestToken: incoming.requestToken,
+          error: 'Client authentication request was not remembered.',
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectDeferredClientAuthenticationRequests(String error) async {
+    if (_deferredClientAuthRequests.isEmpty) return;
+    final deferred = List<Nip55IncomingRequest>.from(
+      _deferredClientAuthRequests,
+    );
+    _deferredClientAuthRequests.clear();
+    for (final incoming in deferred) {
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: error,
+      );
+    }
+  }
+
+  bool _sameClientAndIdentity(
+    Nip55IncomingRequest left,
+    Nip55IncomingRequest right,
+  ) {
+    final leftClient = left.clientIdentity;
+    final rightClient = right.clientIdentity;
+    if (leftClient.packageName == null ||
+        leftClient.packageName != rightClient.packageName) {
+      return false;
+    }
+    if (left.currentUser != right.currentUser) return false;
+    final leftPubkey = left.eventJson?['pubkey'];
+    final rightPubkey = right.eventJson?['pubkey'];
+    if (leftPubkey != rightPubkey) return false;
+    final leftCert = leftClient.certificateSha256;
+    final rightCert = rightClient.certificateSha256;
+    return leftCert == null || rightCert == null || leftCert == rightCert;
   }
 
   Nip55IncomingRequest? _safeParseForRejection(Map<String, Object?> raw) {

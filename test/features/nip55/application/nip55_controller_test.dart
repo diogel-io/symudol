@@ -419,6 +419,60 @@ void main() {
     );
 
     test(
+      'kind 22242 burst waits for first sign and remember instead of busy rejecting',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-first', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final first = requestController.state.requests.single;
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-second', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-third', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(gateway.rejectedTokens, isEmpty);
+        expect(gateway.completedTokens, isEmpty);
+
+        await permissionController.approveSigningRequest(
+          first.id,
+          remember: true,
+        );
+
+        expect(
+          gateway.completedTokens,
+          containsAll([
+            'token-auth-first',
+            'token-auth-second',
+            'token-auth-third',
+          ]),
+        );
+        expect(gateway.rejectedTokens, isEmpty);
+        expect(
+          gateway.completedExtrasByToken['token-auth-second']?['event'],
+          contains('"kind":22242'),
+        );
+      },
+    );
+
+    test(
       'manual approval opens short session for remembered low-risk approvals',
       () async {
         await vaultController.setApprovalSessionDurationMinutes(5);
