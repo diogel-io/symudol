@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import java.security.MessageDigest
 
 class Nip55BridgeActivity : Activity() {
@@ -29,13 +31,13 @@ class Nip55BridgeActivity : Activity() {
         val shouldUseControlQueryForContent = originalTypeExtra == null || originalType == "nip04_decrypt"
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
-            // Do not use NEW_TASK/REORDER_TO_FRONT here. The caller is waiting
-            // for this bridge activity's result, so MainActivity must stay in
-            // the caller task above the bridge. Then MainActivity can finish,
-            // the bridge can finish with setResult, and Android naturally
-            // reveals the original caller instead of bouncing to home or
-            // reviving a stale Diogel task.
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
+            // which leaves the caller waiting until its NIP-55 timeout. NEW_TASK keeps
+            // Diogel's Flutter UI in Diogel's own task instead of putting it inside the
+            // caller app's task; otherwise moveTaskToBack can background the caller.
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("requestToken", token)
             putExtra("type", originalType)
             putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent))
@@ -56,6 +58,13 @@ class Nip55BridgeActivity : Activity() {
             putExtra("dataUri", original.data?.toString())
         }
         startActivity(mainIntent)
+        // If Flutter is already alive, deliver directly as a fallback after asking
+        // Android to bring Diogel forward. REORDER_TO_FRONT is not guaranteed to
+        // call onNewIntent for an existing activity, but delivering before the
+        // startActivity handoff can leave the request waiting in a background UI.
+        Handler(Looper.getMainLooper()).postDelayed({
+            MainActivity.deliverNip55BridgeIntent(mainIntent)
+        }, 150L)
     }
 
     override fun onDestroy() {

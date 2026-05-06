@@ -26,18 +26,12 @@ void main() {
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
     expect(bridgeActivity, contains('original.getStringExtra("pubKey")'));
     expect(mainActivity, contains('intent.getStringExtra("pubKey")'));
-    expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_NEW_TASK')));
-    expect(
-      bridgeActivity,
-      isNot(contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT')),
-    );
+    expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
+    expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
     expect(bridgeActivity, contains('startActivity(mainIntent)'));
-    expect(bridgeActivity, isNot(contains('postDelayed({')));
-    expect(
-      bridgeActivity,
-      isNot(contains('MainActivity.deliverNip55BridgeIntent')),
-    );
+    expect(bridgeActivity, contains('postDelayed({'));
+    expect(bridgeActivity, contains('MainActivity.deliverNip55BridgeIntent'));
     expect(bridgeActivity, contains('originalTypeExtra'));
     expect(bridgeActivity, contains('shouldUseControlQueryForContent'));
     expect(
@@ -57,12 +51,8 @@ void main() {
     expect(mainActivity, contains('private fun deliverNip55Payload'));
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
-    expect(mainActivity, contains('CompletionAction.FINISH'));
-    expect(
-      mainActivity,
-      contains('Nip55BridgeRegistry.complete(bridgeToken, extras)) {'),
-    );
-    expect(mainActivity, contains('return CompletionAction.FINISH'));
+    expect(mainActivity, contains('CompletionAction.BACKGROUND'));
+    expect(mainActivity, contains('moveTaskToBack(true)'));
     expect(mainActivity, contains('postDelayed(runnable, 150L)'));
     expect(registry, contains('ConcurrentHashMap'));
     expect(app, contains('hasPendingExternalRequest'));
