@@ -60,8 +60,11 @@ class FakeNip55Gateway implements Nip55Gateway {
   Map<String, Object?>? latest;
   Map<String, Object?>? completedExtras;
   String? completedToken;
+  final completedTokens = <String>[];
+  final completedExtrasByToken = <String, Map<String, Object?>>{};
   String? rejectedError;
   String? rejectedToken;
+  final rejectedTokens = <String>[];
   void Function(Map<String, Object?> raw)? handler;
   Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
   providerQueryHandler;
@@ -101,6 +104,8 @@ class FakeNip55Gateway implements Nip55Gateway {
   }) async {
     completedToken = requestToken;
     completedExtras = extras;
+    completedTokens.add(requestToken);
+    completedExtrasByToken[requestToken] = extras;
   }
 
   @override
@@ -110,6 +115,7 @@ class FakeNip55Gateway implements Nip55Gateway {
   }) async {
     rejectedToken = requestToken;
     rejectedError = error;
+    rejectedTokens.add(requestToken);
   }
 }
 
@@ -143,10 +149,13 @@ void main() {
     );
   });
 
-  Map<String, Object?> signEventRaw({String? id = 'external-id'}) => {
+  Map<String, Object?> signEventRaw({
+    String? id = 'external-id',
+    int kind = 1,
+  }) => {
     'requestToken': 'token-$id',
     'type': 'sign_event',
-    'content': '{"kind":1,"content":"hello","tags":[]}',
+    'content': '{"kind":$kind,"content":"hello","tags":[]}',
     'id': id,
     'currentUser': vaultController.state.activeIdentity!.publicKey,
     'sourceHint': 'com.example.app',
@@ -312,6 +321,99 @@ void main() {
         });
 
         expect(gateway.completedExtras, isNull);
+        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+      },
+    );
+
+    test(
+      'remembered kind 22242 signs immediately outside approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-client-auth',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(22242),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(gateway.completedToken, 'token-auth');
+        expect(gateway.completedExtras?['event'], contains('"kind":22242'));
+        expect(permissionController.state.pendingSigningRequestId, isNull);
+        expect(
+          requestController.state.requests.where(
+            (request) => request.status == SigningRequestStatus.pending,
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'busy controller auto-completes remembered kind 22242 burst request',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-client-auth',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(22242),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'interactive', kind: 1),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-one', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-two', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(
+          gateway.completedTokens,
+          containsAll(['token-auth-one', 'token-auth-two']),
+        );
+        expect(gateway.rejectedTokens, isNot(contains('token-auth-one')));
+        expect(gateway.rejectedTokens, isNot(contains('token-auth-two')));
         expect(permissionController.state.pendingSigningRequestId, isNotNull);
       },
     );

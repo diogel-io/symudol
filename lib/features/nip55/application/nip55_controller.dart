@@ -5,6 +5,7 @@ import 'package:android_diogel/features/requests/application/request_controller.
 import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
@@ -168,9 +169,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   Future<void> handleRawIntent(Map<String, Object?> raw) async {
     // Check busy synchronously
     if (_isParsingIntent || state.hasPendingExternalRequest) {
-      // Rejection parsing still happens in isolate (or sync in test) to avoid jank
       final busyRequest = _safeParseForRejection(raw);
       if (busyRequest == null) return;
+      if (await _tryCompleteRememberedBusyRequest(busyRequest)) return;
       await _gateway.rejectNip55Intent(
         requestToken: busyRequest.requestToken,
         error: 'Diogel is already reviewing another NIP-55 request',
@@ -285,7 +286,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _markGrantUsed(decision.grant);
       return {'rejected': decision.reason};
     }
-    if (decision is! AutoAllow || !_canUseApprovalSession(decision.grant)) {
+    if (decision is! AutoAllow ||
+        !_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
       return null;
     }
 
@@ -449,6 +451,22 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
 
+    if (decision is AutoAllow &&
+        _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+      await _completeRememberedSignEvent(
+        incoming: incoming,
+        activeIdentity: activeIdentity,
+        grant: decision.grant,
+      );
+      state = state.copyWith(
+        isLoading: false,
+        clearPendingIncoming: true,
+        clearPendingSigningRequestId: true,
+        lastSuccessMessage: 'Event signed using remembered NIP-55 permission.',
+      );
+      return;
+    }
+
     final signingRequest = _mapper.mapSignEvent(
       incoming: incoming,
       activeIdentity: activeIdentity,
@@ -459,13 +477,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       pendingIncoming: incoming,
       pendingSigningRequestId: signingRequest.id,
     );
-
-    if (decision is AutoAllow) {
-      if (!_canUseApprovalSession(decision.grant)) return;
-      await _markGrantUsed(decision.grant);
-      await _requestController.approveRequest(signingRequest.id);
-      await completeApprovedSigningRequest(signingRequest.id);
-    }
   }
 
   Future<void> _handleCryptoOperation(Nip55IncomingRequest incoming) async {
@@ -785,6 +796,96 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
   }
 
+  Future<bool> _tryCompleteRememberedBusyRequest(
+    Nip55IncomingRequest incoming,
+  ) async {
+    final activeIdentity = _vaultController.state.activeIdentity;
+    if (_vaultController.state.vaultState is! VaultUnlocked ||
+        activeIdentity == null) {
+      return false;
+    }
+    if (!_matchesCurrentUser(incoming, activeIdentity.publicKey)) {
+      return false;
+    }
+    if (incoming.method == Nip55Method.signEvent) {
+      final eventPubkey = incoming.eventJson?['pubkey'];
+      if (eventPubkey != null && eventPubkey != activeIdentity.publicKey) {
+        return false;
+      }
+    }
+    if (!_isClientAuthenticationRequest(incoming)) return false;
+
+    final decision = await _decide(incoming, activeIdentity.publicKey);
+    if (decision is AutoReject) {
+      await _markGrantUsed(decision.grant);
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: decision.reason,
+      );
+      return true;
+    }
+    if (decision is! AutoAllow ||
+        !_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+      return false;
+    }
+
+    if (incoming.method == Nip55Method.signEvent) {
+      await _completeRememberedSignEvent(
+        incoming: incoming,
+        activeIdentity: activeIdentity,
+        grant: decision.grant,
+      );
+      return true;
+    }
+    if (incoming.method == Nip55Method.getPublicKey) {
+      await _markGrantUsed(decision.grant);
+      await _gateway.completeNip55Intent(
+        requestToken: incoming.requestToken,
+        extras: _responseBuilder.getPublicKeyExtras(
+          activeIdentity,
+          incoming: incoming,
+        ),
+      );
+      return true;
+    }
+
+    final result = await _cryptoResult(incoming, activeIdentity.localId);
+    await _markGrantUsed(decision.grant);
+    await _gateway.completeNip55Intent(
+      requestToken: incoming.requestToken,
+      extras: _responseBuilder.operationResultExtras(
+        incoming: incoming,
+        result: result,
+        clipboardLabel: _clipboardLabelFor(incoming),
+      ),
+    );
+    return true;
+  }
+
+  Future<void> _completeRememberedSignEvent({
+    required Nip55IncomingRequest incoming,
+    required VaultIdentity activeIdentity,
+    required Nip55PermissionGrant grant,
+  }) async {
+    final signingRequest = _mapper.mapSignEvent(
+      incoming: incoming,
+      activeIdentity: activeIdentity,
+    );
+    final draft = const NostrEventPayloadParser().parse(signingRequest);
+    final signedEvent = await _vaultService.signNostrEvent(
+      identityLocalId: activeIdentity.localId,
+      draft: draft,
+    );
+    await _markGrantUsed(grant);
+    await _gateway.completeNip55Intent(
+      requestToken: incoming.requestToken,
+      extras: _responseBuilder.signEventExtras(
+        incoming: incoming,
+        signedEvent: signedEvent,
+      ),
+    );
+  }
+
   Future<void> rejectSigningRequest(
     String requestId, {
     bool remember = false,
@@ -963,6 +1064,28 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (grant.scope.isSensitive || grant.scope.isBroad) return false;
     final expiresAt = state.approvalSessionExpiresAt;
     return expiresAt != null && expiresAt.isAfter(_now());
+  }
+
+  bool _canUseRememberedGrantWithoutReview(
+    Nip55IncomingRequest incoming,
+    Nip55PermissionGrant grant,
+  ) {
+    if (_isRememberedClientAuthentication(incoming, grant)) return true;
+    return _canUseApprovalSession(grant);
+  }
+
+  bool _isRememberedClientAuthentication(
+    Nip55IncomingRequest incoming,
+    Nip55PermissionGrant grant,
+  ) {
+    if (!_isClientAuthenticationRequest(incoming)) return false;
+    final grantScope = grant.scope;
+    return grantScope is SignEventScope && grantScope.kind == 22242;
+  }
+
+  bool _isClientAuthenticationRequest(Nip55IncomingRequest incoming) {
+    return incoming.method == Nip55Method.signEvent &&
+        incoming.eventJson?['kind'] == 22242;
   }
 
   DateTime? _nextApprovalSessionExpiry() {

@@ -35,7 +35,7 @@ class Nip55PermissionParser {
     final tokens = normalized
         .split(RegExp(r'[\s,\[\]]+'))
         .map((value) => value.trim())
-        .map((value) => value.replaceAll(RegExp(r"^['" + '"' + r']+|[' + '"' + r']+$'), ''))
+        .map((value) => value.replaceAll(RegExp(r'''^['"]+|['"]+$'''), ''))
         .map((value) => value.replaceAll(RegExp(r"^'|'$"), ''))
         .where((value) => value.isNotEmpty);
 

@@ -41,18 +41,21 @@ class Nip55ResponseBuilder {
     String? permissionsResultsJson,
   }) {
     final options = incoming?.webReturnOptions;
-    return {
+    final extras = <String, Object?>{
       'result': identity.publicKey,
       if (incoming?.externalId != null) 'id': incoming!.externalId,
       'package': signerPackage,
-      if (permissionsResultsJson != null) 'results': permissionsResultsJson,
-      if (options?.callbackUrl != null)
-        'callbackUrl': options!.callbackUrl.toString(),
+      if (options?.callbackUrl case final callbackUrl?)
+        'callbackUrl': callbackUrl.toString(),
       if (options != null && options.isBrowserFlow && !options.hasCallback)
         'copyToClipboard': true,
       if (options != null && options.isBrowserFlow && !options.hasCallback)
         'clipboardLabel': 'NIP-55 public key result',
     };
+    if (permissionsResultsJson case final results?) {
+      extras['results'] = results;
+    }
+    return extras;
   }
 
   Map<String, Object?> operationResultExtras({

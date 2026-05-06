@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
     private var activeRequestToken: String? = null
+    private val activeRequestTokens = LinkedHashSet<String>()
     private var lastDeliveredToken: String? = null
     private var nextRequestNumber = 0L
     private var pendingCompletionRunnable: Runnable? = null
@@ -52,6 +53,7 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         initialNip55Intent = parseNip55Intent(intent)
         activeRequestToken = initialNip55Intent?.get("requestToken") as? String
+        activeRequestToken?.let { activeRequestTokens.add(it) }
         Log.d(TAG, "onCreate: initialNip55Intent=$initialNip55Intent, activeRequestToken=$activeRequestToken")
         
         // Asynchronously resolve app label and certificate if they are missing
@@ -126,18 +128,8 @@ class MainActivity : FlutterActivity() {
             return true
         }
 
-        if (activeRequestToken != null) {
-            Log.d(TAG, "deliverNip55Payload: Already have active request ($activeRequestToken), rejecting new one ($requestToken)")
-            if (requestToken != null) {
-                lastDeliveredToken = requestToken
-                Nip55BridgeRegistry.reject(
-                    requestToken,
-                    "Diogel is already reviewing another NIP-55 request"
-                )
-            }
-            return true
-        }
         activeRequestToken = requestToken
+        requestToken?.let { activeRequestTokens.add(it) }
         lastDeliveredToken = requestToken
         latestNip55Intent = payload
 
@@ -275,12 +267,13 @@ class MainActivity : FlutterActivity() {
 
     private fun completeNip55Intent(arguments: Map<*, *>?): CompletionAction {
         if (!isActiveRequest(arguments)) return CompletionAction.NONE
+        val requestedToken = arguments?.get("requestToken") as? String
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
         maybeLaunchCallback(extras)
         maybeCopyToClipboard(extras)
-        val bridgeToken = activeRequestToken
+        val bridgeToken = requestedToken ?: activeRequestToken
+        if (requestedToken != null) clearActiveToken(requestedToken)
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
-            activeRequestToken = null
             return CompletionAction.BACKGROUND
         }
         val resultIntent = Intent()
@@ -290,7 +283,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         setResult(Activity.RESULT_OK, resultIntent)
-        activeRequestToken = null
         return CompletionAction.FINISH
     }
 
@@ -328,10 +320,11 @@ class MainActivity : FlutterActivity() {
 
     private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {
         if (!isActiveRequest(arguments)) return CompletionAction.NONE
-        val bridgeToken = activeRequestToken
+        val requestedToken = arguments?.get("requestToken") as? String
+        val bridgeToken = requestedToken ?: activeRequestToken
         val error = arguments?.get("error") as? String
+        if (requestedToken != null) clearActiveToken(requestedToken)
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
-            activeRequestToken = null
             return CompletionAction.BACKGROUND
         }
         val resultIntent = Intent()
@@ -339,7 +332,6 @@ class MainActivity : FlutterActivity() {
             resultIntent.putExtra("error", error)
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
-        activeRequestToken = null
         return CompletionAction.FINISH
     }
 
@@ -353,12 +345,6 @@ class MainActivity : FlutterActivity() {
 
         val runnable = Runnable {
             pendingCompletionRunnable = null
-
-            // Double check that no new request has become active during the delay.
-            if (activeRequestToken != null) {
-                Log.d(TAG, "runAfterMethodResponse: Skipping $action because a new request is active")
-                return@Runnable
-            }
 
             Log.d(TAG, "Executing completion action: $action")
             when (action) {
@@ -376,7 +362,13 @@ class MainActivity : FlutterActivity() {
 
     private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
         val requestedToken = arguments?.get("requestToken") as? String
-        val activeToken = activeRequestToken
-        return activeToken != null && requestedToken == activeToken
+        return requestedToken != null && activeRequestTokens.contains(requestedToken)
+    }
+
+    private fun clearActiveToken(token: String) {
+        activeRequestTokens.remove(token)
+        if (activeRequestToken == token) {
+            activeRequestToken = activeRequestTokens.firstOrNull()
+        }
     }
 }

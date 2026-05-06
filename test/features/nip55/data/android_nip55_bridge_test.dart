@@ -62,27 +62,27 @@ void main() {
     );
   });
 
-  test(
-    'busy NIP-55 bridge request is rejected without finishing MainActivity',
-    () {
-      final mainActivity = File(
-        'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
-      ).readAsStringSync();
+  test('NIP-55 bridge can keep multiple active tokens for burst requests', () {
+    final mainActivity = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+    ).readAsStringSync();
 
-      final bridgeActivity = File(
-        'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
-      ).readAsStringSync();
+    final bridgeActivity = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
+    ).readAsStringSync();
 
-      expect(mainActivity, contains('if (activeRequestToken != null)'));
-      expect(
-        bridgeActivity,
-        contains('Keep this bridge activity alive because it owns the caller'),
-      );
-      expect(
-        mainActivity,
-        contains('Diogel is already reviewing another NIP-55 request'),
-      );
-      expect(mainActivity, isNot(contains('finishing here can poison')));
-    },
-  );
+    expect(mainActivity, contains('activeRequestTokens'));
+    expect(mainActivity, contains('activeRequestTokens.add'));
+    expect(mainActivity, contains('activeRequestTokens.contains'));
+    expect(mainActivity, contains('clearActiveToken'));
+    expect(
+      bridgeActivity,
+      contains('Keep this bridge activity alive because it owns the caller'),
+    );
+    expect(
+      mainActivity,
+      isNot(contains('Diogel is already reviewing another NIP-55 request')),
+    );
+    expect(mainActivity, isNot(contains('finishing here can poison')));
+  });
 }
