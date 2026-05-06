@@ -27,11 +27,11 @@ void main() {
       mainActivity,
       contains('Nip55UriParser.queryParameter(it, "type")'),
     );
-    expect(mainActivity, contains('Nip55UriParser.content(it)'));
+    expect(mainActivity, contains('Nip55UriParser.content(it'));
     expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
-    expect(uriParser, contains("substringBeforeLast('?')"));
+    expect(uriParser, contains('controlQueryStart(raw)'));
   });
 
   test('Bridge marks browsable nostrsigner URLs as browser flow', () {
