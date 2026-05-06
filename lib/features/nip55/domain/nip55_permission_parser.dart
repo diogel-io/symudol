@@ -20,13 +20,26 @@ class Nip55PermissionParser {
       return const Nip55ParsedPermissions(scopes: []);
     }
 
+    // URL decode if needed
+    var normalized = raw;
+    if (normalized.contains('%')) {
+      try {
+        normalized = Uri.decodeComponent(normalized);
+      } catch (_) {
+        // Fallback to raw if decoding fails
+      }
+    }
+
     final scopes = <Nip55PermissionScope>[];
     final warnings = <String>[];
-    for (final token
-        in raw
-            .split(RegExp(r'[\s,]+'))
-            .map((value) => value.trim())
-            .where((value) => value.isNotEmpty)) {
+    final tokens = normalized
+        .split(RegExp(r'[\s,\[\]]+'))
+        .map((value) => value.trim())
+        .map((value) => value.replaceAll(RegExp(r"^['" + '"' + r']+|[' + '"' + r']+$'), ''))
+        .map((value) => value.replaceAll(RegExp(r"^'|'$"), ''))
+        .where((value) => value.isNotEmpty);
+
+    for (final token in tokens) {
       final scope = _parseToken(token);
       if (scope == null) {
         warnings.add('Unsupported permission: $token');
@@ -42,7 +55,9 @@ class Nip55PermissionParser {
     return Nip55ParsedPermissions(scopes: scopes, warnings: warnings);
   }
 
-  Nip55PermissionScope? _parseToken(String token) {
+  Nip55PermissionScope? _parseToken(String rawToken) {
+    final token = rawToken.toLowerCase();
+
     if (token == 'sign_event') return const SignEventScope();
     if (token.startsWith('sign_event:')) {
       final kindPart = token.substring('sign_event:'.length);

@@ -32,6 +32,11 @@ class Nip55ContentProvider : ContentProvider() {
 
         if (!hasRequiredProjection(method, projection)) return null
 
+        // Fast-path ping without engaging the bridge
+        if (method == "ping") {
+            return Nip55RequestCodec.operationResultCursor("pong")
+        }
+
         val result = Nip55ProviderBridge.query(providerArguments(method, projection, callerPackage))
             ?: return null
         val rejected = result["rejected"]?.toString()
@@ -74,6 +79,8 @@ class Nip55ContentProvider : ContentProvider() {
 
     private fun hasRequiredProjection(method: String, projection: Array<out String>?): Boolean {
         return when (method) {
+            "ping" -> true
+            "get_public_key" -> true
             "sign_event" -> {
                 !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank() &&
                     !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
@@ -111,6 +118,9 @@ class Nip55ContentProvider : ContentProvider() {
         when (method) {
             "sign_event" -> {
                 args["content"] = Nip55RequestCodec.eventJsonFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+            }
+            "get_public_key" -> {
                 args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
             }
             "nip04_encrypt",

@@ -10,6 +10,8 @@ object Nip55RequestCodec {
     const val AUTHORITY_NIP04_ENCRYPT = "io.threenine.diogel.NIP04_ENCRYPT"
     const val AUTHORITY_NIP04_DECRYPT = "io.threenine.diogel.NIP04_DECRYPT"
     const val AUTHORITY_DECRYPT_ZAP_EVENT = "io.threenine.diogel.DECRYPT_ZAP_EVENT"
+    const val AUTHORITY_GET_PUBLIC_KEY = "io.threenine.diogel.GET_PUBLIC_KEY"
+    const val AUTHORITY_PING = "io.threenine.diogel.PING"
 
     private val supportedAuthorities = setOf(
         AUTHORITY_SIGN_EVENT,
@@ -18,6 +20,8 @@ object Nip55RequestCodec {
         AUTHORITY_NIP04_ENCRYPT,
         AUTHORITY_NIP04_DECRYPT,
         AUTHORITY_DECRYPT_ZAP_EVENT,
+        AUTHORITY_GET_PUBLIC_KEY,
+        AUTHORITY_PING,
     )
 
     fun isSupportedAuthority(authority: String?): Boolean {
@@ -32,6 +36,8 @@ object Nip55RequestCodec {
             AUTHORITY_NIP04_ENCRYPT -> "nip04_encrypt"
             AUTHORITY_NIP04_DECRYPT -> "nip04_decrypt"
             AUTHORITY_DECRYPT_ZAP_EVENT -> "decrypt_zap_event"
+            AUTHORITY_GET_PUBLIC_KEY -> "get_public_key"
+            AUTHORITY_PING -> "ping"
             else -> null
         }
     }
@@ -59,19 +65,19 @@ object Nip55RequestCodec {
 
     fun rejectedCursor(reason: String = "rejected"): MatrixCursor {
         return MatrixCursor(arrayOf("rejected")).apply {
-            addRow(arrayOf(reason))
+            addRow(arrayOf(true))
         }
     }
 
     fun signEventCursor(signature: String, eventJson: String): MatrixCursor {
-        return MatrixCursor(arrayOf("result", "event")).apply {
-            addRow(arrayOf(signature, eventJson))
+        return MatrixCursor(arrayOf("signature", "result", "event")).apply {
+            addRow(arrayOf(signature, signature, eventJson))
         }
     }
 
     fun operationResultCursor(result: String): MatrixCursor {
-        return MatrixCursor(arrayOf("result")).apply {
-            addRow(arrayOf(result))
+        return MatrixCursor(arrayOf("signature", "result", "event")).apply {
+            addRow(arrayOf(result, result, result))
         }
     }
 }

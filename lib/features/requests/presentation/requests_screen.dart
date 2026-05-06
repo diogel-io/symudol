@@ -59,6 +59,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
       }
 
       return Scaffold(
+        key: const ValueKey('nip55-empty'),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -228,10 +229,18 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
     final pubkey = activeIdentity?.publicKey ?? 'No active identity';
     final truncatedPubkey = _shortFingerprint(pubkey);
 
+    final isLoading = ref.watch(nip55ControllerProvider).isLoading;
+
     return Scaffold(
+      key: ValueKey('nip55-public-key-${nip55Request.requestToken}'),
       appBar: AppBar(title: const Text('Public Key Request')),
-      body: Padding(
-        padding: const EdgeInsets.all(DiogelSpacing.space4),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          DiogelSpacing.space4,
+          DiogelSpacing.space4,
+          DiogelSpacing.space4,
+          140,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -300,9 +309,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => ref
-                        .read(nip55ControllerProvider.notifier)
-                        .rejectPublicKeyRequest(),
+                    onPressed: isLoading
+                        ? null
+                        : () => ref
+                            .read(nip55ControllerProvider.notifier)
+                            .rejectPublicKeyRequest(),
                     icon: const Icon(Icons.close),
                     label: const Text('Reject request'),
                   ),
@@ -311,7 +322,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 if (canRemember) ...[
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: activeIdentity == null
+                      onPressed: activeIdentity == null || isLoading
                           ? null
                           : () => ref
                                 .read(nip55ControllerProvider.notifier)
@@ -325,7 +336,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: activeIdentity == null
+                    onPressed: activeIdentity == null || isLoading
                         ? null
                         : () => ref
                               .read(nip55ControllerProvider.notifier)
@@ -378,7 +389,10 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
         : _shortFingerprint(nip55Request.pubkey!);
     final preview = (nip55Request.content ?? '').trim();
 
+    final isLoading = ref.watch(nip55ControllerProvider).isLoading;
+
     return Scaffold(
+      key: ValueKey('nip55-crypto-${nip55Request.requestToken}'),
       appBar: AppBar(title: Text('NIP-55 $method')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -458,9 +472,11 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => ref
-                        .read(nip55ControllerProvider.notifier)
-                        .rejectCryptoRequest(),
+                    onPressed: isLoading
+                        ? null
+                        : () => ref
+                            .read(nip55ControllerProvider.notifier)
+                            .rejectCryptoRequest(),
                     icon: const Icon(Icons.close),
                     label: const Text('Reject'),
                   ),
@@ -469,7 +485,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 if (canRemember) ...[
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: activeIdentity == null
+                      onPressed: activeIdentity == null || isLoading
                           ? null
                           : () => ref
                                 .read(nip55ControllerProvider.notifier)
@@ -483,7 +499,7 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: activeIdentity == null
+                    onPressed: activeIdentity == null || isLoading
                         ? null
                         : () => ref
                               .read(nip55ControllerProvider.notifier)

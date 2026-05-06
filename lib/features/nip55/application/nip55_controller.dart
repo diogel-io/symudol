@@ -506,6 +506,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final activeIdentity = _vaultController.state.activeIdentity;
     if (request == null || activeIdentity == null) return;
 
+    // Enter loading state to prevent duplicate submissions
+    state = state.copyWith(isLoading: true);
+
     if (remember) {
       await _saveGrant(
         incoming: request,
@@ -531,6 +534,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       lastSuccessMessage: remember
           ? 'Public key shared and permission remembered.'
           : 'Public key shared with requesting Android app.',
+      isLoading: false,
     );
   }
 
@@ -538,6 +542,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final request = state.pendingPublicKeyRequest;
     final activeIdentity = _vaultController.state.activeIdentity;
     if (request == null) return;
+
+    // Enter loading to disable buttons while we complete the rejection
+    state = state.copyWith(isLoading: true);
+
     if (remember && activeIdentity != null) {
       await _saveGrant(
         incoming: request,
@@ -553,12 +561,17 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
+      isLoading: false,
     );
   }
 
   Future<void> approveCryptoRequest({bool remember = false}) async {
     final request = state.pendingCryptoRequest;
     if (request == null) return;
+
+    // Enter loading state immediately to prevent double taps
+    state = state.copyWith(isLoading: true);
+
     try {
       await _completeCryptoOperation(request, remember: remember);
       _extendApprovalSession();
@@ -590,6 +603,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   Future<void> rejectCryptoRequest({bool remember = false}) async {
     final request = state.pendingCryptoRequest;
     if (request == null) return;
+
+    // Enter loading to disable the UI while completing rejection
+    state = state.copyWith(isLoading: true);
+
     final activeIdentity = _vaultController.state.activeIdentity;
     if (remember && activeIdentity != null && !_scopeFor(request).isSensitive) {
       await _saveGrant(
@@ -606,6 +623,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingCryptoRequest: true,
+      isLoading: false,
     );
   }
 

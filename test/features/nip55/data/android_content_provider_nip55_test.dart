@@ -16,6 +16,8 @@ void main() {
     expect(manifest, contains('io.threenine.diogel.NIP04_ENCRYPT'));
     expect(manifest, contains('io.threenine.diogel.NIP04_DECRYPT'));
     expect(manifest, contains('io.threenine.diogel.DECRYPT_ZAP_EVENT'));
+    expect(manifest, contains('io.threenine.diogel.GET_PUBLIC_KEY'));
+    expect(manifest, contains('io.threenine.diogel.PING'));
   });
 
   test(
@@ -59,8 +61,7 @@ void main() {
       'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
     ).readAsStringSync();
 
-    expect(codec, contains('MatrixCursor(arrayOf("result", "event"))'));
-    expect(codec, contains('MatrixCursor(arrayOf("result"))'));
+    expect(codec, contains('MatrixCursor(arrayOf("signature", "result", "event"))'));
     expect(codec, contains('MatrixCursor(arrayOf("rejected"))'));
     expect(codec, contains('AUTHORITY_SIGN_EVENT'));
     expect(codec, contains('peerPubkeyFromProjection'));
