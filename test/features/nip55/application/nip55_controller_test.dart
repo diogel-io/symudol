@@ -962,11 +962,14 @@ void main() {
     );
 
     test(
-      'provider sign_event returns null without remembered approval session',
+      'provider sign_event returns rejection without remembered approval session',
       () async {
         final result = await controller.handleProviderQuery(signEventRaw());
 
-        expect(result, isNull);
+        expect(result, {
+          'rejected':
+              'No remembered permission for this request. Open Diogel to approve.',
+        });
         expect(requestController.state.requests, isEmpty);
       },
     );
