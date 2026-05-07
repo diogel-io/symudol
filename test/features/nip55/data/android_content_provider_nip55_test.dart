@@ -31,7 +31,6 @@ void main() {
       contains('class Nip55ContentProvider : ContentProvider()'),
     );
     expect(provider, contains('Nip55ProviderBridge.query'));
-    expect(provider, contains('rejectedCursor("not_approved")'));
     expect(provider, contains('signEventCursor(operationResult, eventJson)'));
     expect(provider, contains('operationResultCursor(operationResult)'));
     expect(provider, isNot(contains('startActivity')));
@@ -108,7 +107,7 @@ void main() {
     expect(doc, contains('warm-session ContentProvider support'));
     expect(doc, contains('not cold background signing'));
     expect(doc, contains('same parser, approval policy, vault'));
-    expect(doc, contains('returns `rejected`'));
+    expect(doc, contains('returns `null`'));
     expect(doc, contains('Projection shape validation'));
   });
 }
