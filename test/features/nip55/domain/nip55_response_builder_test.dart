@@ -35,6 +35,7 @@ void main() {
       signedEvent: event,
     );
 
+    expect(extras['signature'], 'signature');
     expect(extras['result'], 'signature');
     expect(extras['id'], 'external-id');
     final eventJson =
@@ -131,6 +132,7 @@ void main() {
       result: 'encrypted-payload',
     );
 
+    expect(extras['signature'], 'encrypted-payload');
     expect(extras['result'], 'encrypted-payload');
     expect(extras['id'], 'caller-id');
     expect(extras['callbackUrl'], 'https://example.com/callback');

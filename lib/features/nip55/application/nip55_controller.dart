@@ -278,12 +278,17 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final incoming = parser.parse(raw);
     if (state.hasPendingExternalRequest &&
         !_isClientAuthenticationRequest(incoming)) {
-      return null;
+      return {'rejected': 'Diogel is already reviewing another NIP-55 request'};
     }
     final activeIdentity = _vaultController.state.activeIdentity;
-    if (_vaultController.state.vaultState is! VaultUnlocked ||
-        activeIdentity == null) {
-      return null;
+    if (_vaultController.state.vaultState is! VaultUnlocked) {
+      return {
+        'rejected':
+            'Vault is locked. Unlock Diogel to handle NIP-55 requests.',
+      };
+    }
+    if (activeIdentity == null) {
+      return {'rejected': 'No identity selected in Diogel.'};
     }
     if (!_matchesCurrentUser(incoming, activeIdentity.publicKey)) {
       return {'rejected': 'Requested account does not match active identity.'};
@@ -296,7 +301,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
     if (decision is! AutoAllow ||
         !_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
-      return null;
+      return {
+        'rejected':
+            'No remembered permission for this request. Open Diogel to approve.',
+      };
     }
 
     await _markGrantUsed(decision.grant);

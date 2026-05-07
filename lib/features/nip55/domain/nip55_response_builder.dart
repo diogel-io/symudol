@@ -23,6 +23,7 @@ class Nip55ResponseBuilder {
       eventJson,
     );
     return {
+      'signature': signedEvent.sig,
       'result': webPayload.result,
       if (incoming.externalId != null) 'id': incoming.externalId,
       'event': eventJson,
@@ -66,6 +67,7 @@ class Nip55ResponseBuilder {
     final effectiveClipboardLabel =
         clipboardLabel ?? 'NIP-55 ${incoming.method.wireName} result';
     return {
+      'signature': result,
       'result': result,
       if (incoming.externalId != null) 'id': incoming.externalId,
       if (incoming.webReturnOptions.callbackUrl != null)

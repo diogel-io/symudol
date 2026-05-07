@@ -40,7 +40,7 @@ class Nip55ContentProvider : ContentProvider() {
         }
 
         val result = Nip55ProviderBridge.query(providerArguments(method, projection, callerPackage))
-            ?: return null
+            ?: return Nip55RequestCodec.rejectedCursor("Request timed out or Diogel is busy")
         val rejected = result["rejected"]?.toString()
         if (!rejected.isNullOrBlank()) return Nip55RequestCodec.rejectedCursor(rejected)
         val operationResult = result["result"]?.toString() ?: return null
@@ -85,11 +85,11 @@ class Nip55ContentProvider : ContentProvider() {
             "get_public_key" -> true
             "sign_message" -> {
                 !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
             }
             "sign_event" -> {
                 !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
             }
             "nip04_encrypt",
             "nip04_decrypt",
@@ -97,7 +97,7 @@ class Nip55ContentProvider : ContentProvider() {
             "nip44_decrypt" -> {
                 !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
                     !Nip55RequestCodec.peerPubkeyFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
             }
             "decrypt_zap_event" -> {
                 !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
@@ -124,14 +124,14 @@ class Nip55ContentProvider : ContentProvider() {
         when (method) {
             "sign_event" -> {
                 args["content"] = Nip55RequestCodec.eventJsonFromProjection(projection)
-                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection, method)
             }
             "sign_message" -> {
                 args["content"] = Nip55RequestCodec.payloadFromProjection(projection)
-                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection, method)
             }
             "get_public_key" -> {
-                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection, method)
             }
             "nip04_encrypt",
             "nip04_decrypt",
@@ -139,7 +139,7 @@ class Nip55ContentProvider : ContentProvider() {
             "nip44_decrypt" -> {
                 args["content"] = Nip55RequestCodec.payloadFromProjection(projection)
                 args["pubkey"] = Nip55RequestCodec.peerPubkeyFromProjection(projection)
-                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection, method)
             }
             "decrypt_zap_event" -> {
                 args["content"] = Nip55RequestCodec.payloadFromProjection(projection)

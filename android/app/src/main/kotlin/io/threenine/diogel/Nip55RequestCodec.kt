@@ -57,13 +57,17 @@ object Nip55RequestCodec {
         return projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
     }
 
-    fun currentUserFromProjection(projection: Array<out String>?): String? {
-        return projection?.getOrNull(2)?.takeIf { it.isNotBlank() }
+    fun currentUserFromProjection(projection: Array<out String>?, method: String? = null): String? {
+        val index = when (method) {
+            "get_public_key" -> 0
+            "sign_event", "sign_message", "decrypt_zap_event" -> 1
+            else -> 2
+        }
+        return projection?.getOrNull(index)?.takeIf { it.isNotBlank() }
     }
 
     fun zapCurrentUserFromProjection(projection: Array<out String>?): String? {
-        return projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
-            ?: currentUserFromProjection(projection)
+        return currentUserFromProjection(projection, "decrypt_zap_event")
     }
 
     fun rejectedCursor(reason: String = "rejected"): MatrixCursor {
