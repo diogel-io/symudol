@@ -82,8 +82,11 @@ void main() {
     ).readAsStringSync();
 
     expect(mainActivity, contains('activeRequestTokens'));
+    expect(mainActivity, contains('activeBridgeRequestTokens'));
     expect(mainActivity, contains('activeRequestTokens.add'));
+    expect(mainActivity, contains('activeBridgeRequestTokens.add'));
     expect(mainActivity, contains('activeRequestTokens.contains'));
+    expect(mainActivity, contains('activeBridgeRequestTokens.contains'));
     expect(mainActivity, contains('clearActiveToken'));
     expect(
       bridgeActivity,

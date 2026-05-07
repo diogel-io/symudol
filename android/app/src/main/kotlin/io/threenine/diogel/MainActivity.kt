@@ -41,6 +41,7 @@ class MainActivity : FlutterActivity() {
     private var latestNip55Intent: Map<String, Any?>? = null
     private var activeRequestToken: String? = null
     private val activeRequestTokens = LinkedHashSet<String>()
+    private val activeBridgeRequestTokens = LinkedHashSet<String>()
     private var lastDeliveredToken: String? = null
     private var nextRequestNumber = 0L
     private var pendingCompletionRunnable: Runnable? = null
@@ -53,7 +54,12 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         initialNip55Intent = parseNip55Intent(intent)
         activeRequestToken = initialNip55Intent?.get("requestToken") as? String
-        activeRequestToken?.let { activeRequestTokens.add(it) }
+        activeRequestToken?.let {
+            activeRequestTokens.add(it)
+            if (initialNip55Intent?.get("bridgeToken") != null) {
+                activeBridgeRequestTokens.add(it)
+            }
+        }
         Log.d(TAG, "onCreate: initialNip55Intent=$initialNip55Intent, activeRequestToken=$activeRequestToken")
         
         // Asynchronously resolve app label and certificate if they are missing
@@ -134,7 +140,12 @@ class MainActivity : FlutterActivity() {
         }
 
         activeRequestToken = requestToken
-        requestToken?.let { activeRequestTokens.add(it) }
+        requestToken?.let {
+            activeRequestTokens.add(it)
+            if (payload["bridgeToken"] != null) {
+                activeBridgeRequestTokens.add(it)
+            }
+        }
         lastDeliveredToken = requestToken
         latestNip55Intent = payload
 
@@ -277,10 +288,12 @@ class MainActivity : FlutterActivity() {
         maybeLaunchCallback(extras)
         maybeCopyToClipboard(extras)
         val bridgeToken = requestedToken ?: activeRequestToken
+        val isBridgeRequest = bridgeToken != null && activeBridgeRequestTokens.contains(bridgeToken)
         if (requestedToken != null) clearActiveToken(requestedToken)
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
             return CompletionAction.BACKGROUND
         }
+        if (isBridgeRequest) return CompletionAction.BACKGROUND
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
             if (key is String && value != null) {
@@ -327,11 +340,13 @@ class MainActivity : FlutterActivity() {
         if (!isActiveRequest(arguments)) return CompletionAction.NONE
         val requestedToken = arguments?.get("requestToken") as? String
         val bridgeToken = requestedToken ?: activeRequestToken
+        val isBridgeRequest = bridgeToken != null && activeBridgeRequestTokens.contains(bridgeToken)
         val error = arguments?.get("error") as? String
         if (requestedToken != null) clearActiveToken(requestedToken)
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
             return CompletionAction.BACKGROUND
         }
+        if (isBridgeRequest) return CompletionAction.BACKGROUND
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
             resultIntent.putExtra("error", error)
@@ -372,6 +387,7 @@ class MainActivity : FlutterActivity() {
 
     private fun clearActiveToken(token: String) {
         activeRequestTokens.remove(token)
+        activeBridgeRequestTokens.remove(token)
         if (activeRequestToken == token) {
             activeRequestToken = activeRequestTokens.firstOrNull()
         }
