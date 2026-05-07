@@ -4,7 +4,7 @@ Status: **warm-session ContentProvider support**, not cold background signing.
 
 The Android ContentProvider entry points now fail closed by default, but can execute NIP-55 operations when the existing Flutter/UI engine is alive, the vault is unlocked, and the shared Dart approval policy finds a remembered allow grant inside the active approval session.
 
-This deliberately avoids native private-key duplication and avoids launching UI from a provider. A cold provider call still returns `null`.
+This deliberately avoids native private-key duplication and avoids launching UI from a provider. A cold, timed-out, or unapproved provider call now returns an explicit `rejected` cursor instead of `null`, so Android clients do not wait until their own signer timeout expires.
 
 ## Implemented
 
@@ -27,7 +27,7 @@ This deliberately avoids native private-key duplication and avoids launching UI 
   - crypto/decrypt operations: `result`
   - remembered reject: `rejected`
 - Provider never starts an activity.
-- Provider returns `null` when:
+- Provider returns `rejected` when:
   - Flutter/UI engine is not attached
   - request times out or errors
   - vault is locked
@@ -44,4 +44,4 @@ This deliberately avoids native private-key duplication and avoids launching UI 
 
 ## Deferred intentionally
 
-This is not cold-start ContentResolver support. A provider call while the app process/Flutter engine is cold still returns `null`. Full cold background support would need a reviewed architecture such as a headless Flutter service/session model or a very narrow native session cache. Do not duplicate long-lived signing capability natively without a separate security review.
+This is not cold-start ContentResolver support. A provider call while the app process/Flutter engine is cold returns `rejected`; it does not start UI or sign in the background. Full cold background support would need a reviewed architecture such as a headless Flutter service/session model or a very narrow native session cache. Do not duplicate long-lived signing capability natively without a separate security review.
