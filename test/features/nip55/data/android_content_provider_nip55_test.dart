@@ -33,6 +33,8 @@ void main() {
     expect(provider, contains('Nip55ProviderBridge.query'));
     expect(provider, contains('signEventCursor(operationResult, eventJson)'));
     expect(provider, contains('operationResultCursor(operationResult)'));
+    expect(provider, contains('?: return null'));
+    expect(provider, isNot(contains('Request timed out or Diogel is busy')));
     expect(provider, isNot(contains('startActivity')));
     expect(provider, contains('hasRequiredProjection(method, projection)'));
     expect(provider, contains('"nip44_encrypt"'));

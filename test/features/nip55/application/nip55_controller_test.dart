@@ -962,20 +962,17 @@ void main() {
     );
 
     test(
-      'provider sign_event returns rejection without remembered approval session',
+      'provider sign_event defers to foreground without remembered approval session',
       () async {
         final result = await controller.handleProviderQuery(signEventRaw());
 
-        expect(result, {
-          'rejected':
-              'No remembered permission for this request. Open Diogel to approve.',
-        });
+        expect(result, isNull);
         expect(requestController.state.requests, isEmpty);
       },
     );
 
     test(
-      'provider get_public_key current_user mismatch returns rejection',
+      'provider get_public_key current_user mismatch defers to foreground',
       () async {
         final result = await controller.handleProviderQuery({
           'requestToken': 'provider-pk-mismatch',
@@ -986,9 +983,7 @@ void main() {
           'transport': 'content_provider',
         });
 
-        expect(result, {
-          'rejected': 'Requested account does not match active identity.',
-        });
+        expect(result, isNull);
       },
     );
 

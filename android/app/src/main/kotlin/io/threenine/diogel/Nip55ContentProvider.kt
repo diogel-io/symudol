@@ -40,7 +40,7 @@ class Nip55ContentProvider : ContentProvider() {
         }
 
         val result = Nip55ProviderBridge.query(providerArguments(method, projection, callerPackage))
-            ?: return Nip55RequestCodec.rejectedCursor("Request timed out or Diogel is busy")
+            ?: return null
         val rejected = result["rejected"]?.toString()
         if (!rejected.isNullOrBlank()) return Nip55RequestCodec.rejectedCursor(rejected)
         val operationResult = result["result"]?.toString() ?: return null
