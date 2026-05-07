@@ -60,6 +60,7 @@ void main() {
     );
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
+    expect(mainActivity, contains('return CompletionAction.BACKGROUND'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
     expect(mainActivity, contains('moveTaskToBack(true)'));
     expect(mainActivity, contains('postDelayed(runnable, 150L)'));
