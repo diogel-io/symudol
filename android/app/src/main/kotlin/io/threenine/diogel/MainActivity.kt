@@ -121,6 +121,11 @@ class MainActivity : FlutterActivity() {
 
     private fun deliverNip55Payload(payload: Map<String, Any?>): Boolean {
         if (channel == null) return false
+        pendingCompletionRunnable?.let {
+            Log.d(TAG, "deliverNip55Payload: Cancelling pending completion for new request")
+            mainHandler.removeCallbacks(it)
+            pendingCompletionRunnable = null
+        }
         val requestToken = payload["requestToken"] as? String
 
         if (requestToken != null && requestToken == lastDeliveredToken) {

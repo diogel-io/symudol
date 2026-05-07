@@ -14,13 +14,22 @@ class Nip55BridgeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val original = intent
+        handleNip55Intent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNip55Intent(intent)
+    }
+
+    private fun handleNip55Intent(original: Intent?) {
         if (original?.action != Intent.ACTION_VIEW || original.data?.scheme != "nostrsigner") {
             finish()
             return
         }
 
-        val token = "nip55-${System.currentTimeMillis()}-${System.identityHashCode(this)}"
+        val token = "nip55-${System.currentTimeMillis()}-${System.identityHashCode(original)}"
         requestToken = token
         Nip55BridgeRegistry.register(token, this)
 

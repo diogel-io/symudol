@@ -21,6 +21,11 @@ void main() {
     expect(bridgeActivity, contains('class Nip55BridgeActivity : Activity()'));
     expect(
       bridgeActivity,
+      contains('override fun onNewIntent(intent: Intent)'),
+    );
+    expect(bridgeActivity, contains('handleNip55Intent(intent)'));
+    expect(
+      bridgeActivity,
       contains('Nip55BridgeRegistry.register(token, this)'),
     );
     expect(bridgeActivity, contains('putExtra("requestToken", token)'));
@@ -49,6 +54,10 @@ void main() {
       contains('fun deliverNip55BridgeIntent(intent: Intent)'),
     );
     expect(mainActivity, contains('private fun deliverNip55Payload'));
+    expect(
+      mainActivity,
+      contains('deliverNip55Payload: Cancelling pending completion'),
+    );
     expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
     expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
