@@ -97,6 +97,9 @@ class Nip55IntentParser {
   }) {
     return switch (method) {
       Nip55Method.getPublicKey => const GetPublicKeyPayload(),
+      Nip55Method.signMessage => SignMessagePayload(
+        _requiredContent(content, 'Missing sign_message content'),
+      ),
       Nip55Method.signEvent => SignEventPayload(
         decodeNip55JsonObject(
           methodLabel: 'sign_event',

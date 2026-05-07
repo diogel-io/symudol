@@ -39,8 +39,10 @@ class Nip55IncomingRequest {
   }) : payload = payload ?? const GetPublicKeyPayload();
 
   bool get isSignEvent => method == Nip55Method.signEvent;
+  bool get isSignMessage => method == Nip55Method.signMessage;
   bool get isGetPublicKey => method == Nip55Method.getPublicKey;
   bool get isCryptoOperation =>
+      method == Nip55Method.signMessage ||
       method == Nip55Method.nip04Encrypt ||
       method == Nip55Method.nip04Decrypt ||
       method == Nip55Method.nip44Encrypt ||

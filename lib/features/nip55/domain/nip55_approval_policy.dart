@@ -106,6 +106,7 @@ class Nip55ApprovalPolicy {
       return SignEventScope(kind is int ? kind : null);
     }
     return switch (request.method) {
+      Nip55Method.signMessage => const SignMessageScope(),
       Nip55Method.nip04Encrypt => const Nip04EncryptScope(),
       Nip55Method.nip04Decrypt => const Nip04DecryptScope(),
       Nip55Method.nip44Encrypt => const Nip44EncryptScope(),

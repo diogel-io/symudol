@@ -16,6 +16,12 @@ final class SignEventPayload extends Nip55Payload {
   const SignEventPayload(this.unsignedEvent);
 }
 
+final class SignMessagePayload extends Nip55Payload {
+  final String message;
+
+  const SignMessagePayload(this.message);
+}
+
 sealed class Nip55PeerPayload extends Nip55Payload {
   final String content;
   final String peerPubkey;

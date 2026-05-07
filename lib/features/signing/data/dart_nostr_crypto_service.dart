@@ -73,6 +73,19 @@ class DartNostrCryptoService implements NostrCryptoService {
   }
 
   @override
+  String signMessage({required String privateKeyHex, required String message}) {
+    final digest = crypto.sha256.convert(utf8.encode(message)).toString();
+    final keyPairs = NostrKeyPairs(private: privateKeyHex);
+    final signature = keyPairs.sign(digest);
+    if (!NostrKeyPairs.verify(keyPairs.public, digest, signature)) {
+      throw const NostrCryptoException(
+        'Produced message signature failed verification',
+      );
+    }
+    return signature;
+  }
+
+  @override
   String nip04Encrypt({
     required String privateKeyHex,
     required String peerPubkeyHex,

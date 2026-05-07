@@ -1,5 +1,6 @@
 enum Nip55Method {
   getPublicKey,
+  signMessage,
   signEvent,
   nip04Encrypt,
   nip04Decrypt,
@@ -11,6 +12,7 @@ enum Nip55Method {
   String get wireName {
     return switch (this) {
       Nip55Method.getPublicKey => 'get_public_key',
+      Nip55Method.signMessage => 'sign_message',
       Nip55Method.signEvent => 'sign_event',
       Nip55Method.nip04Encrypt => 'nip04_encrypt',
       Nip55Method.nip04Decrypt => 'nip04_decrypt',
@@ -24,6 +26,7 @@ enum Nip55Method {
   String get label {
     return switch (this) {
       Nip55Method.getPublicKey => 'get_public_key',
+      Nip55Method.signMessage => 'sign_message',
       Nip55Method.signEvent => 'sign_event',
       Nip55Method.nip04Encrypt => 'nip04_encrypt',
       Nip55Method.nip04Decrypt => 'nip04_decrypt',
@@ -47,6 +50,7 @@ enum Nip55Method {
   static Nip55Method fromWire(String? value) {
     return switch (value) {
       'get_public_key' => Nip55Method.getPublicKey,
+      'sign_message' => Nip55Method.signMessage,
       'sign_event' => Nip55Method.signEvent,
       'nip04_encrypt' => Nip55Method.nip04Encrypt,
       'nip04_decrypt' => Nip55Method.nip04Decrypt,

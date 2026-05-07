@@ -9,6 +9,8 @@ abstract interface class NostrCryptoService {
     required NostrEventDraft draft,
   });
 
+  String signMessage({required String privateKeyHex, required String message});
+
   String nip04Encrypt({
     required String privateKeyHex,
     required String peerPubkeyHex,

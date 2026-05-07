@@ -5,6 +5,7 @@ import android.net.Uri
 
 object Nip55RequestCodec {
     const val AUTHORITY_SIGN_EVENT = "io.threenine.diogel.SIGN_EVENT"
+    const val AUTHORITY_SIGN_MESSAGE = "io.threenine.diogel.SIGN_MESSAGE"
     const val AUTHORITY_NIP44_ENCRYPT = "io.threenine.diogel.NIP44_ENCRYPT"
     const val AUTHORITY_NIP44_DECRYPT = "io.threenine.diogel.NIP44_DECRYPT"
     const val AUTHORITY_NIP04_ENCRYPT = "io.threenine.diogel.NIP04_ENCRYPT"
@@ -15,6 +16,7 @@ object Nip55RequestCodec {
 
     private val supportedAuthorities = setOf(
         AUTHORITY_SIGN_EVENT,
+        AUTHORITY_SIGN_MESSAGE,
         AUTHORITY_NIP44_ENCRYPT,
         AUTHORITY_NIP44_DECRYPT,
         AUTHORITY_NIP04_ENCRYPT,
@@ -31,6 +33,7 @@ object Nip55RequestCodec {
     fun methodFor(uri: Uri): String? {
         return when (uri.authority) {
             AUTHORITY_SIGN_EVENT -> "sign_event"
+            AUTHORITY_SIGN_MESSAGE -> "sign_message"
             AUTHORITY_NIP44_ENCRYPT -> "nip44_encrypt"
             AUTHORITY_NIP44_DECRYPT -> "nip44_decrypt"
             AUTHORITY_NIP04_ENCRYPT -> "nip04_encrypt"

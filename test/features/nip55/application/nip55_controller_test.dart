@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
@@ -14,6 +16,7 @@ import 'package:android_diogel/features/requests/domain/signing_request_status.d
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -884,6 +887,34 @@ void main() {
       expect(controller.state.pendingCryptoRequest, isNull);
     });
 
+    test('sign_message can be manually approved', () async {
+      final identity = vaultController.state.activeIdentity!;
+      await controller.handleRawIntent({
+        'requestToken': 'sign-message-token',
+        'type': 'sign_message',
+        'content': 'hello message',
+        'currentUser': identity.publicKey,
+      });
+
+      expect(
+        controller.state.pendingCryptoRequest?.method,
+        Nip55Method.signMessage,
+      );
+
+      await controller.approveCryptoRequest();
+
+      final signature = gateway.completedExtras?['result'] as String?;
+      final digest = crypto_hash.sha256
+          .convert(utf8.encode('hello message'))
+          .toString();
+      expect(gateway.completedToken, 'sign-message-token');
+      expect(signature, isNotNull);
+      expect(
+        NostrKeyPairs.verify(identity.publicKey, digest, signature!),
+        isTrue,
+      );
+    });
+
     test('sensitive decrypt requests cannot be remembered by default', () async {
       final bob = NostrKeyPairs(
         private:
@@ -1051,6 +1082,56 @@ void main() {
             ciphertext: result!['result']! as String,
           ),
           'hello provider',
+        );
+      },
+    );
+
+    test(
+      'provider sign_message returns signature during approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final providerController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+        final identity = vaultController.state.activeIdentity!;
+        await permissionStore.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-sign-message-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignMessageScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        providerController.state = providerController.state.copyWith(
+          approvalSessionExpiresAt: DateTime.now().add(
+            const Duration(minutes: 1),
+          ),
+        );
+
+        final result = await providerController.handleProviderQuery({
+          'requestToken': 'provider-sign-message-token',
+          'type': 'sign_message',
+          'content': 'provider message',
+          'currentUser': identity.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        final digest = crypto_hash.sha256
+            .convert(utf8.encode('provider message'))
+            .toString();
+        final signature = result?['result'] as String?;
+        expect(signature, isNotNull);
+        expect(
+          NostrKeyPairs.verify(identity.publicKey, digest, signature!),
+          isTrue,
         );
       },
     );

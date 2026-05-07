@@ -71,6 +71,11 @@ abstract interface class VaultService {
     required NostrEventDraft draft,
   });
 
+  Future<String> signMessage({
+    required String identityLocalId,
+    required String message,
+  });
+
   Future<String> nip04Encrypt({
     required String identityLocalId,
     required String peerPubkeyHex,

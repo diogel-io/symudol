@@ -83,6 +83,10 @@ class Nip55ContentProvider : ContentProvider() {
         return when (method) {
             "ping" -> true
             "get_public_key" -> true
+            "sign_message" -> {
+                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
+                    !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
+            }
             "sign_event" -> {
                 !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank() &&
                     !Nip55RequestCodec.currentUserFromProjection(projection).isNullOrBlank()
@@ -120,6 +124,10 @@ class Nip55ContentProvider : ContentProvider() {
         when (method) {
             "sign_event" -> {
                 args["content"] = Nip55RequestCodec.eventJsonFromProjection(projection)
+                args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
+            }
+            "sign_message" -> {
+                args["content"] = Nip55RequestCodec.payloadFromProjection(projection)
                 args["currentUser"] = Nip55RequestCodec.currentUserFromProjection(projection)
             }
             "get_public_key" -> {

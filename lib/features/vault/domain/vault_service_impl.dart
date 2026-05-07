@@ -200,10 +200,9 @@ class VaultServiceImpl implements VaultService {
     late final String publicKey;
     try {
       publicKey = await ConcurrencyUtils.runTask(
-        () =>
-            nostr.services.keys
-                .generateKeyPairFromExistingPrivateKey(hexPrivateKey)
-                .public,
+        () => nostr.services.keys
+            .generateKeyPairFromExistingPrivateKey(hexPrivateKey)
+            .public,
       );
     } catch (e) {
       // This should ideally be caught by normalization, but as a safety measure:
@@ -280,7 +279,9 @@ class VaultServiceImpl implements VaultService {
           draft: draft,
         ),
       );
-      if (!await ConcurrencyUtils.runTask(() => _cryptoService.verifySignedEvent(signedEvent))) {
+      if (!await ConcurrencyUtils.runTask(
+        () => _cryptoService.verifySignedEvent(signedEvent),
+      )) {
         throw const VaultSigningException('Signed event failed verification');
       }
       return signedEvent;
@@ -289,6 +290,22 @@ class VaultServiceImpl implements VaultService {
     } catch (_) {
       throw const VaultSigningException('Unable to sign event');
     }
+  }
+
+  @override
+  Future<String> signMessage({
+    required String identityLocalId,
+    required String message,
+  }) async {
+    final record = await _activeRecordFor(identityLocalId);
+    return _runCryptoOperation(
+      () => ConcurrencyUtils.runTask(
+        () => _cryptoService.signMessage(
+          privateKeyHex: record.secretPayload,
+          message: message,
+        ),
+      ),
+    );
   }
 
   @override
@@ -466,7 +483,9 @@ class VaultServiceImpl implements VaultService {
     return record;
   }
 
-  Future<String> _runCryptoOperation(FutureOr<String> Function() operation) async {
+  Future<String> _runCryptoOperation(
+    FutureOr<String> Function() operation,
+  ) async {
     try {
       return await operation();
     } on VaultException {

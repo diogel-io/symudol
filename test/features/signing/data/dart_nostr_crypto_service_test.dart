@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,6 +82,24 @@ void main() {
         crypto.verifySignedEvent(event.copyWith(content: 'tampered')),
         isFalse,
       );
+    });
+
+    test('signMessage signs SHA-256 message digest with Schnorr key', () {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000001';
+      const message = 'hello sign_message';
+
+      final signature = crypto.signMessage(
+        privateKeyHex: privateKey,
+        message: message,
+      );
+
+      final digest = crypto_hash.sha256
+          .convert(utf8.encode(message))
+          .toString();
+      final pubkey = NostrKeyPairs(private: privateKey).public;
+      expect(signature, matches(RegExp(r'^[0-9a-f]{128}$')));
+      expect(NostrKeyPairs.verify(pubkey, digest, signature), isTrue);
     });
 
     test('NIP-04 encrypts and decrypts between two identities', () {

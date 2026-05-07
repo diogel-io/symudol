@@ -704,6 +704,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) async {
     final payload = request.payload;
     return switch (payload) {
+      SignMessagePayload(:final message) => _vaultService.signMessage(
+        identityLocalId: identityLocalId,
+        message: message,
+      ),
       Nip04EncryptPayload(:final content, :final peerPubkey) =>
         _vaultService.nip04Encrypt(
           identityLocalId: identityLocalId,
@@ -1026,6 +1030,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
     final peerPubkey = incoming.pubkey;
     return switch (incoming.method) {
+      Nip55Method.signMessage => const SignMessageScope(),
       Nip55Method.nip04Encrypt => Nip04EncryptScope(peerPubkey),
       Nip55Method.nip04Decrypt => Nip04DecryptScope(peerPubkey),
       Nip55Method.nip44Encrypt => Nip44EncryptScope(peerPubkey),

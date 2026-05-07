@@ -45,9 +45,23 @@ void main() {
       expect(request.eventJson?['content'], 'hello');
     });
 
+    test('parses sign_message', () {
+      final request = parser.parse({
+        'requestToken': 'token-sign-message',
+        'type': 'sign_message',
+        'content': 'hello message',
+        'currentUser': 'a' * 64,
+      });
+
+      expect(request.method, Nip55Method.signMessage);
+      expect(request.payload, isA<SignMessagePayload>());
+      expect((request.payload as SignMessagePayload).message, 'hello message');
+    });
+
     test('parses all NIP-55 method wire names', () {
       final peerPubkey = 'b' * 64;
       final cases = <String, Map<String, Object?>>{
+        'sign_message': {'content': 'hello'},
         'nip04_encrypt': {'content': 'hello', 'pubkey': peerPubkey},
         'nip04_decrypt': {'content': 'ciphertext', 'pubkey': peerPubkey},
         'nip44_encrypt': {'content': 'hello', 'pubkey': peerPubkey},
@@ -134,6 +148,16 @@ void main() {
     test('rejects missing sign_event content', () {
       expect(
         () => parser.parse({'requestToken': 'token-5', 'type': 'sign_event'}),
+        throwsA(isA<Nip55ParseException>()),
+      );
+    });
+
+    test('rejects missing sign_message content', () {
+      expect(
+        () => parser.parse({
+          'requestToken': 'token-missing-sign-message',
+          'type': 'sign_message',
+        }),
         throwsA(isA<Nip55ParseException>()),
       );
     });
