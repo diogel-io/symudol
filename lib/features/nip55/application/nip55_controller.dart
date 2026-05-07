@@ -648,7 +648,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(isLoading: true);
 
     final activeIdentity = _vaultController.state.activeIdentity;
-    if (remember && activeIdentity != null && !_scopeFor(request).isSensitive) {
+    if (remember &&
+        activeIdentity != null &&
+        _canRememberCryptoRequest(request)) {
       await _saveGrant(
         incoming: request,
         identityPubkey: activeIdentity.publicKey,
@@ -676,7 +678,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       throw const Nip55Failure('Select an identity before completing request.');
     }
     final result = await _cryptoResult(request, activeIdentity.localId);
-    if (remember && !_scopeFor(request).isSensitive) {
+    if (remember && _canRememberCryptoRequest(request)) {
       await _saveGrant(
         incoming: request,
         identityPubkey: activeIdentity.publicKey,
@@ -809,6 +811,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       _extendApprovalSession();
       if (remember) {
         await _completeDeferredClientAuthenticationRequests();
+      } else {
+        await _rejectDeferredClientAuthenticationRequests(
+          'Client authentication request was not remembered.',
+        );
       }
     }
   }
@@ -973,10 +979,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool canRememberPendingCryptoRequest() {
     final request = state.pendingCryptoRequest;
     if (request == null) return false;
-    return request.clientIdentity.packageName != null &&
-        request.webReturnOptions.isBrowserFlow != true &&
-        !_scopeFor(request).isSensitive &&
-        _permissionStore != null;
+    return _canRememberCryptoRequest(request);
   }
 
   Future<Nip55ApprovalDecision> _decide(
@@ -1094,6 +1097,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55PermissionGrant grant,
   ) {
     if (_isRememberedClientAuthentication(incoming, grant)) return true;
+    if (_isRememberedScopedDecrypt(incoming, grant)) return true;
     return _canUseApprovalSession(grant);
   }
 
@@ -1104,6 +1108,42 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (!_isClientAuthenticationRequest(incoming)) return false;
     final grantScope = grant.scope;
     return grantScope is SignEventScope && grantScope.kind == 22242;
+  }
+
+  bool _isRememberedScopedDecrypt(
+    Nip55IncomingRequest incoming,
+    Nip55PermissionGrant grant,
+  ) {
+    final requested = _scopeFor(incoming);
+    final grantScope = grant.scope;
+    return switch ((grantScope, requested)) {
+      (
+        Nip04DecryptScope(peerPubkey: final grantPeer),
+        Nip04DecryptScope(peerPubkey: final requestedPeer),
+      ) =>
+        grantPeer != null && grantPeer == requestedPeer,
+      (
+        Nip44DecryptScope(peerPubkey: final grantPeer),
+        Nip44DecryptScope(peerPubkey: final requestedPeer),
+      ) =>
+        grantPeer != null && grantPeer == requestedPeer,
+      _ => false,
+    };
+  }
+
+  bool _canRememberCryptoRequest(Nip55IncomingRequest request) {
+    if (request.clientIdentity.packageName == null ||
+        request.webReturnOptions.isBrowserFlow == true ||
+        _permissionStore == null) {
+      return false;
+    }
+    final scope = _scopeFor(request);
+    if (!scope.isSensitive) return true;
+    return switch (scope) {
+      Nip04DecryptScope(peerPubkey: final peerPubkey) => peerPubkey != null,
+      Nip44DecryptScope(peerPubkey: final peerPubkey) => peerPubkey != null,
+      _ => false,
+    };
   }
 
   bool _isClientAuthenticationRequest(Nip55IncomingRequest incoming) {

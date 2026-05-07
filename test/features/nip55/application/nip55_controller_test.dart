@@ -68,6 +68,7 @@ class FakeNip55Gateway implements Nip55Gateway {
   String? rejectedError;
   String? rejectedToken;
   final rejectedTokens = <String>[];
+  final rejectedErrorsByToken = <String, String?>{};
   void Function(Map<String, Object?> raw)? handler;
   Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
   providerQueryHandler;
@@ -119,6 +120,7 @@ class FakeNip55Gateway implements Nip55Gateway {
     rejectedToken = requestToken;
     rejectedError = error;
     rejectedTokens.add(requestToken);
+    rejectedErrorsByToken[requestToken] = error;
   }
 }
 
@@ -471,6 +473,50 @@ void main() {
         expect(
           gateway.completedExtrasByToken['token-auth-second']?['event'],
           contains('"kind":22242'),
+        );
+      },
+    );
+
+    test(
+      'kind 22242 burst rejects deferred auth when approval is not remembered',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-first', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final first = requestController.state.requests.single;
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-second', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: 'auth-third', kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        await permissionController.approveSigningRequest(first.id);
+
+        expect(gateway.completedTokens, contains('token-auth-first'));
+        expect(
+          gateway.rejectedTokens,
+          containsAll(['token-auth-second', 'token-auth-third']),
+        );
+        expect(
+          gateway.rejectedErrorsByToken['token-auth-second'],
+          'Client authentication request was not remembered.',
         );
       },
     );
@@ -915,7 +961,7 @@ void main() {
       );
     });
 
-    test('sensitive decrypt requests cannot be remembered by default', () async {
+    test('peer-scoped decrypt requests can be remembered', () async {
       final bob = NostrKeyPairs(
         private:
             '0000000000000000000000000000000000000000000000000000000000000002',
@@ -926,21 +972,79 @@ void main() {
         plaintext: 'secret',
       );
 
-      await controller.handleRawIntent({
+      final permissionStore = FakeNip55PermissionStore();
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: permissionStore,
+      );
+
+      await permissionController.handleRawIntent({
         'requestToken': 'decrypt-token',
         'type': 'nip44_decrypt',
         'content': ciphertext,
         'pubkey': bob.public,
         'currentUser': vaultController.state.activeIdentity!.publicKey,
-        'packageName': 'com.example.app',
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
       });
 
-      expect(controller.canRememberPendingCryptoRequest(), isFalse);
+      expect(permissionController.canRememberPendingCryptoRequest(), isTrue);
 
-      await controller.approveCryptoRequest(remember: true);
+      await permissionController.approveCryptoRequest(remember: true);
 
       expect(gateway.completedExtras?['result'], 'secret');
+      expect(permissionStore.grants.single.scope, isA<Nip44DecryptScope>());
     });
+
+    test(
+      'remembered peer-scoped decrypt grant works through provider',
+      () async {
+        final bob = NostrKeyPairs(
+          private:
+              '0000000000000000000000000000000000000000000000000000000000000002',
+        );
+        final ciphertext = const DartNostrCryptoService().nip04Encrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: vaultController.state.activeIdentity!.publicKey,
+          plaintext: 'secret nip04',
+        );
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-nip04-decrypt',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: Nip04DecryptScope(bob.public),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        final result = await permissionController.handleProviderQuery({
+          'requestToken': 'provider-decrypt-token',
+          'type': 'nip04_decrypt',
+          'content': ciphertext,
+          'pubkey': bob.public,
+          'currentUser': vaultController.state.activeIdentity!.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'transport': 'content_provider',
+        });
+
+        expect(result?['result'], 'secret nip04');
+      },
+    );
 
     test(
       'crypto approval failure rejects caller instead of escaping',
