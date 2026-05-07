@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:bech32/bech32.dart' as bech32;
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -165,7 +166,56 @@ void main() {
       );
     });
 
-    test('decryptZapEvent decrypts NIP-44 event content from event pubkey', () {
+    test('decryptZapEvent decrypts private zap anon tag for receiver', () {
+      const senderPrivateKey =
+          '0000000000000000000000000000000000000000000000000000000000000001';
+      const receiverPrivateKey =
+          '0000000000000000000000000000000000000000000000000000000000000002';
+      const createdAt = 1778170497;
+      final receiverPubkey = NostrKeyPairs(private: receiverPrivateKey).public;
+      final privateZapKey = _privateZapKey(
+        signerPrivateKey: senderPrivateKey,
+        id: receiverPubkey,
+        createdAt: createdAt,
+      );
+      final privateZapPubkey = NostrKeyPairs(private: privateZapKey).public;
+      final privateEventJson = jsonEncode({
+        'id': 'a' * 64,
+        'pubkey': privateZapPubkey,
+        'created_at': createdAt,
+        'kind': 9733,
+        'tags': [
+          ['p', receiverPubkey],
+        ],
+        'content': 'private zap details',
+        'sig': 'b' * 128,
+      });
+      final anonPayload = _privateZapPayload(
+        privateKeyHex: privateZapKey,
+        peerPubkeyHex: receiverPubkey,
+        plaintext: privateEventJson,
+      );
+
+      final decrypted = crypto.decryptZapEvent(
+        privateKeyHex: receiverPrivateKey,
+        eventJson: {
+          'id': 'c' * 64,
+          'pubkey': privateZapPubkey,
+          'created_at': createdAt,
+          'kind': 9734,
+          'tags': [
+            ['p', receiverPubkey],
+            ['anon', anonPayload],
+          ],
+          'content': '',
+          'sig': 'd' * 128,
+        },
+      );
+
+      expect(jsonDecode(decrypted), jsonDecode(privateEventJson));
+    });
+
+    test('decryptZapEvent keeps legacy NIP-44 content fallback', () {
       final deterministicCrypto = DartNostrCryptoService(
         randomBytes: (_) => Uint8List.fromList([...List<int>.filled(31, 0), 1]),
       );
@@ -241,4 +291,58 @@ void main() {
       );
     });
   });
+}
+
+String _privateZapKey({
+  required String signerPrivateKey,
+  required String id,
+  required int createdAt,
+}) => crypto_hash.sha256
+    .convert(utf8.encode('$signerPrivateKey$id$createdAt'))
+    .toString();
+
+String _privateZapPayload({
+  required String privateKeyHex,
+  required String peerPubkeyHex,
+  required String plaintext,
+}) {
+  final deterministicCrypto = DartNostrCryptoService(
+    randomBytes: (length) =>
+        Uint8List.fromList(List<int>.generate(length, (index) => index + 1)),
+  );
+  final nip04Payload = deterministicCrypto.nip04Encrypt(
+    privateKeyHex: privateKeyHex,
+    peerPubkeyHex: peerPubkeyHex,
+    plaintext: plaintext,
+  );
+  final match = RegExp(r'^(.*)\?iv=([^&]+)$').firstMatch(nip04Payload);
+  if (match == null) throw StateError('Malformed test NIP-04 payload');
+  final encrypted = base64Decode(match.group(1)!);
+  final iv = base64Decode(match.group(2)!);
+  return '${_bech32Bytes('pzap', encrypted)}_${_bech32Bytes('iv', iv)}';
+}
+
+String _bech32Bytes(String hrp, List<int> bytes) => bech32.bech32.encode(
+  bech32.Bech32(hrp, _convertBits(bytes, 8, 5, true)),
+  2000,
+);
+
+List<int> _convertBits(List<int> data, int fromBits, int toBits, bool pad) {
+  var acc = 0;
+  var bits = 0;
+  final result = <int>[];
+  final maxv = (1 << toBits) - 1;
+  final maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+  for (final value in data) {
+    acc = ((acc << fromBits) | value) & maxAcc;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.add((acc >> bits) & maxv);
+    }
+  }
+  if (pad && bits > 0) {
+    result.add((acc << (toBits - bits)) & maxv);
+  }
+  return result;
 }

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
 import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
+import 'package:bech32/bech32.dart' as bech32;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:pointycastle/block/aes.dart';
@@ -150,19 +151,48 @@ class DartNostrCryptoService implements NostrCryptoService {
     required String privateKeyHex,
     required Map<String, Object?> eventJson,
   }) {
-    final content = eventJson['content'];
-    final pubkey = eventJson['pubkey'];
-    if (content is! String || content.trim().isEmpty) {
-      throw const NostrCryptoException('Zap event content is missing');
+    final anonPayload = _anonTagPayload(eventJson);
+    if (anonPayload == null) {
+      return _decryptLegacyZapContent(
+        privateKeyHex: privateKeyHex,
+        eventJson: eventJson,
+      );
     }
-    if (pubkey is! String || !_isHex64(pubkey)) {
+
+    final eventPubkey = eventJson['pubkey'];
+    if (eventPubkey is! String || !_isHex64(eventPubkey)) {
       throw const NostrCryptoException('Zap event pubkey is invalid');
     }
-    return nip44Decrypt(
-      privateKeyHex: privateKeyHex,
-      peerPubkeyHex: pubkey,
-      ciphertext: content,
+
+    final recipientPubkey = _firstTagValue(eventJson, 'p');
+    if (!_isHex64(recipientPubkey)) {
+      throw const NostrCryptoException('Private zap recipient pubkey missing');
+    }
+
+    final signerPubkey = derivePublicKey(privateKeyHex);
+    final decryptKey = recipientPubkey!.toLowerCase() == signerPubkey
+        ? privateKeyHex
+        : _senderPrivateZapKey(
+            privateKeyHex: privateKeyHex,
+            eventJson: eventJson,
+            recipientPubkey: recipientPubkey,
+            eventPubkey: eventPubkey,
+          );
+    final peerPubkey = recipientPubkey.toLowerCase() == signerPubkey
+        ? eventPubkey
+        : recipientPubkey;
+
+    final decrypted = _decryptPrivateZapMessage(
+      encryptedPayload: anonPayload,
+      privateKeyHex: decryptKey,
+      peerPubkeyHex: peerPubkey,
     );
+
+    final decoded = jsonDecode(decrypted);
+    if (decoded is! Map<String, Object?> || decoded['kind'] != 9733) {
+      throw const NostrCryptoException('Decrypted event is not a private zap');
+    }
+    return jsonEncode(decoded);
   }
 
   @override
@@ -182,6 +212,125 @@ class DartNostrCryptoService implements NostrCryptoService {
     if (expectedId != event.id) return false;
 
     return NostrKeyPairs.verify(event.pubkey, event.id, event.sig);
+  }
+
+  String _decryptLegacyZapContent({
+    required String privateKeyHex,
+    required Map<String, Object?> eventJson,
+  }) {
+    final content = eventJson['content'];
+    final pubkey = eventJson['pubkey'];
+    if (content is! String || content.trim().isEmpty) {
+      throw const NostrCryptoException('Zap event content is missing');
+    }
+    if (pubkey is! String || !_isHex64(pubkey)) {
+      throw const NostrCryptoException('Zap event pubkey is invalid');
+    }
+    return nip44Decrypt(
+      privateKeyHex: privateKeyHex,
+      peerPubkeyHex: pubkey,
+      ciphertext: content,
+    );
+  }
+
+  String _senderPrivateZapKey({
+    required String privateKeyHex,
+    required Map<String, Object?> eventJson,
+    required String recipientPubkey,
+    required String eventPubkey,
+  }) {
+    final createdAt = _eventCreatedAt(eventJson);
+    final zappedPost = _firstTagValue(eventJson, 'e');
+    final idToGeneratePrivateKey = zappedPost ?? recipientPubkey;
+    final altPrivateKey = crypto.sha256
+        .convert(utf8.encode('$privateKeyHex$idToGeneratePrivateKey$createdAt'))
+        .toString();
+    final altPubkey = derivePublicKey(altPrivateKey);
+    if (altPubkey != eventPubkey.toLowerCase()) {
+      throw const NostrCryptoException(
+        'This private zap cannot be decrypted by this key',
+      );
+    }
+    return altPrivateKey;
+  }
+
+  String _decryptPrivateZapMessage({
+    required String encryptedPayload,
+    required String privateKeyHex,
+    required String peerPubkeyHex,
+  }) {
+    final parts = encryptedPayload.split('_');
+    if (parts.length != 2) {
+      throw const NostrCryptoException('Invalid private zap payload format');
+    }
+    final encrypted = _bech32PayloadBytes(parts[0], expectedHrp: 'pzap');
+    final iv = _bech32PayloadBytes(parts[1], expectedHrp: 'iv');
+    if (iv.length != 16) {
+      throw const NostrCryptoException('Invalid private zap IV length');
+    }
+    final sharedX = _sharedSecretX(privateKeyHex, peerPubkeyHex);
+    final decrypted = _aes256Cbc(false, sharedX, iv, encrypted);
+    return utf8.decode(decrypted);
+  }
+
+  String? _anonTagPayload(Map<String, Object?> eventJson) =>
+      _firstTagValue(eventJson, 'anon');
+
+  String? _firstTagValue(Map<String, Object?> eventJson, String tagName) {
+    final tags = eventJson['tags'];
+    if (tags is! List) return null;
+    for (final tag in tags) {
+      if (tag is List && tag.length > 1 && tag.first == tagName) {
+        final value = tag[1];
+        if (value is String && value.trim().isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
+  int _eventCreatedAt(Map<String, Object?> eventJson) {
+    final createdAt = eventJson['created_at'];
+    if (createdAt is int) return createdAt;
+    if (createdAt is num) return createdAt.toInt();
+    throw const NostrCryptoException('Private zap created_at is missing');
+  }
+
+  Uint8List _bech32PayloadBytes(String payload, {required String expectedHrp}) {
+    final decoded = bech32.bech32.decode(payload, payload.length + 1);
+    if (decoded.hrp != expectedHrp) {
+      throw NostrCryptoException('Expected $expectedHrp bech32 payload');
+    }
+    return Uint8List.fromList(_convertBits(decoded.data, 5, 8, pad: false));
+  }
+
+  List<int> _convertBits(
+    List<int> data,
+    int fromBits,
+    int toBits, {
+    required bool pad,
+  }) {
+    var acc = 0;
+    var bits = 0;
+    final result = <int>[];
+    final maxv = (1 << toBits) - 1;
+    final maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+    for (final value in data) {
+      if (value < 0 || (value >> fromBits) != 0) {
+        throw const NostrCryptoException('Invalid bech32 payload bits');
+      }
+      acc = ((acc << fromBits) | value) & maxAcc;
+      bits += fromBits;
+      while (bits >= toBits) {
+        bits -= toBits;
+        result.add((acc >> bits) & maxv);
+      }
+    }
+    if (pad) {
+      if (bits > 0) result.add((acc << (toBits - bits)) & maxv);
+    } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv) != 0) {
+      throw const NostrCryptoException('Invalid bech32 payload padding');
+    }
+    return result;
   }
 
   String _nip44EncryptWithConversationKey({
@@ -409,7 +558,8 @@ class DartNostrCryptoService implements NostrCryptoService {
     }
   }
 
-  bool _isHex64(String value) => RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+  bool _isHex64(String? value) =>
+      value != null && RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
 }
 
 class _Nip44MessageKeys {
