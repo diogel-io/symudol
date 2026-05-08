@@ -72,6 +72,11 @@ void main() {
     expect(codec, contains('AUTHORITY_SIGN_MESSAGE -> "sign_message"'));
     expect(codec, contains('peerPubkeyFromProjection'));
     expect(codec, contains('zapCurrentUserFromProjection'));
+    expect(codec, contains('"get_public_key" -> return null'));
+    expect(
+      codec,
+      contains('Amethyst/Quartz probes GET_PUBLIC_KEY with projection ["login"]'),
+    );
 
     // Workstream E: Exact authority/mapping assertions
     expect(

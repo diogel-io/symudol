@@ -59,7 +59,10 @@ object Nip55RequestCodec {
 
     fun currentUserFromProjection(projection: Array<out String>?, method: String? = null): String? {
         val index = when (method) {
-            "get_public_key" -> 0
+            // Amethyst/Quartz probes GET_PUBLIC_KEY with projection ["login"].
+            // That value is not a NIP-55 current_user pubkey, so never forward it
+            // into Dart as currentUser or the parser will correctly reject it.
+            "get_public_key" -> return null
             "sign_event", "sign_message", "decrypt_zap_event" -> 1
             else -> 2
         }
