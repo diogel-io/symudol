@@ -24,20 +24,20 @@ class Nip55BridgeActivity : Activity() {
     }
 
     private fun handleNip55Intent(original: Intent?) {
-        if (original?.action != Intent.ACTION_VIEW || original.data?.scheme != "nostrsigner") {
+        if (original?.action != Intent.ACTION_VIEW || original.data?.scheme != getString(R.string.scheme_nostrsigner)) {
             finish()
             return
         }
 
-        val token = "nip55-${System.currentTimeMillis()}-${System.identityHashCode(original)}"
+        val token = "${getString(R.string.token_prefix_bridge)}${System.currentTimeMillis()}-${System.identityHashCode(original)}"
         requestToken = token
         Nip55BridgeRegistry.register(token, this)
 
         val callerPackage = callingPackage ?: original.`package`
         val originalData = original.data!!
-        val originalTypeExtra = original.getStringExtra("type")
-        val originalType = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, "type")
-        val shouldUseControlQueryForContent = originalTypeExtra == null || originalType == "nip04_decrypt"
+        val originalTypeExtra = original.getStringExtra(getString(R.string.key_type))
+        val originalType = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_type))
+        val shouldUseControlQueryForContent = originalTypeExtra == null || originalType == getString(R.string.method_nip04_decrypt)
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
@@ -47,24 +47,24 @@ class Nip55BridgeActivity : Activity() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("requestToken", token)
-            putExtra("type", originalType)
-            putExtra("content", original.getStringExtra("content") ?: Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent))
-            putExtra("id", original.getStringExtra("id") ?: Nip55UriParser.queryParameter(originalData, "id"))
-            putExtra("current_user", original.getStringExtra("current_user") ?: Nip55UriParser.queryParameter(originalData, "current_user"))
-            putExtra("pubkey", original.getStringExtra("pubkey") ?: original.getStringExtra("pubKey") ?: Nip55UriParser.queryParameter(originalData, "pubkey"))
-            putExtra("permissions", original.getStringExtra("permissions") ?: Nip55UriParser.queryParameter(originalData, "permissions"))
-            putExtra("callbackUrl", original.getStringExtra("callbackUrl") ?: Nip55UriParser.queryParameter(originalData, "callbackUrl"))
-            putExtra("returnType", original.getStringExtra("returnType") ?: Nip55UriParser.queryParameter(originalData, "returnType"))
-            putExtra("compressionType", original.getStringExtra("compressionType") ?: Nip55UriParser.queryParameter(originalData, "compressionType"))
-            putExtra("isBrowserFlow", original.hasCategory(Intent.CATEGORY_BROWSABLE))
-            putExtra("callingPackage", callerPackage)
-            putExtra("callerAppLabel", resolveAppLabel(callerPackage))
-            putExtra("callerCertificateSha256", resolveSigningCertificateSha256(callerPackage))
-            putExtra("referrer", referrer?.toString())
-            putExtra("intentPackage", original.`package`)
-            putExtra("sourceHint", callerPackage ?: referrer?.host)
-            putExtra("dataUri", original.data?.toString())
+            putExtra(getString(R.string.key_request_token), token)
+            putExtra(getString(R.string.key_type), originalType)
+            putExtra(getString(R.string.key_content), original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent))
+            putExtra(getString(R.string.key_id), original.getStringExtra(getString(R.string.key_id)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id)))
+            putExtra(getString(R.string.key_current_user), original.getStringExtra(getString(R.string.key_current_user)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_current_user)))
+            putExtra(getString(R.string.key_pubkey), original.getStringExtra(getString(R.string.key_pubkey)) ?: original.getStringExtra(getString(R.string.key_pubkey_alt)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_pubkey)))
+            putExtra(getString(R.string.key_permissions), original.getStringExtra(getString(R.string.key_permissions)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_permissions)))
+            putExtra(getString(R.string.key_callback_url), original.getStringExtra(getString(R.string.key_callback_url)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_callback_url)))
+            putExtra(getString(R.string.key_return_type), original.getStringExtra(getString(R.string.key_return_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_return_type)))
+            putExtra(getString(R.string.key_compression_type), original.getStringExtra(getString(R.string.key_compression_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_compression_type)))
+            putExtra(getString(R.string.key_is_browser_flow), original.hasCategory(Intent.CATEGORY_BROWSABLE))
+            putExtra(getString(R.string.key_calling_package), callerPackage)
+            putExtra(getString(R.string.key_caller_app_label), resolveAppLabel(callerPackage))
+            putExtra(getString(R.string.key_caller_certificate_sha256), resolveSigningCertificateSha256(callerPackage))
+            putExtra(getString(R.string.key_referrer), referrer?.toString())
+            putExtra(getString(R.string.key_intent_package), original.`package`)
+            putExtra(getString(R.string.key_source_hint), callerPackage ?: referrer?.host)
+            putExtra(getString(R.string.key_data_uri), original.data?.toString())
         }
         startActivity(mainIntent)
         // If Flutter is already alive, deliver directly as a fallback after asking
@@ -120,8 +120,8 @@ class Nip55BridgeActivity : Activity() {
                 info.signatures
             }
             val signature = signatures?.firstOrNull() ?: return null
-            val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
-            digest.joinToString(":") { byte -> "%02X".format(byte) }
+            val digest = MessageDigest.getInstance(getString(R.string.digest_sha256)).digest(signature.toByteArray())
+            digest.joinToString(getString(R.string.separator_colon)) { byte -> getString(R.string.format_hex_byte).format(byte) }
         } catch (_: Exception) {
             null
         }

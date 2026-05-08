@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">diogel</string>
+    <string name="scheme_nostrsigner">nostrsigner</string>
+
+    <!-- NIP-55 Intent Keys -->
+    <string name="key_type">type</string>
+    <string name="key_content">content</string>
+    <string name="key_id">id</string>
+    <string name="key_current_user">current_user</string>
+    <string name="key_pubkey">pubkey</string>
+    <string name="key_pubkey_alt">pubKey</string>
+    <string name="key_permissions">permissions</string>
+    <string name="key_callback_url">callbackUrl</string>
+    <string name="key_return_type">returnType</string>
+    <string name="key_compression_type">compressionType</string>
+    <string name="key_is_browser_flow">isBrowserFlow</string>
+    <string name="key_calling_package">callingPackage</string>
+    <string name="key_caller_app_label">callerAppLabel</string>
+    <string name="key_caller_certificate_sha256">callerCertificateSha256</string>
+    <string name="key_referrer">referrer</string>
+    <string name="key_intent_package">intentPackage</string>
+    <string name="key_source_hint">sourceHint</string>
+    <string name="key_data_uri">dataUri</string>
+    <string name="key_request_token">requestToken</string>
+
+    <!-- NIP-55 Protocol Values -->
+    <string name="method_nip04_decrypt">nip04_decrypt</string>
+
+    <!-- Technical -->
+    <string name="digest_sha256">SHA-256</string>
+    <string name="token_prefix_bridge">nip55-</string>
+    <string name="separator_colon">:</string>
+    <string name="format_hex_byte">%02X</string>
+</resources>
