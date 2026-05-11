@@ -1,3 +1,6 @@
+import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
+import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
+import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/fake_signer_service.dart';
@@ -17,12 +20,62 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';
 
+class FakeNip55Gateway implements Nip55Gateway {
+  String? completedToken;
+  String? rejectedToken;
+  Map<String, Object?>? completedExtras;
+  int completeCalls = 0;
+  void Function(Map<String, Object?> raw)? handler;
+  Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
+  providerQueryHandler;
+
+  @override
+  void setIncomingIntentHandler(
+    void Function(Map<String, Object?> raw)? handler,
+  ) {
+    this.handler = handler;
+  }
+
+  @override
+  void setProviderQueryHandler(
+    Future<Map<String, Object?>?> Function(Map<String, Object?> raw)? handler,
+  ) {
+    providerQueryHandler = handler;
+  }
+
+  @override
+  Future<Map<String, Object?>?> getInitialNip55Intent() async => null;
+
+  @override
+  Future<Map<String, Object?>?> consumeLatestNip55Intent() async => null;
+
+  @override
+  Future<void> completeNip55Intent({
+    required String requestToken,
+    required Map<String, Object?> extras,
+  }) async {
+    completeCalls += 1;
+    completedToken = requestToken;
+    completedExtras = extras;
+  }
+
+  @override
+  Future<void> rejectNip55Intent({
+    required String requestToken,
+    String? error,
+  }) async {
+    rejectedToken = requestToken;
+  }
+}
+
 void main() {
   late FakeVaultStore vaultStore;
   late VaultServiceImpl vaultService;
   late VaultController vaultController;
   late FakeSignerService signerService;
   late RequestController requestController;
+  late FakeNip55Gateway nip55Gateway;
+  late Nip55Controller nip55Controller;
 
   setUp(() async {
     vaultStore = FakeVaultStore();
@@ -31,6 +84,13 @@ void main() {
     vaultController = VaultController(vaultService);
     signerService = FakeSignerService();
     requestController = RequestController(vaultController, signerService);
+    nip55Gateway = FakeNip55Gateway();
+    nip55Controller = Nip55Controller(
+      gateway: nip55Gateway,
+      vaultController: vaultController,
+      vaultService: vaultService,
+      requestController: requestController,
+    );
   });
 
   Widget createTestWidget() {
@@ -39,6 +99,8 @@ void main() {
         vaultControllerProvider.overrideWith((ref) => vaultController),
         signerServiceProvider.overrideWithValue(signerService),
         requestControllerProvider.overrideWith((ref) => requestController),
+        nip55GatewayProvider.overrideWithValue(nip55Gateway),
+        nip55ControllerProvider.overrideWith((ref) => nip55Controller),
       ],
       child: const MaterialApp(home: RequestsScreen()),
     );
@@ -95,7 +157,6 @@ void main() {
       expect(find.text('Hello Nostr'), findsOneWidget);
       expect(find.text('1234567890'), findsOneWidget);
     });
-
 
     testWidgets('shows WP8 NIP-55 review summary without requiring raw JSON', (
       tester,
@@ -404,5 +465,84 @@ void main() {
       expect(find.textContaining('Fake signer error'), findsOneWidget);
       expect(find.text('Signing Request'), findsOneWidget);
     });
+
+    testWidgets(
+      'public-key NIP-55 completion removes action buttons and unsupported blank permissions',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.reset());
+
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity(displayName: 'User');
+
+        await nip55Controller.handleRawIntent({
+          'requestToken': 'pk-token',
+          'type': 'get_public_key',
+          'permissions': '["connect","get_public_key",""]',
+          'callingPackage': 'com.example.amethyst',
+          'callerAppLabel': 'Amethyst',
+        });
+
+        await tester.pumpWidget(createTestWidget());
+        await tester.pump();
+
+        expect(find.text('Public Key Request'), findsOneWidget);
+        expect(find.textContaining('Requested permissions:'), findsOneWidget);
+        expect(
+          find.textContaining('Requested permissions: Unsupported permission'),
+          findsNothing,
+        );
+        expect(find.text('Reject request'), findsOneWidget);
+        expect(find.text('Share public key'), findsOneWidget);
+
+        await tester.tap(find.text('Share public key'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No active requests'), findsOneWidget);
+        expect(find.text('Reject request'), findsNothing);
+        expect(find.text('Share public key'), findsNothing);
+        expect(nip55Gateway.completedToken, 'pk-token');
+      },
+    );
+
+    testWidgets(
+      'crypto NIP-55 completion failure removes stale action buttons',
+      (tester) async {
+        tester.view.physicalSize = const Size(1200, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.reset());
+
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity(displayName: 'User');
+        final activeIdentity = vaultController.state.activeIdentity!;
+
+        await nip55Controller.handleRawIntent({
+          'requestToken': 'crypto-token',
+          'type': 'nip04_decrypt',
+          'content': 'not-valid-nip04-ciphertext',
+          'pubkey': 'b' * 64,
+          'currentUser': activeIdentity.publicKey,
+          'callingPackage': 'com.example.amethyst',
+          'callerAppLabel': 'Amethyst',
+        });
+
+        await tester.pumpWidget(createTestWidget());
+        await tester.pump();
+
+        expect(find.text('NIP-55 nip04_decrypt'), findsOneWidget);
+        expect(find.text('Reject'), findsOneWidget);
+        expect(find.text('Decrypt'), findsOneWidget);
+
+        await tester.tap(find.text('Decrypt'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('No active requests'), findsOneWidget);
+        expect(find.text('Reject'), findsNothing);
+        expect(find.text('Decrypt'), findsNothing);
+        expect(find.text('Encrypt'), findsNothing);
+        expect(nip55Gateway.rejectedToken, 'crypto-token');
+      },
+    );
   });
 }

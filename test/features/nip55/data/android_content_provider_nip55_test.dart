@@ -75,7 +75,9 @@ void main() {
     expect(codec, contains('"get_public_key" -> return null'));
     expect(
       codec,
-      contains('Amethyst/Quartz probes GET_PUBLIC_KEY with projection ["login"]'),
+      contains(
+        'Amethyst/Quartz probes GET_PUBLIC_KEY with projection ["login"]',
+      ),
     );
 
     // Workstream E: Exact authority/mapping assertions
@@ -91,6 +93,22 @@ void main() {
       contains('const val AUTHORITY_PING = "io.threenine.diogel.PING"'),
     );
     expect(codec, contains('AUTHORITY_PING -> "ping"'));
+  });
+
+  test('NIP-55 codec documents SIGN_MESSAGE projection current-user index', () {
+    final codec = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
+    ).readAsStringSync();
+
+    expect(
+      codec,
+      contains('"sign_event", "sign_message", "decrypt_zap_event" -> 1'),
+    );
+    expect(codec, contains('fun payloadFromProjection'));
+    expect(
+      codec,
+      contains('projection?.firstOrNull()?.takeIf { it.isNotBlank() }'),
+    );
   });
 
   test('PING is treated as a capability probe and documented', () {

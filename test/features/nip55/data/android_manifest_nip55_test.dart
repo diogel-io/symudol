@@ -21,7 +21,15 @@ void main() {
     );
     expect(manifest, contains('android.intent.action.VIEW'));
     expect(manifest, contains('android.intent.category.BROWSABLE'));
-    expect(manifest, contains('android:scheme="nostrsigner"'));
+    expect(manifest, contains('android:scheme="@string/scheme_nostrsigner"'));
+
+    final strings = File(
+      'android/app/src/main/res/values/strings.xml',
+    ).readAsStringSync();
+    expect(
+      strings,
+      contains('<string name="scheme_nostrsigner">nostrsigner</string>'),
+    );
     expect(manifest, contains('android:theme="@style/Nip55BridgeTheme"'));
 
     final lightStyles = File(

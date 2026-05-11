@@ -28,8 +28,14 @@ void main() {
       bridgeActivity,
       contains('Nip55BridgeRegistry.register(token, this)'),
     );
-    expect(bridgeActivity, contains('putExtra("requestToken", token)'));
-    expect(bridgeActivity, contains('original.getStringExtra("pubKey")'));
+    expect(
+      bridgeActivity,
+      contains('putExtra(getString(R.string.key_request_token), token)'),
+    );
+    expect(
+      bridgeActivity,
+      contains('original.getStringExtra(getString(R.string.key_pubkey_alt))'),
+    );
     expect(mainActivity, contains('intent.getStringExtra("pubKey")'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
