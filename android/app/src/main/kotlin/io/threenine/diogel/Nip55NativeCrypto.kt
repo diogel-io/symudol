@@ -21,11 +21,12 @@ import javax.crypto.spec.SecretKeySpec
  *
  * Algorithms:
  * - NIP-04: ECDH (secp256k1) shared secret → AES-256-CBC
- * - NIP-44 v2: ECDH (secp256k1) → HKDF-SHA256 → ChaCha20-Poly1305
- * - Schnorr signing: secp256k1 Schnorr signature (BIP-340)
+ * - NIP-44 v2: ECDH (secp256k1) → HKDF-Extract("nip44-v2") → HKDF-Expand → ChaCha20 + HMAC-SHA256
+ * - Schnorr signing: BIP-340 Schnorr signature (tagged hashes)
  *
  * Security note: Private keys are held in [Nip55CryptoBridge] (in-process memory only)
  * and are NEVER written to persistent storage by this class.
+ * NO sensitive crypto material (shared secrets, private keys, IVs) is ever logged.
  */
 object Nip55NativeCrypto {
     private const val TAG = "Diogel-NativeCrypto"
@@ -56,23 +57,68 @@ object Nip55NativeCrypto {
 
     fun nip04Decrypt(privateKeyHex: String, peerPubkeyHex: String, ciphertext: String): String {
         val sharedX = ecdhSharedSecretX(privateKeyHex, peerPubkeyHex)
-        android.util.Log.d("Diogel-NativeCrypto", "nip04Decrypt: sharedX=${bytesToHex(sharedX)}, peerPubkey=${peerPubkeyHex.take(16)}..., privKey=${privateKeyHex.take(8)}..., ciphertextLen=${ciphertext.length}")
         val parts = ciphertext.split("?iv=", limit = 2)
         if (parts.size != 2) throw IllegalArgumentException("Malformed NIP-04 ciphertext: missing ?iv=")
         val encrypted = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP)
         val iv = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP)
-        android.util.Log.d("Diogel-NativeCrypto", "nip04Decrypt: encryptedLen=${encrypted.size}, ivLen=${iv.size}, ivHex=${bytesToHex(iv)}")
         if (iv.size != 16) throw IllegalArgumentException("Malformed NIP-04 IV")
         val decrypted = aes256CbcDecrypt(sharedX, iv, encrypted)
         return String(decrypted, Charsets.UTF_8)
     }
 
-    // ── Schnorr signing ──────────────────────────────────────────────────
+    // ── Schnorr signing (BIP-340) ─────────────────────────────────────────
+
+    /**
+     * Sign an event. Enforces that the event's pubkey matches the active identity
+     * to prevent signing events with a mismatched pubkey (which would produce
+     * an invalid event: ID for one pubkey, signature from another key).
+     *
+     * @param privateKeyHex The active identity's private key
+     * @param eventJson The event JSON (must have pubkey matching the private key)
+     * @param activeIdentityPubkey The expected active identity pubkey (hex, 64 chars)
+     * @return SignEventResult or null if pubkey mismatch / error
+     */
+    data class SignEventResult(val signature: String, val eventJson: String)
+
+    fun signEvent(privateKeyHex: String, eventJson: String, activeIdentityPubkey: String): SignEventResult? {
+        return try {
+            val event = JSONObject(eventJson)
+            val eventPubkey = event.optString("pubkey", "")
+
+            // Fix #4: Enforce that the event pubkey matches the active identity.
+            // This prevents signing events where the ID was computed for a different pubkey.
+            if (eventPubkey != activeIdentityPubkey) {
+                Log.w(TAG, "signEvent: pubkey mismatch — event has $eventPubkey but active identity is $activeIdentityPubkey")
+                return null
+            }
+
+            val createdAt = event.optLong("created_at", 0L)
+            val kind = event.optInt("kind", 0)
+            val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
+            val content = event.optString("content", "")
+
+            val serialized = serializeEvent(eventPubkey, createdAt, kind, tags, content)
+            val id = sha256Hex(serialized.toByteArray(Charsets.UTF_8))
+
+            val sig = schnorrSign(privateKeyHex, id)
+
+            val signedEvent = JSONObject(eventJson)
+            signedEvent.put("id", id)
+            signedEvent.put("sig", sig)
+
+            SignEventResult(sig, signedEvent.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "signEvent failed", e)
+            null
+        }
+    }
 
     fun signMessage(privateKeyHex: String, message: String): String {
         val messageHash = sha256Hex(message.toByteArray(Charsets.UTF_8))
         return schnorrSign(privateKeyHex, messageHash)
     }
+
+    // ── Decrypt zap event (NIP-57) ────────────────────────────────────────
 
     /**
      * Decrypt a NIP-57 private zap request event.
@@ -89,7 +135,6 @@ object Nip55NativeCrypto {
             val content = event.optString("content", "")
             if (content.isEmpty()) return "" // No content to decrypt
 
-            // Find the P tag (sender pubkey) — first p tag in the tags array
             var peerPubkey: String? = null
             val tags = event.optJSONArray("tags")
             if (tags != null) {
@@ -101,8 +146,6 @@ object Nip55NativeCrypto {
                     }
                 }
             }
-
-            // Fallback to event pubkey if no P tag found
             if (peerPubkey == null) {
                 peerPubkey = event.optString("pubkey", null)
             }
@@ -115,41 +158,8 @@ object Nip55NativeCrypto {
         }
     }
 
-    data class SignEventResult(val signature: String, val eventJson: String)
-
-    fun signEvent(privateKeyHex: String, eventJson: String): SignEventResult? {
-        return try {
-            val event = JSONObject(eventJson)
-            val pubkey = event.optString("pubkey", "")
-            val createdAt = event.optLong("created_at", 0L)
-            val kind = event.optInt("kind", 0)
-            val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
-            val content = event.optString("content", "")
-
-            // Serialize the event for hashing (NIP-01)
-            val serialized = serializeEvent(pubkey, createdAt, kind, tags, content)
-            val id = sha256Hex(serialized.toByteArray(Charsets.UTF_8))
-
-            val sig = schnorrSign(privateKeyHex, id)
-
-            // Build the signed event JSON
-            val signedEvent = JSONObject(eventJson)
-            signedEvent.put("id", id)
-            signedEvent.put("sig", sig)
-
-            SignEventResult(sig, signedEvent.toString())
-        } catch (e: Exception) {
-            Log.e(TAG, "signEvent failed", e)
-            null
-        }
-    }
-
     // ── ECDH shared secret ───────────────────────────────────────────────
 
-    /**
-     * Compute the ECDH shared secret X coordinate (NIP-04 and NIP-44).
-     * Uses secp256k1 curve: sharedX = (peerPubkeyPoint * privateKey).x
-     */
     private fun ecdhSharedSecretX(privateKeyHex: String, peerPubkeyHex: String): ByteArray {
         val privateKey = hexToBytes(privateKeyHex)
         val peerPubkey = Secp256k1.pointFromHex(peerPubkeyHex)
@@ -159,16 +169,16 @@ object Nip55NativeCrypto {
         return bigIntTo32Bytes(sharedPoint.x)
     }
 
-    // ── NIP-44 v2 internals ──────────────────────────────────────────────
+    // ── NIP-44 v2 internals (matches nostr-tools / Dart implementation) ──
 
     private fun nip44ConversationKey(privateKeyHex: String, peerPubkeyHex: String): ByteArray {
         val sharedX = ecdhSharedSecretX(privateKeyHex, peerPubkeyHex)
-        return hkdfExtractExpand(sharedX, byteArrayOf(0x01))
+        // conversation_key = HKDF-Extract(salt="nip44-v2", ikm=sharedX)
+        return hkdfExtract("nip44-v2".toByteArray(Charsets.UTF_8), sharedX)
     }
 
-    private fun hkdfExtractExpand(key: ByteArray, info: ByteArray): ByteArray {
-        val prk = hmacSha256(byteArrayOf(0x02), key)
-        return hkdfExpand(prk, info, 32)
+    private fun hkdfExtract(salt: ByteArray, ikm: ByteArray): ByteArray {
+        return hmacSha256(salt, ikm)
     }
 
     private fun hkdfExpand(prk: ByteArray, info: ByteArray, length: Int): ByteArray {
@@ -200,7 +210,7 @@ object Nip55NativeCrypto {
         if (payload[0] == '#') throw IllegalArgumentException("Unsupported NIP-44 payload version")
 
         val raw = android.util.Base64.decode(payload, android.util.Base64.NO_WRAP)
-        if (raw.size < 132 || raw.size > 87472) throw IllegalArgumentException("Invalid NIP-44 payload length")
+        if (raw.size < 99 || raw.size > 65603) throw IllegalArgumentException("Invalid NIP-44 payload size")
 
         val version = raw[0]
         if (version.toInt() != 2) throw IllegalArgumentException("Unsupported NIP-44 version: $version")
@@ -211,7 +221,6 @@ object Nip55NativeCrypto {
 
         val messageKeys = nip44MessageKeys(conversationKey, nonce)
 
-        // Verify HMAC
         val expectedMac = hmacSha256(messageKeys.hmacKey, nonce + ciphertext)
         if (!constantTimeEquals(mac, expectedMac)) {
             throw IllegalArgumentException("NIP-44 HMAC verification failed")
@@ -224,11 +233,8 @@ object Nip55NativeCrypto {
     private data class MessageKeys(val chachaKey: ByteArray, val chachaNonce: ByteArray, val hmacKey: ByteArray)
 
     private fun nip44MessageKeys(conversationKey: ByteArray, nonce: ByteArray): MessageKeys {
-        val expanded = hkdfExpand(
-            hkdfExtractExpand(conversationKey, nonce),
-            byteArrayOf(),
-            76
-        )
+        // message_keys = HKDF-Expand(conversationKey, info=nonce, len=76)
+        val expanded = hkdfExpand(conversationKey, nonce, 76)
         return MessageKeys(
             chachaKey = expanded.copyOfRange(0, 32),
             chachaNonce = expanded.copyOfRange(32, 44),
@@ -236,56 +242,58 @@ object Nip55NativeCrypto {
         )
     }
 
+    // ── NIP-44 v2 padding (matches nostr-tools spec) ─────────────────────
+
     private fun nip44Pad(plaintext: String): ByteArray {
         val messageBytes = plaintext.toByteArray(Charsets.UTF_8)
-        // NIP-44 v2 padding: [2-byte big-endian length] [zeros] [message]
         val len = messageBytes.size
-        val paddingLen = when {
-            len < 256 -> 256 - len
-            len < 65536 -> {
-                // Round up to next power of 2 boundary
-                val boundary = 1 shl (32 - Integer.numberOfLeadingZeros(len))
-                if (boundary == len) 0 else boundary - len
-            }
-            else -> 0
-        }
-        val padded = ByteArray(2 + paddingLen + len)
+        if (len < 1 || len > 65535) throw IllegalArgumentException("Invalid NIP-44 plaintext length: $len")
+        val paddedLen = nip44PaddedLength(len)
+        // [2-byte big-endian length] [zeros] [message]
+        val padded = ByteArray(2 + paddedLen)
         padded[0] = (len shr 8).toByte()
         padded[1] = len.toByte()
-        System.arraycopy(messageBytes, 0, padded, 2 + paddingLen, len)
+        System.arraycopy(messageBytes, 0, padded, 2, len)
         return padded
     }
 
-    private fun nip44Unpad(data: ByteArray): String {
-        if (data.size < 2) throw IllegalArgumentException("Invalid NIP-44 padded data")
-        val len = ((data[0].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
-        if (len < 0 || len > data.size - 2) throw IllegalArgumentException("Invalid NIP-44 message length")
-        return String(data, data.size - len, len, Charsets.UTF_8)
+    private fun nip44PaddedLength(unpaddedLen: Int): Int {
+        if (unpaddedLen <= 32) return 32
+        val nextPower = 1 shl (32 - Integer.numberOfLeadingZeros(unpaddedLen - 1))
+        val chunk = if (nextPower <= 256) 32 else nextPower / 8
+        return chunk * (((unpaddedLen - 1) / chunk) + 1)
     }
 
-    // ── ChaCha20 ────────────────────────────────────────────────────────
+    private fun nip44Unpad(data: ByteArray): String {
+        if (data.size < 34) throw IllegalArgumentException("Invalid NIP-44 padding")
+        val len = ((data[0].toInt() and 0xFF) shl 8) or (data[1].toInt() and 0xFF)
+        if (len < 1 || len > 65535) throw IllegalArgumentException("Invalid NIP-44 message length: $len")
+        if (data.size != 2 + nip44PaddedLength(len)) throw IllegalArgumentException("Invalid NIP-44 padding length")
+        return String(data, 2, len, Charsets.UTF_8)
+    }
+
+    // ── ChaCha20 (plain, NOT ChaCha20-Poly1305) ──────────────────────────
+    // NIP-44 v2 uses plain ChaCha20 for encryption and a separate HMAC-SHA256
+    // for authentication. Android's "ChaCha20" cipher (API 28+) is plain
+    // ChaCha20 with a 12-byte nonce.
 
     private fun chacha20Encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
-        // Try Android's built-in ChaCha20-Poly1305 first (API 28+)
         return try {
-            val cipher = Cipher.getInstance("ChaCha20-Poly1305/None/NoPadding")
+            val cipher = Cipher.getInstance("ChaCha20/None/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "ChaCha20"), IvParameterSpec(nonce))
             cipher.doFinal(plaintext)
         } catch (e: Exception) {
-            Log.w(TAG, "ChaCha20-Poly1305 not available, falling back", e)
-            // Fallback: will need BouncyCastle or alternative
-            throw UnsupportedOperationException("ChaCha20-Poly1305 not available on this device", e)
+            throw UnsupportedOperationException("ChaCha20 not available on this device", e)
         }
     }
 
     private fun chacha20Decrypt(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
         return try {
-            val cipher = Cipher.getInstance("ChaCha20-Poly1305/None/NoPadding")
+            val cipher = Cipher.getInstance("ChaCha20/None/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "ChaCha20"), IvParameterSpec(nonce))
             cipher.doFinal(ciphertext)
         } catch (e: Exception) {
-            Log.w(TAG, "ChaCha20-Poly1305 not available, falling back", e)
-            throw UnsupportedOperationException("ChaCha20-Poly1305 not available on this device", e)
+            throw UnsupportedOperationException("ChaCha20 not available on this device", e)
         }
     }
 
@@ -303,65 +311,61 @@ object Nip55NativeCrypto {
         return cipher.doFinal(ciphertext)
     }
 
-    // ── Schnorr signing (simplified — uses secp256k1) ────────────────────
+    // ── Schnorr signing (BIP-340 with tagged hashes) ──────────────────────
 
     private fun schnorrSign(privateKeyHex: String, messageHashHex: String): String {
-        val dPrime = BigInteger(1, hexToBytes(privateKeyHex))
-        val messageHashBytes = hexToBytes(messageHashHex)
+        val d = BigInteger(1, hexToBytes(privateKeyHex))
+        val msgHash = hexToBytes(messageHashHex)
 
-        // Step 1: P = d' * G
-        val P = Secp256k1.multiply(Secp256k1.G, dPrime)
+        // BIP-340: P = d·G, determine if we need to negate d
+        val P = Secp256k1.multiply(Secp256k1.G, d)
             ?: throw IllegalArgumentException("Invalid private key")
+        val px = P.x
 
-        // Step 2: d = d' if P has even y, else n - d'
-        val d = if (P.y.mod(BigInteger.TWO) == BigInteger.ZERO) dPrime else Secp256k1.n.subtract(dPrime)
+        // If P.y is odd, negate the secret key: d = n - d
+        val dFinal = if (P.y.mod(Secp256k1.TWO) != BigInteger.ZERO) {
+            Secp256k1.n.subtract(d)
+        } else {
+            d
+        }
 
-        // Step 3: t = xor(bytes(d), tagged_hash("BIP0340/aux", aux_rand))
-        // Using aux_rand = 0^32 (deterministic)
-        val auxRand = ByteArray(32)
-        val auxHash = taggedHash("BIP0340/aux", auxRand)
-        val dBytes = bigIntTo32Bytes(d)
-        val t = ByteArray(32) { dBytes[it].toInt().xor(auxHash[it].toInt()).toByte() }
+        // Fix #5: BIP-340 tagged nonce hash
+        // t = tagged_hash("BIP340/aux", aux) — we use random aux as per BIP-340
+        val aux = ByteArray(32).also { secureRandom.nextBytes(it) }
+        val t = taggedHash("BIP340/aux", aux)
+        // XOR d' with t (both 32 bytes)
+        val dPrime = bigIntTo32Bytes(dFinal)
+        val xored = ByteArray(32)
+        for (i in 0 until 32) xored[i] = (dPrime[i].toInt() xor t[i].toInt()).toByte()
 
-        // Step 4: rand = SHA256(t || bytes(P) || m)
-        val randInput = t + bigIntTo32Bytes(P.x) + messageHashBytes
-        val rand = bytesToBigInteger(sha256(randInput)).mod(Secp256k1.n)
-        if (rand == BigInteger.ZERO) throw IllegalArgumentException("rand was zero")
+        // rand = tagged_hash("BIP340/nonce", xored || P.x || m)
+        val randInput = xored + bigIntTo32Bytes(px) + msgHash
+        val rand = taggedHash("BIP340/nonce", randInput)
 
-        // Step 5: R = rand * G
-        val R = Secp256k1.multiply(Secp256k1.G, bigIntTo32Bytes(rand))
-            ?: throw IllegalArgumentException("Failed to compute R point")
+        // k = rand mod n, fail if k is zero
+        val k = BigInteger(1, rand).mod(Secp256k1.n)
+        if (k == BigInteger.ZERO) throw IllegalArgumentException("Schnorr nonce is zero")
 
-        // Step 6: If R.y is odd, negate rand
-        val k = if (R.y.mod(BigInteger.TWO) != BigInteger.ZERO) Secp256k1.n.subtract(rand) else rand
+        // R = k·G
+        val R = Secp256k1.multiply(Secp256k1.G, k)
+            ?: throw IllegalArgumentException("Schnorr nonce point is invalid")
 
-        // Step 7: e = tagged_hash("BIP0340/challenge", R.x || P.x || m) mod n
-        val challengeInput = bigIntTo32Bytes(R.x) + bigIntTo32Bytes(P.x) + messageHashBytes
-        val e = bytesToBigInteger(taggedHash("BIP0340/challenge", challengeInput)).mod(Secp256k1.n)
+        // If R.y is odd, negate k
+        val kFinal = if (R.y.mod(Secp256k1.TWO) != BigInteger.ZERO) {
+            Secp256k1.n.subtract(k)
+        } else {
+            k
+        }
 
-        // Step 8: sig = k + e*d mod n
-        val sig = k.add(e.multiply(d)).mod(Secp256k1.n)
-        if (sig == BigInteger.ZERO) throw IllegalArgumentException("sig was zero")
+        // e = tagged_hash("BIP340/challenge", R.x || P.x || m) mod n
+        val challengeInput = bigIntTo32Bytes(R.x) + bigIntTo32Bytes(px) + msgHash
+        val e = BigInteger(1, taggedHash("BIP340/challenge", challengeInput)).mod(Secp256k1.n)
 
+        // sig = (k_final + e * d') mod n
+        val sig = kFinal.add(e.multiply(dFinal)).mod(Secp256k1.n)
+
+        // Signature is R.x (32 bytes) || sig (32 bytes)
         return bytesToHex(bigIntTo32Bytes(R.x) + bigIntTo32Bytes(sig))
-    }
-
-    private fun taggedHash(tag: String, message: ByteArray): ByteArray {
-        val tagHash = sha256(tag.toByteArray(Charsets.UTF_8))
-        return sha256(tagHash + tagHash + message)
-    }
-
-    // ── Event serialization (NIP-01) ──────────────────────────────────────
-
-    private fun serializeEvent(pubkey: String, createdAt: Long, kind: Int, tags: org.json.JSONArray, content: String): String {
-        val arr = org.json.JSONArray()
-        arr.put(0)
-        arr.put(pubkey)
-        arr.put(createdAt)
-        arr.put(kind)
-        arr.put(tags)
-        arr.put(content)
-        return arr.toString()
     }
 
     // ── Crypto utilities ─────────────────────────────────────────────────
@@ -374,10 +378,18 @@ object Nip55NativeCrypto {
         return bytesToHex(sha256(data))
     }
 
-    private fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
+    /**
+     * BIP-340 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || message)
+     */
+    private fun taggedHash(tag: String, message: ByteArray): ByteArray {
+        val tagHash = sha256(tag.toByteArray(Charsets.UTF_8))
+        return sha256(tagHash + tagHash + message)
+    }
+
+    private fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(key, "HmacSHA256"))
-        return mac.doFinal(data)
+        return mac.doFinal(message)
     }
 
     private fun constantTimeEquals(a: ByteArray, b: ByteArray): Boolean {
@@ -387,28 +399,43 @@ object Nip55NativeCrypto {
         return diff == 0
     }
 
+    private fun serializeEvent(pubkey: String, createdAt: Long, kind: Int, tags: org.json.JSONArray, content: String): String {
+        val arr = org.json.JSONArray()
+        arr.put(0)
+        arr.put(pubkey)
+        arr.put(createdAt)
+        arr.put(kind)
+        arr.put(tags)
+        arr.put(content)
+        return arr.toString()
+    }
+
     private fun hexToBytes(hex: String): ByteArray {
-        return hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        var i = 0
+        while (i < len) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+            i += 2
+        }
+        return data
     }
 
     private fun bytesToHex(bytes: ByteArray): String {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun bytesToBigInteger(bytes: ByteArray): BigInteger {
-        return BigInteger(1, bytes)
-    }
-
-    private fun bigIntTo32Bytes(value: BigInteger): ByteArray {
-        val hex = value.toString(16).padStart(64, '0')
-        return hexToBytes(hex)
+    private fun bigIntTo32Bytes(n: BigInteger): ByteArray {
+        val raw = n.toByteArray()
+        if (raw.size == 32) return raw
+        if (raw.size > 32) return raw.copyOfRange(raw.size - 32, raw.size)
+        return ByteArray(32 - raw.size) + raw
     }
 }
 
 /**
  * Minimal secp256k1 curve operations for ECDH and Schnorr signing.
  *
- * This uses Android's built-in EC cryptography for point multiplication.
  * For production, consider using BouncyCastle's secp256k1 implementation
  * for better performance and full BIP-340 compliance.
  */
@@ -421,6 +448,7 @@ object Secp256k1 {
         "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F",
         16
     )
+    val TWO = BigInteger.valueOf(2)
     val Gx = BigInteger(
         "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798",
         16
@@ -469,7 +497,7 @@ object Secp256k1 {
         // slope = (3 * x^2) / (2 * y) for secp256k1 where a = 0
         val slope = BigInteger.valueOf(3)
             .multiply(a.x).multiply(a.x)
-            .multiply(BigInteger.valueOf(2).multiply(a.y).modInverse(p))
+            .multiply(TWO.multiply(a.y).modInverse(p))
             .mod(p)
         val x3 = slope.multiply(slope).subtract(a.x).subtract(a.x).mod(p)
         val y3 = slope.multiply(a.x.subtract(x3)).subtract(a.y).mod(p)
@@ -479,11 +507,10 @@ object Secp256k1 {
     fun pointFromHex(hex: String): ECPoint? {
         if (hex.length != 64) return null
         val x = BigInteger(hex, 16)
-        // Decompress: y^2 = x^3 + 7 mod p, take even y
         val ySquared = x.modPow(BigInteger.valueOf(3), p).add(BigInteger.valueOf(7)).mod(p)
         val y = ySquared.modPow(p.add(BigInteger.ONE).divide(BigInteger.valueOf(4)), p)
         if (y.modPow(BigInteger.valueOf(2), p) != ySquared) return null
-        val evenY = if (y.mod(BigInteger.TWO) == BigInteger.ZERO) y else p.subtract(y)
+        val evenY = if (y.mod(TWO) == BigInteger.ZERO) y else p.subtract(y)
         return ECPoint(x, evenY)
     }
 
@@ -491,13 +518,13 @@ object Secp256k1 {
     fun selfTest(): Boolean {
         val g1 = multiply(G, BigInteger.ONE)
         if (g1 != G) {
-            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 1*G != G, got x=${g1?.x?.toString(16)?.take(16)}")
+            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 1*G != G")
             return false
         }
         val g2 = multiply(G, BigInteger.valueOf(2))
         val expected2Gx = BigInteger("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5", 16)
         if (g2?.x != expected2Gx) {
-            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 2*G x mismatch, got x=${g2?.x?.toString(16)?.take(16)} expected=${expected2Gx.toString(16)?.take(16)}")
+            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 2*G x mismatch")
             return false
         }
         android.util.Log.d("Diogel-Secp256k1", "selfTest PASS: secp256k1 point arithmetic is correct")

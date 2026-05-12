@@ -246,11 +246,11 @@ class Nip55ContentProvider : ContentProvider() {
                 }
                 "sign_event" -> {
                     val eventJson = Nip55RequestCodec.eventJsonFromProjection(projection) ?: return null
-                    val result = Nip55NativeCrypto.signEvent(privateKey, eventJson)
+                    val result = Nip55NativeCrypto.signEvent(privateKey, eventJson, activePubkey)
                     if (result != null) {
                         Nip55RequestCodec.signEventCursor(result.signature, result.eventJson)
                     } else {
-                        Log.w(TAG, "performNativeCrypto: signEvent returned null, falling back")
+                        Log.w(TAG, "performNativeCrypto: signEvent returned null (pubkey mismatch?), falling back")
                         null
                     }
                 }

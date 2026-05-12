@@ -232,8 +232,10 @@ class Nip55PermissionMirror(private val context: Context) {
     private fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
         // If the grant has no certificate recorded, it matches any caller
         if (grant.certificateSha256 == null) return true
-        // If we can't determine the caller's certificate, don't block
-        if (callerCertSha256 == null) return true
+        // Fail closed: if the grant requires a cert but we can't determine
+        // the caller's certificate, deny the match. This ensures native
+        // auto-approve is at least as strict as the Dart approval policy.
+        if (callerCertSha256 == null) return false
         return grant.certificateSha256 == callerCertSha256
     }
 
