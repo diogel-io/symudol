@@ -460,6 +460,16 @@ class VaultServiceImpl implements VaultService {
     }
   }
 
+  @override
+  Future<String?> getActivePrivateKey() async {
+    if (state is! VaultUnlocked) return null;
+    final identity = _activeIdentity;
+    if (identity == null) return null;
+    final record = await _store.getIdentityRecord(identity.localId);
+    if (record == null) return null;
+    return record.secretPayload;
+  }
+
   Future<VaultIdentityRecord> _activeRecordFor(String identityLocalId) async {
     _checkUnlocked();
 

@@ -125,4 +125,10 @@ abstract interface class VaultService {
 
   /// Initializes the service state from persistent storage.
   Future<void> init();
+
+  /// Returns the hex private key of the active identity, or null if vault is locked.
+  ///
+  /// This is used by the NIP-55 native bridge to sync the key to the
+  /// ContentProvider for native auto-approve.
+  Future<String?> getActivePrivateKey();
 }

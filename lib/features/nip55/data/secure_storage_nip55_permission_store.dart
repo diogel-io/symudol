@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'nip55_native_mirror_sync.dart';
 import '../domain/nip55_client_permission.dart';
 import '../domain/nip55_permission_store.dart';
 
@@ -10,11 +11,13 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
   static const _key = 'nip55_permission_grants_v1';
 
   final FlutterSecureStorage _storage;
+  final Nip55NativeMirrorSync? _nativeSync;
   List<Nip55PermissionGrant>? _cache;
   Completer<void>? _initCompleter;
 
-  SecureStorageNip55PermissionStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+  SecureStorageNip55PermissionStore({FlutterSecureStorage? storage, Nip55NativeMirrorSync? nativeSync})
+    : _storage = storage ?? const FlutterSecureStorage(),
+      _nativeSync = nativeSync;
 
   Future<void> _ensureInitialized() async {
     if (_cache != null) return;
@@ -86,10 +89,13 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
   Future<void> clearAll() async {
     _cache = [];
     await _storage.delete(key: _key);
+    await _nativeSync?.syncGrants([]);
   }
 
-  Future<void> _write(List<Nip55PermissionGrant> grants) {
+  Future<void> _write(List<Nip55PermissionGrant> grants) async {
     final payload = jsonEncode(grants.map((grant) => grant.toJson()).toList());
-    return _storage.write(key: _key, value: payload);
+    await _storage.write(key: _key, value: payload);
+    // Sync to native mirror for ContentProvider auto-approve
+    await _nativeSync?.syncGrants(grants);
   }
 }

@@ -1,4 +1,5 @@
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:android_diogel/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:android_diogel/features/nip55/data/secure_storage_nip55_permission_store.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
@@ -13,8 +14,14 @@ final nip55GatewayProvider = Provider<Nip55Gateway>((ref) {
   return Nip55MethodChannelGateway();
 });
 
+final nip55NativeSyncProvider = Provider<Nip55NativeMirrorSync>((ref) {
+  return Nip55NativeMirrorSync();
+});
+
 final nip55PermissionStoreProvider = Provider<Nip55PermissionStore>((ref) {
-  return SecureStorageNip55PermissionStore();
+  return SecureStorageNip55PermissionStore(
+    nativeSync: ref.watch(nip55NativeSyncProvider),
+  );
 });
 
 final nip55PermissionControllerProvider =
@@ -40,5 +47,6 @@ final nip55ControllerProvider =
         vaultService: vaultService,
         requestController: requestController,
         permissionStore: ref.watch(nip55PermissionStoreProvider),
+        nativeSync: ref.watch(nip55NativeSyncProvider),
       );
     });

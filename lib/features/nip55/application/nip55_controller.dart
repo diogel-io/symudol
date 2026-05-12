@@ -12,6 +12,7 @@ import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
+import '../data/nip55_native_mirror_sync.dart';
 import '../data/nip55_method_channel_gateway.dart';
 import '../domain/nip55_approval_policy.dart';
 import '../domain/nip55_client_permission.dart';
@@ -112,9 +113,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final VaultController _vaultController;
   final VaultService _vaultService;
   final RequestController _requestController;
+  final Nip55NativeMirrorSync? _nativeSync;
   final Duration _pendingUnlockTimeout;
   final DateTime Function() _now;
   Timer? _pendingUnlockTimer;
+  StreamSubscription<VaultControllerState>? _vaultStateSubscription;
 
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
@@ -130,6 +133,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55ResponseBuilder responseBuilder = const Nip55ResponseBuilder(),
     Nip55PermissionStore? permissionStore,
     Nip55ApprovalPolicy approvalPolicy = const Nip55ApprovalPolicy(),
+    Nip55NativeMirrorSync? nativeSync,
     Duration pendingUnlockTimeout = const Duration(minutes: 5),
     DateTime Function()? now,
   }) : _gateway = gateway,
@@ -141,17 +145,57 @@ class Nip55Controller extends StateNotifier<Nip55State> {
        _responseBuilder = responseBuilder,
        _permissionStore = permissionStore,
        _approvalPolicy = approvalPolicy,
+       _nativeSync = nativeSync,
        _pendingUnlockTimeout = pendingUnlockTimeout,
        _now = now ?? DateTime.now,
        super(const Nip55State()) {
     _gateway.setIncomingIntentHandler((raw) => handleRawIntent(raw));
     _gateway.setProviderQueryHandler((raw) => handleProviderQuery(raw));
+    _vaultStateSubscription = _vaultController.stream.listen((vaultState) {
+      _onVaultStateChanged(vaultState);
+    });
+    // Sync initial vault state (the stream only fires on changes)
+    _onVaultStateChanged(_vaultController.state);
   }
 
   @override
   void dispose() {
     _pendingUnlockTimer?.cancel();
+    _vaultStateSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Syncs the active key to the native ContentProvider bridge when
+  /// the vault state changes.
+  Future<void> _onVaultStateChanged(VaultControllerState state) async {
+    final vaultUnlocked = state.vaultState is VaultUnlocked;
+    final pubkey = state.activeIdentity?.publicKey;
+    // Use android logging via MethodChannel for visibility in logcat
+    try {
+      await _nativeSync?.setActiveIdentityPubkey(pubkey);
+    } catch (_) {}
+    dev.log('Nip55Controller: _onVaultStateChanged: vaultState=${state.vaultState.runtimeType}, hasPubkey=${pubkey != null}, nativeSync=${_nativeSync != null}', name: 'Diogel');
+    if (vaultUnlocked && pubkey != null) {
+      try {
+        final privateKey = await _vaultService.getActivePrivateKey();
+        dev.log('Nip55Controller: got privateKey=${privateKey != null ? "yes(${privateKey.length}chars)" : "null"}', name: 'Diogel');
+        if (privateKey != null) {
+          await _nativeSync?.setActiveKey(
+            privateKey: privateKey,
+            publicKey: pubkey,
+            localId: state.activeIdentity!.localId,
+          );
+          dev.log('Nip55Controller: synced active key to native bridge', name: 'Diogel');
+        } else {
+          dev.log('Nip55Controller: privateKey was null, not syncing to native bridge', name: 'Diogel');
+        }
+      } catch (e) {
+        dev.log('Failed to sync active key to native bridge: $e', name: 'Diogel');
+      }
+    } else {
+      dev.log('Nip55Controller: vault locked or no active identity, clearing native bridge', name: 'Diogel');
+      await _nativeSync?.clearActiveKey();
+    }
   }
 
   Future<void> consumePendingNativeIntent() async {

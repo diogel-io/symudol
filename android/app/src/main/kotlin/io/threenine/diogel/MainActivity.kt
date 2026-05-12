@@ -94,6 +94,42 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                     runAfterMethodResponse(action)
                 }
+                "syncNip55PermissionGrants" -> {
+                    val grantsJson = call.arguments as? String
+                    Log.d(TAG, "onMethodCall: syncNip55PermissionGrants grantsJson=${grantsJson?.take(80)}...")
+                    if (grantsJson != null) {
+                        Nip55PermissionMirror(this).syncGrants(grantsJson)
+                    }
+                    result.success(null)
+                }
+                "setNip55ActiveKey" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val privateKey = args?.get("privateKey")?.toString()
+                    val publicKey = args?.get("publicKey")?.toString()
+                    val localId = args?.get("localId")?.toString()
+                    Log.d(TAG, "onMethodCall: setNip55ActiveKey pubkey=${publicKey?.take(8)}... localId=$localId")
+                    if (privateKey != null && publicKey != null) {
+                        Nip55CryptoBridge.setActiveKey(privateKey, publicKey, localId ?: "")
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGS", "privateKey and publicKey required", null)
+                    }
+                }
+                "clearNip55ActiveKey" -> {
+                    Log.d(TAG, "onMethodCall: clearNip55ActiveKey")
+                    Nip55CryptoBridge.clearActiveKey()
+                    result.success(null)
+                }
+                "setNip55ActiveIdentityPubkey" -> {
+                    val pubkey = call.arguments as? String
+                    Log.d(TAG, "onMethodCall: setNip55ActiveIdentityPubkey pubkey=${pubkey?.take(8)}...")
+                    if (pubkey.isNullOrBlank()) {
+                        Nip55PermissionMirror(this).setActiveIdentityPubkey(null)
+                    } else {
+                        Nip55PermissionMirror(this).setActiveIdentityPubkey(pubkey)
+                    }
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
