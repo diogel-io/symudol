@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'nip55_native_mirror_sync.dart';
@@ -18,6 +19,13 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
   SecureStorageNip55PermissionStore({FlutterSecureStorage? storage, Nip55NativeMirrorSync? nativeSync})
     : _storage = storage ?? const FlutterSecureStorage(),
       _nativeSync = nativeSync;
+
+  /// Force sync current grants to native mirror. Called on startup.
+  Future<void> syncToNative() async {
+    await _ensureInitialized();
+    debugPrint('SecureStorageNip55PermissionStore: syncToNative: ${_cache?.length ?? 0} grants');
+    await _nativeSync?.syncGrants(_cache ?? []);
+  }
 
   Future<void> _ensureInitialized() async {
     if (_cache != null) return;
@@ -40,6 +48,10 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
           _cache = [];
         }
       }
+      // Sync loaded grants to native mirror so ContentProvider can use them
+      // immediately on startup without waiting for a grant write.
+      debugPrint('SecureStorageNip55PermissionStore: loaded ${_cache?.length ?? 0} grants, syncing to native mirror');
+      await _nativeSync?.syncGrants(_cache ?? []);
       _initCompleter!.complete();
     } catch (e) {
       _cache = [];

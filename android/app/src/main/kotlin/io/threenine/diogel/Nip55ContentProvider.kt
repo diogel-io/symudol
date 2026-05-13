@@ -50,12 +50,9 @@ class Nip55ContentProvider : ContentProvider() {
 
         // ── Kind 22242 (NIP-42 client authentication) auto-approve ───────────
         // These are protocol-level relay auth handshakes, not user content.
-        // Amber auto-approves these silently. We do the same when the vault
-        // is unlocked — defer to the Flutter bridge which will auto-approve
-        // if a matching grant exists, or create the grant on first use.
-        // Returning null here causes an Intent prompt, so we check if it's
-        // a kind 22242 request and let it through to the bridge path without
-        // requiring a remembered permission.
+        // Amber auto-approves these silently. We sign them natively when the
+        // vault is unlocked — no grant required, no Intent, no bridge.
+        // If the vault is locked, we return null (ContentProvider can't prompt).
         val isKind22242 = method == "sign_event" && run {
             val eventJson = Nip55RequestCodec.eventJsonFromProjection(projection)
             eventJson != null && run {
@@ -68,11 +65,30 @@ class Nip55ContentProvider : ContentProvider() {
         // the Dart side. Fast, synchronous, no Flutter bridge needed.
         //
         // Use CryptoBridge's in-memory pubkey if available (vault unlocked, key synced).
+        // ── Resolve active identity pubkey ─────────────────────────────────
+        // CryptoBridge has the in-memory pubkey if vault is unlocked and key synced.
         // Otherwise, fall back to the persisted identity pubkey from PermMirror.
         // The persisted pubkey is enough for permission checking but NOT for
         // native crypto (we need the private key for that).
         val activePubkey = Nip55CryptoBridge.activePublicKey
             ?: permissionMirror.getActiveIdentityPubkey()
+
+        // ── Kind 22242 (NIP-42 relay auth): auto-approve natively ─────────
+        // No grant required. These are protocol-level relay auth handshakes.
+        // Sign natively when vault is unlocked. Return null if vault is locked.
+        if (isKind22242) {
+            val privateKey = Nip55CryptoBridge.activePrivateKey
+            if (privateKey != null && activePubkey != null) {
+                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — signing natively")
+                val nativeResult = performNativeCrypto("sign_event", projection, activePubkey)
+                if (nativeResult != null) return nativeResult
+                // Should not happen but fall through if it does
+            } else {
+                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — vault locked, returning null")
+                return null
+            }
+        }
+
         var nativeCryptoFellThrough = false
 
         if (activePubkey != null && callerPackage != null) {
@@ -132,27 +148,17 @@ class Nip55ContentProvider : ContentProvider() {
         //
         // We reach here when:
         // 1. Native crypto returned null (method not yet supported natively)
-        // 2. Kind 22242 without a remembered grant (protocol handshake)
-        // 3. No remembered permission at all
+        // 2. No remembered permission at all
         //
         // Returning null causes the client to fall back to Intent prompts.
-        // For cases 1 and 2, we delegate to the Flutter bridge which can
-        // handle them without UI prompts.
-        // For case 3, we return null (legitimate first-time request).
+        // For case 1, we delegate to the Flutter bridge which can
+        // handle it without UI prompts.
+        // For case 2, we return null (legitimate first-time request).
         if (!hasRequiredProjection(method, projection)) return null
 
         val shouldBridge = when {
             // Native crypto fell through (remembered allow but method not native yet)
             nativeCryptoFellThrough -> true
-            // Kind 22242 client auth: always bridge when vault is unlocked
-            isKind22242 && activePubkey != null -> {
-                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — delegating to Flutter bridge")
-                true
-            }
-            isKind22242 -> {
-                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — vault locked, returning null")
-                false
-            }
             // No remembered grant, vault locked — can't bridge
             activePubkey == null -> false
             // No remembered grant, vault unlocked — legitimate first-time request

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as dev;
 
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 import '../domain/nip55_client_permission.dart';
 
@@ -15,10 +16,11 @@ class Nip55NativeMirrorSync {
   Future<void> syncGrants(List<Nip55PermissionGrant> grants) async {
     try {
       final payload = jsonEncode(grants.map((g) => g.toJson()).toList());
+      debugPrint('Nip55NativeMirrorSync: syncing ${grants.length} grants (${payload.length} bytes)');
       await _channel.invokeMethod<void>('syncNip55PermissionGrants', payload);
+      debugPrint('Nip55NativeMirrorSync: sync complete');
     } catch (e) {
-      // Non-critical: native mirror is best-effort. If it fails,
-      // the ContentProvider will fall back to the Flutter bridge.
+      debugPrint('Nip55NativeMirrorSync: FAILED to sync grants: $e');
       dev.log('Nip55NativeMirrorSync: failed to sync grants: $e', name: 'Diogel');
     }
   }

@@ -13,6 +13,7 @@ import 'package:android_diogel/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 import '../data/nip55_native_mirror_sync.dart';
+import '../data/secure_storage_nip55_permission_store.dart';
 import '../data/nip55_method_channel_gateway.dart';
 import '../domain/nip55_approval_policy.dart';
 import '../domain/nip55_client_permission.dart';
@@ -156,6 +157,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     });
     // Sync initial vault state (the stream only fires on changes)
     _onVaultStateChanged(_vaultController.state);
+    // Eagerly sync permission grants to native mirror on startup
+    _syncGrantsToNative();
   }
 
   @override
@@ -163,6 +166,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     _pendingUnlockTimer?.cancel();
     _vaultStateSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Eagerly sync permission grants to native mirror on startup.
+  Future<void> _syncGrantsToNative() async {
+    if (_permissionStore is SecureStorageNip55PermissionStore) {
+      await (_permissionStore as SecureStorageNip55PermissionStore).syncToNative();
+    }
   }
 
   /// Syncs the active key to the native ContentProvider bridge when

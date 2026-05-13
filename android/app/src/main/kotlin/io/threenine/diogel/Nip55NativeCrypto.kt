@@ -278,6 +278,9 @@ object Nip55NativeCrypto {
     // ChaCha20 with a 12-byte nonce.
 
     private fun chacha20Encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
+        // Android's Conscrypt ChaCha20 provider accepts IvParameterSpec with a
+        // 12-byte nonce. ChaCha20ParameterSpec (API 35) is for the reference
+        // provider only — Conscrypt is the default on Android and uses IvParameterSpec.
         return try {
             val cipher = Cipher.getInstance("ChaCha20/None/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "ChaCha20"), IvParameterSpec(nonce))
@@ -332,7 +335,7 @@ object Nip55NativeCrypto {
         // Fix #5: BIP-340 tagged nonce hash
         // t = tagged_hash("BIP340/aux", aux) — we use random aux as per BIP-340
         val aux = ByteArray(32).also { secureRandom.nextBytes(it) }
-        val t = taggedHash("BIP340/aux", aux)
+        val t = taggedHash("BIP0340/aux", aux)
         // XOR d' with t (both 32 bytes)
         val dPrime = bigIntTo32Bytes(dFinal)
         val xored = ByteArray(32)
@@ -340,7 +343,7 @@ object Nip55NativeCrypto {
 
         // rand = tagged_hash("BIP340/nonce", xored || P.x || m)
         val randInput = xored + bigIntTo32Bytes(px) + msgHash
-        val rand = taggedHash("BIP340/nonce", randInput)
+        val rand = taggedHash("BIP0340/nonce", randInput)
 
         // k = rand mod n, fail if k is zero
         val k = BigInteger(1, rand).mod(Secp256k1.n)
@@ -359,7 +362,7 @@ object Nip55NativeCrypto {
 
         // e = tagged_hash("BIP340/challenge", R.x || P.x || m) mod n
         val challengeInput = bigIntTo32Bytes(R.x) + bigIntTo32Bytes(px) + msgHash
-        val e = BigInteger(1, taggedHash("BIP340/challenge", challengeInput)).mod(Secp256k1.n)
+        val e = BigInteger(1, taggedHash("BIP0340/challenge", challengeInput)).mod(Secp256k1.n)
 
         // sig = (k_final + e * d') mod n
         val sig = kFinal.add(e.multiply(dFinal)).mod(Secp256k1.n)
