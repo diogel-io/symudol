@@ -89,6 +89,36 @@ class Nip55ContentProvider : ContentProvider() {
             }
         }
 
+        // ── Decrypt operations: auto-approve natively ───────────────────────
+        // nip04_decrypt and nip44_decrypt are background operations.
+        // If the vault is unlocked and we have the key, decrypt natively.
+        // No grant needed — the user has already chosen this app as their signer.
+        // If the vault is locked, return null (ContentProvider can't prompt).
+        // Explicit reject grants are still respected (checked below).
+        if (method == "nip04_decrypt" || method == "nip44_decrypt") {
+            val privateKey = Nip55CryptoBridge.activePrivateKey
+            if (privateKey != null && activePubkey != null) {
+                // Check explicit reject first
+                val peerPubkey = Nip55RequestCodec.peerPubkeyFromProjection(projection)
+                if (callerPackage != null && permissionMirror.hasRememberedReject(
+                        callerPackage, method, activePubkey,
+                        peerPubkey = peerPubkey,
+                        callerCertSha256 = callerCertSha256,
+                    )
+                ) {
+                    Log.d(TAG, "query: $method for $callerPackage — remembered reject")
+                    return Nip55RequestCodec.rejectedCursor()
+                }
+                Log.d(TAG, "query: $method for $callerPackage — decrypting natively (auto-approve)")
+                val nativeResult = performNativeCrypto(method, projection, activePubkey)
+                if (nativeResult != null) return nativeResult
+                // Fall through if native crypto fails
+            } else {
+                Log.d(TAG, "query: $method for $callerPackage — vault locked, returning null")
+                return null
+            }
+        }
+
         var nativeCryptoFellThrough = false
 
         if (activePubkey != null && callerPackage != null) {

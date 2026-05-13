@@ -890,7 +890,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         return false;
       }
     }
-    if (!_isClientAuthenticationRequest(incoming)) return false;
+    // Auto-complete if we have a remembered grant that covers this request.
+    // This includes: kind 22242 relay auth, nip04/nip44 decrypt with wildcard
+    // or matching peer grants.
+    if (!_isAutoCompletableMethod(incoming)) return false;
 
     final decision = await _decide(incoming, activeIdentity.publicKey);
     if (decision is AutoReject) {
@@ -1090,10 +1093,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final peerPubkey = incoming.pubkey;
     return switch (incoming.method) {
       Nip55Method.signMessage => const SignMessageScope(),
+      // Decrypt scopes use wildcard (null) peer: if you trust an app to decrypt
+      // one DM, you trust it to decrypt all DMs. Encrypt keeps the specific peer
+      // since you want to know who you're encrypting to.
       Nip55Method.nip04Encrypt => Nip04EncryptScope(peerPubkey),
-      Nip55Method.nip04Decrypt => Nip04DecryptScope(peerPubkey),
+      Nip55Method.nip04Decrypt => const Nip04DecryptScope(null),
       Nip55Method.nip44Encrypt => Nip44EncryptScope(peerPubkey),
-      Nip55Method.nip44Decrypt => Nip44DecryptScope(peerPubkey),
+      Nip55Method.nip44Decrypt => const Nip44DecryptScope(null),
       Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
       Nip55Method.getPublicKey ||
       Nip55Method.signEvent ||
@@ -1171,16 +1177,18 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final requested = _scopeFor(incoming);
     final grantScope = grant.scope;
     return switch ((grantScope, requested)) {
+      // Wildcard (null peer) matches any requested peer;
+      // specific peer only matches that exact peer.
       (
         Nip04DecryptScope(peerPubkey: final grantPeer),
         Nip04DecryptScope(peerPubkey: final requestedPeer),
       ) =>
-        grantPeer != null && grantPeer == requestedPeer,
+        grantPeer == null || grantPeer == requestedPeer,
       (
         Nip44DecryptScope(peerPubkey: final grantPeer),
         Nip44DecryptScope(peerPubkey: final requestedPeer),
       ) =>
-        grantPeer != null && grantPeer == requestedPeer,
+        grantPeer == null || grantPeer == requestedPeer,
       _ => false,
     };
   }
@@ -1194,8 +1202,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final scope = _scopeFor(request);
     if (!scope.isSensitive) return true;
     return switch (scope) {
-      Nip04DecryptScope(peerPubkey: final peerPubkey) => peerPubkey != null,
-      Nip44DecryptScope(peerPubkey: final peerPubkey) => peerPubkey != null,
+      Nip04DecryptScope() => true,
+      Nip44DecryptScope() => true,
       _ => false,
     };
   }
@@ -1203,6 +1211,20 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool _isClientAuthenticationRequest(Nip55IncomingRequest incoming) {
     return incoming.method == Nip55Method.signEvent &&
         incoming.eventJson?['kind'] == 22242;
+  }
+
+  bool _isAutoCompletableMethod(Nip55IncomingRequest incoming) {
+    // Methods that can be auto-completed without UI when a remembered grant exists.
+    // kind 22242 relay auth is always auto-approved (no grant needed when vault unlocked).
+    // Decrypt operations can be auto-completed when a matching grant exists.
+    return incoming.method == Nip55Method.getPublicKey ||
+        incoming.method == Nip55Method.nip04Decrypt ||
+        incoming.method == Nip55Method.nip44Decrypt ||
+        incoming.method == Nip55Method.signEvent ||
+        incoming.method == Nip55Method.nip04Encrypt ||
+        incoming.method == Nip55Method.nip44Encrypt ||
+        incoming.method == Nip55Method.signMessage ||
+        incoming.method == Nip55Method.decryptZapEvent;
   }
 
   DateTime? _nextApprovalSessionExpiry() {
@@ -1245,10 +1267,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   bool _shouldDeferClientAuthenticationRequest(Nip55IncomingRequest incoming) {
-    if (!_isClientAuthenticationRequest(incoming)) return false;
+    // Defer any request that has a remembered grant (not just kind 22242).
+    if (!_isAutoCompletableMethod(incoming)) return false;
     final pending = state.pendingIncoming;
     if (pending == null) return _isParsingIntent;
-    if (!_isClientAuthenticationRequest(pending)) return false;
+    // Only defer if the pending request is also auto-completable (i.e. same class)
+    if (!_isAutoCompletableMethod(pending)) return false;
     return _sameClientAndIdentity(incoming, pending);
   }
 
@@ -1285,11 +1309,35 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       final decision = await _decide(incoming, activeIdentity.publicKey);
       if (decision is AutoAllow &&
           _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
-        await _completeRememberedSignEvent(
-          incoming: incoming,
-          activeIdentity: activeIdentity,
-          grant: decision.grant,
-        );
+        // Dispatch to the appropriate completion handler
+        if (incoming.method == Nip55Method.signEvent) {
+          await _completeRememberedSignEvent(
+            incoming: incoming,
+            activeIdentity: activeIdentity,
+            grant: decision.grant,
+          );
+        } else if (incoming.method == Nip55Method.getPublicKey) {
+          await _markGrantUsed(decision.grant);
+          await _gateway.completeNip55Intent(
+            requestToken: incoming.requestToken,
+            extras: _responseBuilder.getPublicKeyExtras(
+              activeIdentity,
+              incoming: incoming,
+            ),
+          );
+        } else {
+          // Crypto operations (decrypt, encrypt, etc.)
+          final result = await _cryptoResult(incoming, activeIdentity.localId);
+          await _markGrantUsed(decision.grant);
+          await _gateway.completeNip55Intent(
+            requestToken: incoming.requestToken,
+            extras: _responseBuilder.operationResultExtras(
+              incoming: incoming,
+              result: result,
+              clipboardLabel: _clipboardLabelFor(incoming),
+            ),
+          );
+        }
       } else if (decision is AutoReject) {
         await _markGrantUsed(decision.grant);
         await _gateway.rejectNip55Intent(

@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.plugin.KotlinAndroidPluginWrapper
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -45,4 +47,5 @@ flutter {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation(kotlin("test"))
 }

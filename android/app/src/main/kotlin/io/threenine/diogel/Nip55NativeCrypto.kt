@@ -410,7 +410,11 @@ object Nip55NativeCrypto {
         arr.put(kind)
         arr.put(tags)
         arr.put(content)
-        return arr.toString()
+        // Android's org.json JSONArray.toString() escapes '/' as '\/'
+        // but NIP-01 requires unescaped '/' in the serialized event.
+        // Without this fix, the computed event ID doesn't match what clients expect,
+        // causing signature verification failures.
+        return arr.toString().replace("\\/", "/")
     }
 
     private fun hexToBytes(hex: String): ByteArray {
