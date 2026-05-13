@@ -105,14 +105,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
                   'Welcome to Diogel',
                   style: Theme.of(context).textTheme.headlineLarge,
                 ),
-                const SizedBox(height: DiogelSpacing.space4),
-                Text(
-                  'Private keys are stored locally using the device platform secure-storage backend. Diogel never syncs or uploads them.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: DiogelColors.textSecondary,
-                      ),
-                ),
+
                 const SizedBox(height: DiogelSpacing.space8),
                 _buildInfoCard(),
                 const SizedBox(height: DiogelSpacing.space12),
