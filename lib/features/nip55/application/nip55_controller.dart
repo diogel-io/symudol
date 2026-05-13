@@ -170,8 +170,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   /// Eagerly sync permission grants to native mirror on startup.
   Future<void> _syncGrantsToNative() async {
-    if (_permissionStore is SecureStorageNip55PermissionStore) {
-      await (_permissionStore as SecureStorageNip55PermissionStore).syncToNative();
+    final store = _permissionStore;
+    if (store is SecureStorageNip55PermissionStore) {
+      await store.syncToNative();
     }
   }
 

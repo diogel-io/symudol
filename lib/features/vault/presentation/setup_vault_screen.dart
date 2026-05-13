@@ -102,7 +102,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
                 ),
                 const SizedBox(height: DiogelSpacing.space6),
                 Text(
-                  'Welcome to Diogel',
+                  'Diogel',
                   style: Theme.of(context).textTheme.headlineLarge,
                 ),
 
@@ -148,13 +148,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
           _buildInfoItem(
             Icons.lock_outline,
             'Local Access PIN',
-            'Create a local access PIN for this app session. Stronger PIN-derived vault encryption is planned for a later hardening milestone.',
-          ),
-          const SizedBox(height: DiogelSpacing.space3),
-          _buildInfoItem(
-            Icons.cloud_off,
-            'No Cloud Sync',
-            'Diogel does not upload your private keys to any server.',
+            'Create a local access PIN for Diogel.',
           ),
         ],
       ),
