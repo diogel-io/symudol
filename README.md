@@ -41,14 +41,8 @@ Current high-level app structure:
 - `lib/features/settings/` - settings UI
 - `lib/theme/` - shared theme and token definitions
 
-## Related planning docs
-
-Product planning and review docs live in the workspace project folder:
-- `/root/.openclaw/workspace/projects/android-diogel`
-
 Important documents there currently include:
 - `README.md`
-- `repo-review-2026-04-27.md`
 - `objective.md`
 - `mvp-scope.md`
 - `user-flows.md`
@@ -61,14 +55,6 @@ Those docs are the current source of truth for product direction while the app i
 2. define the session/security model explicitly before deep signer logic lands
 3. implement bounded MVP slices instead of vague large rewrites
 4. keep trust, provenance, and approval clarity central to the UI
-
-## What this app is not
-
-Android Diogel is not currently trying to be:
-- a full social Nostr client
-- a generic crypto wallet
-- a kitchen-sink privacy dashboard
-- a fake-finished prototype padded with marketing language
 
 ## Tech stack
 
