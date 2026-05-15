@@ -1,17 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="androidiogel"
+        android:label="@string/app_name"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
-            android:theme="@style/LaunchTheme"
+            android:theme="@style/NormalTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+            <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues
@@ -25,6 +26,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity
+            android:name=".Nip55BridgeActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Nip55BridgeTheme"
+            android:noHistory="false">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="@string/scheme_nostrsigner" />
+            </intent-filter>
+        </activity>
+        <provider
+            android:name=".Nip55ContentProvider"
+            android:authorities="io.threenine.diogel.SIGN_EVENT;io.threenine.diogel.SIGN_MESSAGE;io.threenine.diogel.NIP44_ENCRYPT;io.threenine.diogel.NIP44_DECRYPT;io.threenine.diogel.NIP04_ENCRYPT;io.threenine.diogel.NIP04_DECRYPT;io.threenine.diogel.DECRYPT_ZAP_EVENT;io.threenine.diogel.GET_PUBLIC_KEY;io.threenine.diogel.PING"
+            android:exported="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

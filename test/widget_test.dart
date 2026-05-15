@@ -1,30 +1,32 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:androidiogel/main.dart';
+import 'package:android_diogel/app/app.dart';
+import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'fakes/fake_vault_store.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('app smoke test renders Android Diogel setup screen', (
+    WidgetTester tester,
+  ) async {
+    final fakeStore = FakeVaultStore();
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        vaultStoreProvider.overrideWithValue(fakeStore),
+      ],
+      child: const DiogelApp(),
+    ));
+    
+    // First pump to start initialization
     await tester.pump();
+    
+    // Wait for the async initialization to complete
+    // Since FakeVaultStore is synchronous in its methods but VaultController.initialize is async,
+    // we need to wait for the microtasks to complete.
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Welcome to Diogel'), findsOneWidget);
+    expect(find.text('Local Access PIN'), findsOneWidget);
+    expect(find.text('No Cloud Sync'), findsOneWidget);
+    expect(find.text('Create a security PIN'), findsOneWidget);
   });
 }

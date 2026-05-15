@@ -1,5 +1,5 @@
-name: androidiogel
-description: "A new Flutter project."
+name: android_diogel
+description: "Privacy-first mobile Nostr signer and identity-security companion app."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,11 +34,18 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  dart_nostr: ^9.2.5
+  bech32: ^0.2.2
+  crypto: ^3.0.7
+  dart_nostr: ^10.0.1
+  flutter_secure_storage: ^10.0.0
+  flutter_riverpod: ^3.3.1
+  pointycastle: ^3.9.1
+  state_notifier: ^1.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  mocktail: ^1.0.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

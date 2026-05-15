@@ -1,6 +1,6 @@
 {
-    "name": "androidiogel",
-    "short_name": "androidiogel",
+    "name": "diogel",
+    "short_name": "diogel",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
