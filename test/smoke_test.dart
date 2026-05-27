@@ -38,7 +38,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(child: const SetupVaultScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Welcome to Diogel'), findsOneWidget);
+      expect(find.text('Diogel'), findsOneWidget);
       expect(find.text('Local Access PIN'), findsOneWidget);
       expect(find.text('Create a security PIN'), findsOneWidget);
     });

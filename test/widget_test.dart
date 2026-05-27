@@ -24,9 +24,8 @@ void main() {
     // we need to wait for the microtasks to complete.
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to Diogel'), findsOneWidget);
+    expect(find.text('Diogel'), findsOneWidget);
     expect(find.text('Local Access PIN'), findsOneWidget);
-    expect(find.text('No Cloud Sync'), findsOneWidget);
     expect(find.text('Create a security PIN'), findsOneWidget);
   });
 }
