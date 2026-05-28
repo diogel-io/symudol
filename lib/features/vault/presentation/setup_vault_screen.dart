@@ -95,10 +95,10 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: DiogelSpacing.space12),
-                const Icon(
-                  Icons.security,
-                  size: 64,
-                  color: DiogelColors.actionPrimary,
+                Image.asset(
+                  'assets/images/diogel.png',
+                  width: 64,
+                  height: 64,
                 ),
                 const SizedBox(height: DiogelSpacing.space6),
                 Text(
