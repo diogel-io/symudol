@@ -61,11 +61,10 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const SizedBox(height: DiogelSpacing.space12),
             Image.asset(
               'assets/images/diogel.png',
-              width: 64,
-              height: 64,
+              width: 28,
+              height: 28,
             ),
             const SizedBox(width: DiogelSpacing.space3),
             Text(
@@ -104,10 +103,11 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                       borderRadius: BorderRadius.circular(DiogelRadius.large),
                       border: Border.all(color: DiogelColors.borderSubtle),
                     ),
-                    child: const Icon(
-                      Icons.shield,
-                      size: 48,
-                      color: DiogelColors.actionPrimary,
+                    child: Padding(
+                      padding: const EdgeInsets.all(DiogelSpacing.space6),
+                      child: Image.asset(
+                        'assets/images/diogel.png',
+                      ),
                     ),
                   ),
                   const SizedBox(height: DiogelSpacing.space6),

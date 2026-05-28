@@ -35,7 +35,11 @@ class AccountsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.privacy_tip, color: DiogelColors.actionPrimary),
+            Image.asset(
+              'assets/images/diogel.png',
+              width: 28,
+              height: 28,
+            ),
             const SizedBox(width: DiogelSpacing.space3),
             Text('Diogel', style: Theme.of(context).textTheme.titleLarge),
           ],
