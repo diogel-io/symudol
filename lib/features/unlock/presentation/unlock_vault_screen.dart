@@ -61,10 +61,15 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.shield, color: DiogelColors.actionPrimary),
+            const SizedBox(height: DiogelSpacing.space12),
+            Image.asset(
+              'assets/images/diogel.png',
+              width: 64,
+              height: 64,
+            ),
             const SizedBox(width: DiogelSpacing.space3),
             Text(
-              'Android Diogel',
+              'Diogel',
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ],
