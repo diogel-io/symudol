@@ -112,7 +112,6 @@ void main() {
       await tester.pump();
 
       expect(find.text('No active requests'), findsOneWidget);
-      expect(find.text('Load Demo Request (Dev)'), findsOneWidget);
     });
 
     testWidgets('shows pending request details', (tester) async {

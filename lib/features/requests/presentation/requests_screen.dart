@@ -90,22 +90,8 @@ class _RequestsScreenState extends ConsumerState<RequestsScreen> {
                   color: DiogelColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: DiogelSpacing.space6),
-              OutlinedButton.icon(
-                onPressed: activeIdentity == null
-                    ? null
-                    : () => ref
-                          .read(requestControllerProvider.notifier)
-                          .injectDemoRequest(),
-                icon: const Icon(Icons.bug_report_outlined),
-                label: const Text('Load Demo Request (Dev)'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DiogelColors.textTertiary,
-                  side: const BorderSide(color: DiogelColors.borderSubtle),
-                ),
-              ),
               if (activeIdentity == null) ...[
-                const SizedBox(height: DiogelSpacing.space2),
+                const SizedBox(height: DiogelSpacing.space6),
                 const Text(
                   'Create an identity first',
                   style: TextStyle(
