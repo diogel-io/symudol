@@ -1046,6 +1046,172 @@ void main() {
       },
     );
 
+    test('decrypt_zap_event requests can be remembered', () async {
+      final bob = NostrKeyPairs(
+        private:
+            '0000000000000000000000000000000000000000000000000000000000000002',
+      );
+      final identity = vaultController.state.activeIdentity!;
+      // NIP-57 zap receipt: legacy format has NIP-44 ciphertext in the
+      // event content field, signed by the zapper's pubkey.
+      final ciphertext = const DartNostrCryptoService().nip44Encrypt(
+        privateKeyHex: bob.private,
+        peerPubkeyHex: identity.publicKey,
+        plaintext: 'zap-content',
+      );
+      final zapEventJson = jsonEncode({
+        'kind': 9734,
+        'pubkey': bob.public,
+        'content': ciphertext,
+        'tags': [
+          ['p', identity.publicKey],
+        ],
+        'created_at': 1700000000,
+      });
+
+      final permissionStore = FakeNip55PermissionStore();
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: permissionStore,
+      );
+
+      await permissionController.handleRawIntent({
+        'requestToken': 'zap-token',
+        'type': 'decrypt_zap_event',
+        'content': zapEventJson,
+        'currentUser': identity.publicKey,
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
+      });
+
+      expect(permissionController.canRememberPendingCryptoRequest(), isTrue);
+
+      await permissionController.approveCryptoRequest(remember: true);
+
+      expect(gateway.completedExtras?['result'], isNotNull);
+      expect(
+        permissionStore.grants.single.scope,
+        isA<DecryptZapEventScope>(),
+      );
+    });
+
+    test(
+      'remembered decrypt_zap_event grant works through provider',
+      () async {
+        final bob = NostrKeyPairs(
+          private:
+              '0000000000000000000000000000000000000000000000000000000000000002',
+        );
+        final identity = vaultController.state.activeIdentity!;
+        final ciphertext = const DartNostrCryptoService().nip44Encrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: identity.publicKey,
+          plaintext: 'zap-from-provider',
+        );
+        final zapEventJson = jsonEncode({
+          'kind': 9734,
+          'pubkey': bob.public,
+          'content': ciphertext,
+          'tags': [
+            ['p', identity.publicKey],
+          ],
+          'created_at': 1700000000,
+        });
+        final permissionStore = FakeNip55PermissionStore();
+        // Pre-existing decrypt_zap_event grant.
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-zap-decrypt',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const DecryptZapEventScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        final result = await permissionController.handleProviderQuery({
+          'requestToken': 'provider-zap-token',
+          'type': 'decrypt_zap_event',
+          'content': zapEventJson,
+          'currentUser': identity.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'transport': 'content_provider',
+        });
+
+        expect(result?['result'], isNotNull);
+      },
+    );
+
+    test(
+      'remembered nip04_decrypt grant satisfies decrypt_zap_event through provider',
+      () async {
+        final bob = NostrKeyPairs(
+          private:
+              '0000000000000000000000000000000000000000000000000000000000000002',
+        );
+        final identity = vaultController.state.activeIdentity!;
+        final ciphertext = const DartNostrCryptoService().nip44Encrypt(
+          privateKeyHex: bob.private,
+          peerPubkeyHex: identity.publicKey,
+          plaintext: 'cross-scope-zap',
+        );
+        final zapEventJson = jsonEncode({
+          'kind': 9734,
+          'pubkey': bob.public,
+          'content': ciphertext,
+          'tags': [
+            ['p', identity.publicKey],
+          ],
+          'created_at': 1700000000,
+        });
+        final permissionStore = FakeNip55PermissionStore();
+        // Pre-existing nip04_decrypt grant (no specific peer — wildcard).
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-nip04-decrypt-wildcard',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const Nip04DecryptScope(null),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        final result = await permissionController.handleProviderQuery({
+          'requestToken': 'provider-cross-scope-zap',
+          'type': 'decrypt_zap_event',
+          'content': zapEventJson,
+          'currentUser': identity.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'transport': 'content_provider',
+        });
+
+        expect(result?['result'], isNotNull);
+      },
+    );
+
     test(
       'crypto approval failure rejects caller instead of escaping',
       () async {

@@ -1189,9 +1189,15 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // for *saving* grants (trust-all-DMs policy) but breaks *matching*
     // peer-scoped grants because it strips the peer.  This must match
     // Nip55ApprovalPolicy._scopeFor which preserves the peer.
+    //
+    // decrypt_zap_event is also matched here because NIP-57 zap receipts
+    // are NIP-04 encrypted to the recipient. If the user trusts an app
+    // to decrypt DMs, they trust it to decrypt zap receipts too, so
+    // nip04_decrypt/nip44_decrypt grants also satisfy decrypt_zap_event.
     final requested = switch (incoming.method) {
       Nip55Method.nip04Decrypt => Nip04DecryptScope(incoming.pubkey),
       Nip55Method.nip44Decrypt => Nip44DecryptScope(incoming.pubkey),
+      Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
       _ => null,
     };
     if (requested == null) return false;
@@ -1209,6 +1215,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         Nip44DecryptScope(peerPubkey: final requestedPeer),
       ) =>
         grantPeer == null || grantPeer == requestedPeer,
+      // nip04_decrypt and nip44_decrypt grants also satisfy decrypt_zap_event.
+      // This mirrors Nip55PermissionMirror.scopeMatches on the Kotlin side.
+      (Nip04DecryptScope(), DecryptZapEventScope()) => true,
+      (Nip44DecryptScope(), DecryptZapEventScope()) => true,
+      // Direct decrypt_zap_event grant matches directly.
+      (DecryptZapEventScope(), DecryptZapEventScope()) => true,
       _ => false,
     };
   }
@@ -1224,6 +1236,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return switch (scope) {
       Nip04DecryptScope() => true,
       Nip44DecryptScope() => true,
+      DecryptZapEventScope() => true,
       _ => false,
     };
   }

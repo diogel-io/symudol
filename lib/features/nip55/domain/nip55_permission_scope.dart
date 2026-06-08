@@ -197,6 +197,16 @@ extension Nip55PermissionScopeMatching on Nip55PermissionScope {
     if (grant is Nip04DecryptScope && requested is Nip04DecryptScope) {
       return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
     }
+    // Cross-scope: nip04_decrypt/nip44_decrypt grants satisfy decrypt_zap_event.
+    // NIP-57 zap receipts are NIP-04 encrypted to the recipient, so if the
+    // user trusts an app to decrypt DMs, they trust it to decrypt zaps too.
+    // This mirrors Nip55PermissionMirror.scopeMatches on the Kotlin side.
+    if (grant is Nip04DecryptScope && requested is DecryptZapEventScope) {
+      return true;
+    }
+    if (grant is Nip44DecryptScope && requested is DecryptZapEventScope) {
+      return true;
+    }
     return runtimeType == requested.runtimeType;
   }
 }

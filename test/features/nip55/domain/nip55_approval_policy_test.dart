@@ -104,6 +104,99 @@ void main() {
       expect(decision, isA<AutoReject>());
     });
 
+    test('nip04_decrypt grant auto-allows decrypt_zap_event', () {
+      final zapRequest = Nip55IncomingRequest(
+        localId: 'local',
+        requestToken: 'token',
+        method: Nip55Method.decryptZapEvent,
+        receivedAt: now,
+        clientIdentity: const Nip55ClientIdentity(
+          packageName: 'com.example.client',
+          certificateSha256: 'AA:BB',
+          provenanceVerified: true,
+        ),
+        eventJson: const {'kind': 9734},
+      );
+      final decision = policy.decide(
+        request: zapRequest,
+        vaultState: const VaultUnlocked(),
+        activeIdentityPubkey: identity,
+        grants: [
+          _grant(
+            identityPubkey: identity,
+            packageName: 'com.example.client',
+            scope: const Nip04DecryptScope(null),
+            decision: Nip55PermissionDecision.allow,
+            now: now,
+          ),
+        ],
+      );
+
+      expect(decision, isA<AutoAllow>());
+    });
+
+    test('nip44_decrypt grant auto-allows decrypt_zap_event', () {
+      final zapRequest = Nip55IncomingRequest(
+        localId: 'local',
+        requestToken: 'token',
+        method: Nip55Method.decryptZapEvent,
+        receivedAt: now,
+        clientIdentity: const Nip55ClientIdentity(
+          packageName: 'com.example.client',
+          certificateSha256: 'AA:BB',
+          provenanceVerified: true,
+        ),
+        eventJson: const {'kind': 9734},
+      );
+      final decision = policy.decide(
+        request: zapRequest,
+        vaultState: const VaultUnlocked(),
+        activeIdentityPubkey: identity,
+        grants: [
+          _grant(
+            identityPubkey: identity,
+            packageName: 'com.example.client',
+            scope: const Nip44DecryptScope(null),
+            decision: Nip55PermissionDecision.allow,
+            now: now,
+          ),
+        ],
+      );
+
+      expect(decision, isA<AutoAllow>());
+    });
+
+    test('decrypt_zap_event grant auto-allows decrypt_zap_event', () {
+      final zapRequest = Nip55IncomingRequest(
+        localId: 'local',
+        requestToken: 'token',
+        method: Nip55Method.decryptZapEvent,
+        receivedAt: now,
+        clientIdentity: const Nip55ClientIdentity(
+          packageName: 'com.example.client',
+          certificateSha256: 'AA:BB',
+          provenanceVerified: true,
+        ),
+        eventJson: const {'kind': 9734},
+      );
+      final decision = policy.decide(
+        request: zapRequest,
+        vaultState: const VaultUnlocked(),
+        activeIdentityPubkey: identity,
+        grants: [
+          _grant(
+            identityPubkey: identity,
+            packageName: 'com.example.client',
+            scope: const DecryptZapEventScope(),
+            decision: Nip55PermissionDecision.allow,
+            now: now,
+          ),
+        ],
+      );
+
+      expect(decision, isA<AutoAllow>());
+    });
+
     test('current_user mismatch blocks auto signing', () {
       final decision = policy.decide(
         request: _request(
