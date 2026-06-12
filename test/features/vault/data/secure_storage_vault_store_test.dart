@@ -39,13 +39,13 @@ void main() {
       verify(() => mockStorage.write(key: 'vault_version', value: '2.0')).called(1);
     });
 
-    test('getSentinel should read from storage', () async {
-      when(() => mockStorage.read(key: 'vault_sentinel'))
-          .thenAnswer((_) async => 'sentinel_value');
+    test('getWrappedDek should read from storage', () async {
+      when(() => mockStorage.read(key: 'vault_wrapped_dek'))
+          .thenAnswer((_) async => 'wrapped_dek_value');
 
-      final sentinel = await vaultStore.getSentinel();
+      final wrappedDek = await vaultStore.getWrappedDek();
 
-      expect(sentinel, 'sentinel_value');
+      expect(wrappedDek, 'wrapped_dek_value');
     });
 
     test('getActiveIdentityId should read from storage', () async {
@@ -61,7 +61,7 @@ void main() {
       final record = VaultIdentityRecord(
         identityId: 'id1',
         publicKey: 'pub1',
-        secretPayload: 'secret1',
+        encryptedSecretPayload: 'secret1',
         createdAt: DateTime(2023),
         origin: IdentityOrigin.generated,
       );
@@ -83,7 +83,7 @@ void main() {
       final record = VaultIdentityRecord(
         identityId: 'id1',
         publicKey: 'pub1',
-        secretPayload: 'secret1',
+        encryptedSecretPayload: 'secret1',
         createdAt: DateTime(2023),
         origin: IdentityOrigin.generated,
       );

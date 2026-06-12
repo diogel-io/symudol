@@ -75,7 +75,7 @@ void main() {
 
     test('Fresh app start with existing vault -> state starts locked and metadata is cleared', () async {
         // 1. Pre-fill store
-        await store.setSentinel('vault_exists');
+        await store.setWrappedDek('wrapped-dek-placeholder');
         await store.setActiveIdentityId('some-id');
         // We need a record for toVaultIdentity to work if service.init reads it
         // but here we just want to check if controller correctly reflects the policy.

@@ -1,7 +1,6 @@
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
-import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
@@ -24,26 +23,26 @@ void main() {
       expect(vaultService.state, isA<NoVault>());
     });
 
-    test('initial state should be VaultLocked when sentinel exists', () async {
-      await fakeStore.setSentinel('vault_exists');
+    test('initial state should be VaultLocked when a vault exists', () async {
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
       await vaultService.init();
       expect(vaultService.state, isA<VaultLocked>());
     });
 
     test(
-      'createVault should set sentinel and transition to VaultUnlocked',
+      'createVault should persist a wrapped DEK and transition to VaultUnlocked',
       () async {
         await vaultService.createVault('1234');
 
         expect(vaultService.state, isA<VaultUnlocked>());
-        expect(await fakeStore.getSentinel(), isNotNull);
+        expect(await fakeStore.getWrappedDek(), isNotNull);
       },
     );
 
     test(
-      'createVault should throw VaultAlreadyExistsException if sentinel exists',
+      'createVault should throw VaultAlreadyExistsException if a vault already exists',
       () async {
-        await fakeStore.setSentinel('vault_exists');
+        await fakeStore.setWrappedDek('wrapped-dek-placeholder');
 
         expect(
           () => vaultService.createVault('1234'),
@@ -61,7 +60,7 @@ void main() {
     });
 
     test('lock should transition from VaultLocked to VaultLocked', () async {
-      await fakeStore.setSentinel('vault_exists');
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
       await vaultService.init();
       expect(vaultService.state, isA<VaultLocked>());
 
@@ -70,14 +69,28 @@ void main() {
     });
 
     test(
-      'unlock should transition from VaultLocked to VaultUnlocked',
+      'unlock should transition from VaultLocked to VaultUnlocked with the correct PIN',
       () async {
-        await fakeStore.setSentinel('vault_exists');
-        await vaultService.init();
+        await vaultService.createVault('1234');
+        await vaultService.lock();
         expect(vaultService.state, isA<VaultLocked>());
 
         await vaultService.unlock('1234');
         expect(vaultService.state, isA<VaultUnlocked>());
+      },
+    );
+
+    test(
+      'unlock should throw InvalidPinException for the wrong PIN',
+      () async {
+        await vaultService.createVault('1234');
+        await vaultService.lock();
+
+        expect(
+          () => vaultService.unlock('0000'),
+          throwsA(isA<InvalidPinException>()),
+        );
+        expect(vaultService.state, isA<VaultLocked>());
       },
     );
 
@@ -103,11 +116,61 @@ void main() {
     );
   });
 
+  group('VaultServiceImpl Lockout', () {
+    test(
+      'repeated wrong PINs trigger a lockout that blocks further unlock attempts',
+      () async {
+        var now = DateTime(2024, 1, 1);
+        vaultService = VaultServiceImpl(fakeStore, now: () => now);
+
+        await vaultService.createVault('1234');
+        await vaultService.lock();
+
+        for (var i = 0; i < 5; i++) {
+          await expectLater(
+            () => vaultService.unlock('0000'),
+            throwsA(isA<InvalidPinException>()),
+          );
+        }
+
+        // The 5th failure should trigger a lockout, blocking even the
+        // correct PIN until the lockout window passes.
+        await expectLater(
+          () => vaultService.unlock('1234'),
+          throwsA(isA<VaultLockedOutException>()),
+        );
+
+        // Advance time past the lockout window.
+        now = now.add(const Duration(seconds: 31));
+
+        await vaultService.unlock('1234');
+        expect(vaultService.state, isA<VaultUnlocked>());
+      },
+    );
+
+    test(
+      'a successful unlock resets the failed-attempt counter',
+      () async {
+        await vaultService.createVault('1234');
+        await vaultService.lock();
+
+        await expectLater(
+          () => vaultService.unlock('0000'),
+          throwsA(isA<InvalidPinException>()),
+        );
+
+        await vaultService.unlock('1234');
+        expect(vaultService.state, isA<VaultUnlocked>());
+        expect(await fakeStore.getFailedUnlockAttempts(), equals(0));
+      },
+    );
+  });
+
   group('VaultServiceImpl Identity operations while locked', () {
     test(
       'createIdentity should throw VaultLockedException when locked',
       () async {
-        await fakeStore.setSentinel('vault_exists');
+        await fakeStore.setWrappedDek('wrapped-dek-placeholder');
         await vaultService.init();
 
         expect(
@@ -120,7 +183,7 @@ void main() {
     test(
       'listIdentities should throw VaultLockedException when locked',
       () async {
-        await fakeStore.setSentinel('vault_exists');
+        await fakeStore.setWrappedDek('wrapped-dek-placeholder');
         await vaultService.init();
 
         expect(
@@ -162,7 +225,7 @@ void main() {
       // We check the record in the store to ensure it DOES have it,
       // but the returned object doesn't.
       final record = await fakeStore.getIdentityRecord(identity.localId);
-      expect(record?.secretPayload, isNotEmpty);
+      expect(record?.encryptedSecretPayload, isNotEmpty);
 
       // We expect a NoSuchMethodError if we try to access secretPayload on VaultIdentity
       expect(
@@ -191,7 +254,8 @@ void main() {
         expect(identity.origin, equals(IdentityOrigin.imported));
 
         final record = await fakeStore.getIdentityRecord(identity.localId);
-        expect(record?.secretPayload, equals(privateKey));
+        expect(record?.encryptedSecretPayload, isNot(equals(privateKey)));
+        expect(await vaultService.getActivePrivateKey(), equals(privateKey));
       },
     );
 
@@ -214,7 +278,8 @@ void main() {
         expect(identity.origin, equals(IdentityOrigin.imported));
 
         final record = await fakeStore.getIdentityRecord(identity.localId);
-        expect(record?.secretPayload, equals(privateKey));
+        expect(record?.encryptedSecretPayload, isNot(equals(privateKey)));
+        expect(await vaultService.getActivePrivateKey(), equals(privateKey));
       },
     );
 
@@ -298,32 +363,21 @@ void main() {
     );
 
     test('active identity should be loaded during init', () async {
-      // Setup store with an identity and active ID
-      final now = DateTime.now();
-      const identityId = 'test-id';
-      final record = VaultIdentityRecord(
-        identityId: identityId,
-        publicKey: 'pubkey',
-        secretPayload: 'secret',
-        origin: IdentityOrigin.generated,
-        createdAt: now,
+      await vaultService.createVault('1234');
+      final identity = await vaultService.createIdentity(
+        displayName: 'Test',
       );
-      await fakeStore.saveIdentityRecord(record);
-      await fakeStore.setActiveIdentityId(identityId);
-      await fakeStore.setSentinel('exists');
+      await vaultService.lock();
 
-      // Re-init service
-      await vaultService.init();
-      // Need to unlock to access identities usually, but let's see how we want to handle active identity when locked.
-      // Usually active identity might be needed for the UI even when locked (e.g. showing who is logging in),
-      // but the requirement says "list/select active identity" and "expose active identity summary".
-      // If the vault is locked, we might not want to expose it if it's sensitive, but it's just a summary.
+      // Re-init a fresh service instance backed by the same store.
+      final reloadedService = VaultServiceImpl(fakeStore);
+      await reloadedService.init();
+      await reloadedService.unlock('1234');
 
-      // Let's assume for now it's available after unlock if we want to follow _checkUnlocked() pattern,
-      // OR we can make it available whenever it's loaded.
-      await vaultService.unlock('1234');
-
-      expect(vaultService.activeIdentity?.localId, equals(identityId));
+      expect(
+        reloadedService.activeIdentity?.localId,
+        equals(identity.localId),
+      );
     });
 
     test(
@@ -386,7 +440,7 @@ void main() {
     );
 
     test('signNostrEvent refuses while locked', () async {
-      await fakeStore.setSentinel('vault_exists');
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
       await vaultService.init();
 
       expect(
@@ -445,7 +499,7 @@ void main() {
 
   group('VaultServiceImpl NIP-55 crypto', () {
     test('crypto operations refuse while locked', () async {
-      await fakeStore.setSentinel('vault_exists');
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
       await vaultService.init();
 
       expect(

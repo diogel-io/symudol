@@ -14,8 +14,8 @@ void main() {
     addTearDown(() => tester.view.resetDevicePixelRatio());
 
     final store = FakeVaultStore();
-    // Pre-populate store with a sentinel so it goes to VaultLocked initially
-    // await store.setSentinel('exists'); // DO NOT pre-populate, we want NoVault -> Setup
+    // Pre-populate store with a wrapped DEK so it goes to VaultLocked initially
+    // await store.setWrappedDek('wrapped-dek'); // DO NOT pre-populate, we want NoVault -> Setup
 
     await tester.pumpWidget(
       ProviderScope(

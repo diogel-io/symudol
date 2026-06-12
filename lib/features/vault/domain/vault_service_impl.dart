@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:android_diogel/app/utils/concurrency_utils.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
 import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
+import 'package:android_diogel/features/vault/data/pointycastle_vault_crypto_service.dart';
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_state.dart';
@@ -35,15 +38,32 @@ class VaultServiceImpl implements VaultService {
   };
   static const Set<int> supportedApprovalSessionDurationMinutes = {0, 1, 5, 15};
 
+  /// Failed-unlock-attempt thresholds and the resulting lockout durations.
+  ///
+  /// Argon2id already adds per-attempt cost; this provides additional
+  /// throttling on top of that. No automatic wipe is performed.
+  static const Map<int, Duration> lockoutThresholds = {
+    5: Duration(seconds: 30),
+    10: Duration(minutes: 5),
+  };
+
   final VaultStore _store;
   final NostrCryptoService _cryptoService;
+  final VaultCryptoService _vaultCryptoService;
+  final DateTime Function() _now;
   VaultState _state = const NoVault();
   VaultIdentity? _activeIdentity;
+  Uint8List? _dek;
 
   VaultServiceImpl(
     this._store, {
     NostrCryptoService cryptoService = const DartNostrCryptoService(),
-  }) : _cryptoService = cryptoService;
+    VaultCryptoService? vaultCryptoService,
+    DateTime Function()? now,
+  }) : _cryptoService = cryptoService,
+       _vaultCryptoService =
+           vaultCryptoService ?? const PointyCastleVaultCryptoService(),
+       _now = now ?? DateTime.now;
 
   @override
   VaultState get state => _state;
@@ -56,8 +76,8 @@ class VaultServiceImpl implements VaultService {
     if (_state is VaultUnlocked) {
       return;
     }
-    final sentinel = await _store.getSentinel();
-    if (sentinel == null) {
+    final wrappedDek = await _store.getWrappedDek();
+    if (wrappedDek == null) {
       _state = const NoVault();
       _activeIdentity = null;
     } else {
@@ -68,30 +88,68 @@ class VaultServiceImpl implements VaultService {
 
   @override
   Future<void> createVault(String pin) async {
-    final existingSentinel = await _store.getSentinel();
-    if (existingSentinel != null) {
+    final existingWrappedDek = await _store.getWrappedDek();
+    if (existingWrappedDek != null) {
       throw const VaultAlreadyExistsException();
     }
 
-    // In a real implementation, we might derive a key from the pin.
-    // For now, we use the pin as a sentinel (placeholder).
-    await _store.setSentinel('vault_exists');
+    final salt = _vaultCryptoService.generateSalt();
+    final dek = _vaultCryptoService.generateDek();
+    const params = VaultKdfParams.defaultParams;
+
+    final kek = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.deriveKek(pin, salt, params),
+    );
+    final wrappedDek = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.wrapDek(dek, kek),
+    );
+
+    await _store.setKdfSalt(salt);
+    await _store.setKdfParams(params);
+    await _store.setWrappedDek(wrappedDek);
+    await _store.setFailedUnlockAttempts(0);
+    await _store.setLockoutUntil(null);
+
+    _dek = dek;
     _state = const VaultUnlocked();
   }
 
   @override
   Future<void> unlock(String pin) async {
-    final sentinel = await _store.getSentinel();
-    if (sentinel == null) {
+    final wrappedDek = await _store.getWrappedDek();
+    if (wrappedDek == null) {
       throw const VaultNotFoundException();
     }
 
-    // Placeholder: In Task 3.1, we just compare with a hardcoded or stored value.
-    // Since we don't have KEK derivation yet, we'll assume any PIN works for the placeholder
-    // or we might want to store a hash.
-    // For this task, let's assume '1234' for simplicity or just transition to Unlocked.
-    // The requirement says "unlock placeholder/session transition".
+    final lockoutUntil = await _store.getLockoutUntil();
+    if (lockoutUntil != null && _now().isBefore(lockoutUntil)) {
+      throw VaultLockedOutException(lockoutUntil);
+    }
 
+    final salt = await _store.getKdfSalt();
+    final params = await _store.getKdfParams();
+    if (salt == null || params == null) {
+      throw const VaultNotFoundException();
+    }
+
+    final kek = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.deriveKek(pin, salt, params),
+    );
+
+    Uint8List dek;
+    try {
+      dek = await ConcurrencyUtils.runTask(
+        () => _vaultCryptoService.unwrapDek(wrappedDek, kek),
+      );
+    } on VaultCryptoTamperException {
+      await _recordFailedUnlockAttempt();
+      throw const InvalidPinException();
+    }
+
+    await _store.setFailedUnlockAttempts(0);
+    await _store.setLockoutUntil(null);
+
+    _dek = dek;
     _state = const VaultUnlocked();
 
     // Restore active identity from store
@@ -102,11 +160,27 @@ class VaultServiceImpl implements VaultService {
     }
   }
 
+  Future<void> _recordFailedUnlockAttempt() async {
+    final attempts = await _store.getFailedUnlockAttempts() + 1;
+    await _store.setFailedUnlockAttempts(attempts);
+
+    Duration? lockoutDuration;
+    for (final entry in lockoutThresholds.entries) {
+      if (attempts >= entry.key) {
+        lockoutDuration = entry.value;
+      }
+    }
+    if (lockoutDuration != null) {
+      await _store.setLockoutUntil(_now().add(lockoutDuration));
+    }
+  }
+
   @override
   Future<void> lock() async {
     _activeIdentity = null;
-    final sentinel = await _store.getSentinel();
-    if (sentinel == null) {
+    _clearDek();
+    final wrappedDek = await _store.getWrappedDek();
+    if (wrappedDek == null) {
       _state = const NoVault();
     } else {
       _state = const VaultLocked();
@@ -116,12 +190,21 @@ class VaultServiceImpl implements VaultService {
   @override
   Future<void> expireSession() async {
     _activeIdentity = null;
-    final sentinel = await _store.getSentinel();
-    if (sentinel == null) {
+    _clearDek();
+    final wrappedDek = await _store.getWrappedDek();
+    if (wrappedDek == null) {
       _state = const NoVault();
     } else {
       _state = const SessionExpired();
     }
+  }
+
+  void _clearDek() {
+    final dek = _dek;
+    if (dek != null) {
+      dek.fillRange(0, dek.length, 0);
+    }
+    _dek = null;
   }
 
   @override
@@ -146,10 +229,14 @@ class VaultServiceImpl implements VaultService {
     final localId =
         publicKey; // Using publicKey as localId for now, or could use UUID
 
+    final encryptedSecretPayload = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.encrypt(privateKey, _dekOrThrow()),
+    );
+
     final record = VaultIdentityRecord(
       identityId: localId,
       publicKey: publicKey,
-      secretPayload: privateKey,
+      encryptedSecretPayload: encryptedSecretPayload,
       displayName: displayName,
       origin: IdentityOrigin.generated,
       createdAt: now,
@@ -220,10 +307,14 @@ class VaultServiceImpl implements VaultService {
     final now = DateTime.now();
     final localId = publicKey;
 
+    final encryptedSecretPayload = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.encrypt(hexPrivateKey, _dekOrThrow()),
+    );
+
     final record = VaultIdentityRecord(
       identityId: localId,
       publicKey: publicKey,
-      secretPayload: hexPrivateKey,
+      encryptedSecretPayload: encryptedSecretPayload,
       displayName: displayName,
       origin: IdentityOrigin.imported,
       createdAt: now,
@@ -270,12 +361,12 @@ class VaultServiceImpl implements VaultService {
     required String identityLocalId,
     required NostrEventDraft draft,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
 
     try {
       final signedEvent = await ConcurrencyUtils.runTask(
         () => _cryptoService.signEvent(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           draft: draft,
         ),
       );
@@ -297,11 +388,11 @@ class VaultServiceImpl implements VaultService {
     required String identityLocalId,
     required String message,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.signMessage(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           message: message,
         ),
       ),
@@ -314,11 +405,11 @@ class VaultServiceImpl implements VaultService {
     required String peerPubkeyHex,
     required String plaintext,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.nip04Encrypt(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           peerPubkeyHex: peerPubkeyHex,
           plaintext: plaintext,
         ),
@@ -332,11 +423,11 @@ class VaultServiceImpl implements VaultService {
     required String peerPubkeyHex,
     required String ciphertext,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.nip04Decrypt(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           peerPubkeyHex: peerPubkeyHex,
           ciphertext: ciphertext,
         ),
@@ -350,11 +441,11 @@ class VaultServiceImpl implements VaultService {
     required String peerPubkeyHex,
     required String plaintext,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.nip44Encrypt(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           peerPubkeyHex: peerPubkeyHex,
           plaintext: plaintext,
         ),
@@ -368,11 +459,11 @@ class VaultServiceImpl implements VaultService {
     required String peerPubkeyHex,
     required String ciphertext,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.nip44Decrypt(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           peerPubkeyHex: peerPubkeyHex,
           ciphertext: ciphertext,
         ),
@@ -385,11 +476,11 @@ class VaultServiceImpl implements VaultService {
     required String identityLocalId,
     required Map<String, Object?> eventJson,
   }) async {
-    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await _activePrivateKeyFor(identityLocalId);
     return _runCryptoOperation(
       () => ConcurrencyUtils.runTask(
         () => _cryptoService.decryptZapEvent(
-          privateKeyHex: record.secretPayload,
+          privateKeyHex: privateKey,
           eventJson: eventJson,
         ),
       ),
@@ -460,6 +551,14 @@ class VaultServiceImpl implements VaultService {
     }
   }
 
+  Uint8List _dekOrThrow() {
+    final dek = _dek;
+    if (dek == null) {
+      throw const VaultLockedException();
+    }
+    return dek;
+  }
+
   @override
   Future<String?> getActivePrivateKey() async {
     if (state is! VaultUnlocked) return null;
@@ -467,7 +566,32 @@ class VaultServiceImpl implements VaultService {
     if (identity == null) return null;
     final record = await _store.getIdentityRecord(identity.localId);
     if (record == null) return null;
-    return record.secretPayload;
+    return ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.decrypt(
+        record.encryptedSecretPayload,
+        _dekOrThrow(),
+      ),
+    );
+  }
+
+  Future<String> _activePrivateKeyFor(String identityLocalId) async {
+    final record = await _activeRecordFor(identityLocalId);
+    final privateKey = await ConcurrencyUtils.runTask(
+      () => _vaultCryptoService.decrypt(
+        record.encryptedSecretPayload,
+        _dekOrThrow(),
+      ),
+    );
+
+    final derivedPublicKey = await ConcurrencyUtils.runTask(
+      () => _cryptoService.derivePublicKey(privateKey),
+    );
+    if (derivedPublicKey != record.publicKey) {
+      throw const VaultSigningException(
+        'Stored identity key material is invalid',
+      );
+    }
+    return privateKey;
   }
 
   Future<VaultIdentityRecord> _activeRecordFor(String identityLocalId) async {
@@ -482,14 +606,6 @@ class VaultServiceImpl implements VaultService {
       throw const IdentityMismatchException();
     }
 
-    final derivedPublicKey = await ConcurrencyUtils.runTask(
-      () => _cryptoService.derivePublicKey(record.secretPayload),
-    );
-    if (derivedPublicKey != record.publicKey) {
-      throw const VaultSigningException(
-        'Stored identity key material is invalid',
-      );
-    }
     return record;
   }
 

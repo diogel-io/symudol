@@ -31,6 +31,11 @@ class InvalidPinFailure extends VaultFailure {
   const InvalidPinFailure() : super('Invalid PIN');
 }
 
+class VaultLockedOutFailure extends VaultFailure {
+  const VaultLockedOutFailure()
+    : super('Too many failed attempts. Try again later.');
+}
+
 class IdentityNotFoundFailure extends VaultFailure {
   const IdentityNotFoundFailure() : super('Identity not found');
 }

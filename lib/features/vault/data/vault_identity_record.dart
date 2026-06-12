@@ -4,16 +4,16 @@ class VaultIdentityRecord {
   final int version;
   final String identityId;
   final String publicKey;
-  final String secretPayload;
+  final String encryptedSecretPayload;
   final String? displayName;
   final IdentityOrigin origin;
   final DateTime createdAt;
 
   const VaultIdentityRecord({
-    this.version = 1,
+    this.version = 2,
     required this.identityId,
     required this.publicKey,
-    required this.secretPayload,
+    required this.encryptedSecretPayload,
     this.displayName,
     required this.origin,
     required this.createdAt,
@@ -24,7 +24,7 @@ class VaultIdentityRecord {
       'version': version,
       'identityId': identityId,
       'publicKey': publicKey,
-      'secretPayload': secretPayload,
+      'encryptedSecretPayload': encryptedSecretPayload,
       'displayName': displayName,
       'origin': origin.name,
       'createdAt': createdAt.toIso8601String(),
@@ -36,7 +36,7 @@ class VaultIdentityRecord {
       version: json['version'] as int,
       identityId: json['identityId'] as String,
       publicKey: json['publicKey'] as String,
-      secretPayload: json['secretPayload'] as String,
+      encryptedSecretPayload: json['encryptedSecretPayload'] as String,
       displayName: json['displayName'] as String?,
       origin: IdentityOrigin.values.byName(json['origin'] as String),
       createdAt: DateTime.parse(json['createdAt'] as String),

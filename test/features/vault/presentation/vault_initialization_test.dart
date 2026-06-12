@@ -12,8 +12,8 @@ void main() {
     WidgetTester tester,
   ) async {
     final fakeStore = FakeVaultStore();
-    // Simulate existing vault by setting a sentinel
-    await fakeStore.setSentinel('vault_exists');
+    // Simulate existing vault by setting a wrapped DEK
+    await fakeStore.setWrappedDek('wrapped-dek-placeholder');
 
     await tester.pumpWidget(
       ProviderScope(

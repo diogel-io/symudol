@@ -9,7 +9,7 @@ void main() {
       version: 1,
       identityId: 'id123',
       publicKey: 'pubkey123',
-      secretPayload: 'secret123',
+      encryptedSecretPayload: 'secret123',
       origin: IdentityOrigin.generated,
       createdAt: now,
     );
@@ -20,7 +20,7 @@ void main() {
       expect(json['version'], 1);
       expect(json['identityId'], 'id123');
       expect(json['publicKey'], 'pubkey123');
-      expect(json['secretPayload'], 'secret123');
+      expect(json['encryptedSecretPayload'], 'secret123');
       expect(json['origin'], 'generated');
       expect(json['createdAt'], now.toIso8601String());
     });
@@ -30,7 +30,7 @@ void main() {
         'version': 1,
         'identityId': 'id123',
         'publicKey': 'pubkey123',
-        'secretPayload': 'secret123',
+        'encryptedSecretPayload': 'secret123',
         'origin': 'generated',
         'createdAt': now.toIso8601String(),
       };
@@ -40,7 +40,7 @@ void main() {
       expect(deserialized.version, 1);
       expect(deserialized.identityId, 'id123');
       expect(deserialized.publicKey, 'pubkey123');
-      expect(deserialized.secretPayload, 'secret123');
+      expect(deserialized.encryptedSecretPayload, 'secret123');
       expect(deserialized.origin, IdentityOrigin.generated);
       // Comparing DateTime up to second precision to avoid microsecond issues with ISO parsing if any
       expect(deserialized.createdAt.toIso8601String(), now.toIso8601String());

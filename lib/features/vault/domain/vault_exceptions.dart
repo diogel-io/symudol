@@ -19,6 +19,13 @@ class InvalidPinException extends VaultException {
   const InvalidPinException() : super('Invalid PIN');
 }
 
+class VaultLockedOutException extends VaultException {
+  final DateTime lockoutUntil;
+
+  VaultLockedOutException(this.lockoutUntil)
+    : super('Too many failed attempts. Try again later.');
+}
+
 class IdentityNotFoundException extends VaultException {
   const IdentityNotFoundException() : super('Identity not found');
 }

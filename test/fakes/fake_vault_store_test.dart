@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
@@ -17,22 +19,28 @@ void main() {
       expect(await store.getVersion(), '1.0');
     });
 
-    test('should store and retrieve sentinel', () async {
-      await store.setSentinel('sentinel');
-      expect(await store.getSentinel(), 'sentinel');
+    test('should store and retrieve wrapped DEK', () async {
+      await store.setWrappedDek('wrapped-dek');
+      expect(await store.getWrappedDek(), 'wrapped-dek');
     });
 
     test('should simulate missing vault', () async {
-      await store.setSentinel('sentinel');
+      await store.setWrappedDek('wrapped-dek');
       store.simulateMissingVault = true;
-      expect(await store.getSentinel(), isNull);
+      expect(await store.getWrappedDek(), isNull);
+    });
+
+    test('should store and retrieve kdf salt', () async {
+      final salt = Uint8List.fromList([1, 2, 3, 4]);
+      await store.setKdfSalt(salt);
+      expect(await store.getKdfSalt(), salt);
     });
 
     test('should store and retrieve identities', () async {
       final record = VaultIdentityRecord(
         identityId: 'id1',
         publicKey: 'pub1',
-        secretPayload: 'secret1',
+        encryptedSecretPayload: 'secret1',
         createdAt: DateTime.now(),
         origin: IdentityOrigin.generated,
       );
@@ -44,7 +52,7 @@ void main() {
       expect(identities.first.identityId, 'id1');
 
       final retrievedRecord = await store.getIdentityRecord('id1');
-      expect(retrievedRecord?.secretPayload, 'secret1');
+      expect(retrievedRecord?.encryptedSecretPayload, 'secret1');
     });
 
     test('should throw storage error when requested', () async {
@@ -56,7 +64,7 @@ void main() {
       final record = VaultIdentityRecord(
         identityId: 'id1',
         publicKey: 'pub1',
-        secretPayload: 'secret1',
+        encryptedSecretPayload: 'secret1',
         createdAt: DateTime.now(),
         origin: IdentityOrigin.generated,
       );
@@ -72,14 +80,14 @@ void main() {
 
     test('clearAll should reset everything', () async {
       await store.setVersion('1.0');
-      await store.setSentinel('sentinel');
+      await store.setWrappedDek('wrapped-dek');
       await store.setInactivityTimeout(1);
       await store.setBackgroundLockDelayMinutes(0);
       await store.saveIdentityRecord(
         VaultIdentityRecord(
           identityId: 'id1',
           publicKey: 'pub1',
-          secretPayload: 'secret1',
+          encryptedSecretPayload: 'secret1',
           createdAt: DateTime.now(),
           origin: IdentityOrigin.generated,
         ),
@@ -88,7 +96,7 @@ void main() {
       await store.clearAll();
 
       expect(await store.getVersion(), isNull);
-      expect(await store.getSentinel(), isNull);
+      expect(await store.getWrappedDek(), isNull);
       expect(await store.getInactivityTimeout(), isNull);
       expect(await store.getBackgroundLockDelayMinutes(), isNull);
       expect(await store.getIdentities(), isEmpty);
