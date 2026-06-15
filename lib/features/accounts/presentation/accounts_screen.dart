@@ -1,3 +1,6 @@
+
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +9,7 @@ import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
 import 'widgets/import_identity_dialog.dart';
+import 'widgets/profile_avatar.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -47,15 +51,7 @@ class AccountsScreen extends ConsumerWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: DiogelSpacing.space4),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: DiogelColors.surfaceContainerHigh,
-              child: const Icon(
-                Icons.person,
-                size: 20,
-                color: DiogelColors.textSecondary,
-              ),
-            ),
+            child: const ProfileAvatar(),
           ),
         ],
       ),
