@@ -137,38 +137,6 @@ class AccountsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: DiogelSpacing.space8),
-          Container(
-            padding: const EdgeInsets.all(DiogelSpacing.space4),
-            decoration: BoxDecoration(
-              color: DiogelColors.surfaceBase,
-              borderRadius: BorderRadius.circular(DiogelRadius.large),
-              border: Border.all(color: DiogelColors.borderSubtle),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.verified_user, color: DiogelColors.stateInfo),
-                const SizedBox(width: DiogelSpacing.space4),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Secure Local Storage',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: DiogelSpacing.space1),
-                      Text(
-                        'All private keys are stored locally using the device platform secure-storage backend and never leave your device.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
