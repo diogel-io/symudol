@@ -1,9 +1,12 @@
+import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../theme/tokens.dart';
 import '../../../identity/domain/vault_identity.dart';
+import '../../../profile/application/profile_providers.dart';
 
-class IdentityTile extends StatelessWidget {
+class IdentityTile extends ConsumerWidget {
   final VaultIdentity identity;
   final VoidCallback? onTap;
 
@@ -14,9 +17,13 @@ class IdentityTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isActive = identity.isActive;
-    
+    final pictureUrl = ref
+        .watch(nostrProfileProvider(identity.publicKey))
+        .value
+        ?.picture;
+
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
       decoration: BoxDecoration(
@@ -38,10 +45,25 @@ class IdentityTile extends StatelessWidget {
                 color: DiogelColors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(DiogelRadius.medium),
               ),
-              child: Icon(
-                Icons.person,
-                size: 32,
-                color: isActive ? DiogelColors.actionPrimary : DiogelColors.textTertiary,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(DiogelRadius.medium),
+                child: (pictureUrl == null || pictureUrl.isEmpty)
+                    ? Icon(
+                        Icons.person,
+                        size: 32,
+                        color: isActive ? DiogelColors.actionPrimary : DiogelColors.textTertiary,
+                      )
+                    : Image.network(
+                        pictureUrl,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          Icons.person,
+                          size: 32,
+                          color: isActive ? DiogelColors.actionPrimary : DiogelColors.textTertiary,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(width: DiogelSpacing.space4),
@@ -69,7 +91,7 @@ class IdentityTile extends StatelessWidget {
                     ],
                   ),
                   Text(
-                    _truncateKey(identity.publicKey),
+                    _truncateKey(_npubFor(identity.publicKey)),
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(
@@ -86,6 +108,14 @@ class IdentityTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _npubFor(String publicKey) {
+    try {
+      return Nostr.instance.services.bech32.encodePublicKeyToNpub(publicKey);
+    } catch (_) {
+      return publicKey;
+    }
   }
 
   String _truncateKey(String key) {
