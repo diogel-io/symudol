@@ -1,78 +1,106 @@
 # Android Diogel
 
-Android Diogel is the mobile app codebase for Diogel.
+Android Diogel is a privacy-first Android signer and identity-security companion for Nostr.
 
-A privacy-first Nostr signer and identity-security companion app, with Android as the immediate primary target.
+Its purpose is simple: keep private keys on the phone, make signing requests understandable, and let users approve or reject actions with confidence.
 
-## Product intent
+## Application intent
 
 Android Diogel exists to reduce private-key exposure.
 
-The app is being built around a simple trust model:
-- keep sensitive signing material on the phone
-- make approval flows explicit
-- let users manage multiple Nostr identities cleanly
-- avoid turning the signer into a vague all-purpose crypto app
+The application is built around a strict trust model:
 
-The aim is not to build a bloated everything-app.
-The aim is to build a serious signer product that does a small number of important things well.
+- sensitive signing material stays on the device;
+- signing and decryption requests are shown clearly before approval;
+- users can manage Nostr identities without handing raw private keys to every client;
+- client trust and request provenance should be explicit, not guessed;
+- convenience must not silently weaken key safety.
 
-## Current state
+Android Diogel is not intended to be a full Nostr social client, a generic crypto wallet, or a bloated all-purpose app. It is intended to be a focused mobile signer that does a small number of security-critical jobs well.
 
-This repository is still early.
+## Requirements
 
-Right now it contains:
-- a real Flutter app scaffold
-- early Material 3 theming
-- Diogel design tokens
-- a prototype UI shell for unlock, accounts, requests, and settings flows
-- an initial feature-based structure rather than a single giant `main.dart`
+Install and configure:
 
-It should be treated as a foundation in progress, not as a production-ready signer yet.
+- Flutter SDK
+- Android SDK
+- Android Studio or command-line Android tooling
+- an Android emulator or physical Android device
 
-## Project structure
+Verify the local toolchain with:
 
-Current high-level app structure:
-- `lib/app/` - app entry and root wiring
-- `lib/features/unlock/` - unlock flow prototype
-- `lib/features/navigation/` - main navigation shell
-- `lib/features/accounts/` - account/identity screens
-- `lib/features/requests/` - signing request review UI
-- `lib/features/settings/` - settings UI
-- `lib/theme/` - shared theme and token definitions
+```bash
+flutter doctor
+```
 
-Important documents there currently include:
-- `README.md`
-- `objective.md`
-- `mvp-scope.md`
-- `user-flows.md`
+Resolve any Android/Flutter issues reported by `flutter doctor` before running the application.
 
-Those docs are the current source of truth for product direction while the app is still taking shape.
+## Install dependencies
 
-## Immediate development priorities
+From the repository root:
 
-1. keep the app structure clean and feature-oriented
-2. define the session/security model explicitly before deep signer logic lands
-3. implement bounded MVP slices instead of vague large rewrites
-4. keep trust, provenance, and approval clarity central to the UI
+```bash
+flutter pub get
+```
 
-## Tech stack
+## Run the application
 
-- Flutter
-- Dart
-- Material 3
-- `dart_nostr` (Verified: sufficient for key generation, derivation, nsec/npub encoding/decoding, and Schnorr signing)
+List available devices:
 
-## Development stance
+```bash
+flutter devices
+```
 
-This codebase should prefer:
-- small bounded refactors
-- explicit architecture over accidental architecture
-- honest security language
-- clear approval flows
-- meaningful tests that match real app behavior
+Run on the selected emulator or connected Android device:
 
-## Status reminder
+```bash
+flutter run
+```
 
-Promising start, still early.
-The important job now is to keep the architecture sane before real signer/security complexity lands.
+Run a release build locally:
+
+```bash
+flutter run --release
+```
+
+## Test the application
+
+Run static analysis:
+
+```bash
+flutter analyze
+```
+
+Run the Flutter test suite:
+
+```bash
+flutter test
+```
+
+Run both checks together:
+
+```bash
+flutter analyze && flutter test
+```
+
+## Build Android artifacts
+
+Build a debug APK:
+
+```bash
+flutter build apk --debug
+```
+
+Build a release APK:
+
+```bash
+flutter build apk --release
+```
+
+Build a release Android App Bundle:
+
+```bash
+flutter build appbundle --release
+```
+
+Release builds require a correctly configured Android signing setup before they can be distributed safely.
