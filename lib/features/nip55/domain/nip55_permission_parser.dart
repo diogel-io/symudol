@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'nip55_permission_scope.dart';
 
 class Nip55ParsedPermissions {
@@ -30,6 +32,11 @@ class Nip55PermissionParser {
       }
     }
 
+    final jsonObjectList = _tryDecodeJsonObjectList(normalized);
+    if (jsonObjectList != null) {
+      return _parseJsonObjectList(jsonObjectList);
+    }
+
     final scopes = <Nip55PermissionScope>[];
     final warnings = <String>[];
     final tokens = normalized
@@ -43,6 +50,45 @@ class Nip55PermissionParser {
       final scope = _parseToken(token);
       if (scope == null) {
         warnings.add('Unsupported permission: $token');
+        continue;
+      }
+      scopes.add(scope);
+      if (scope is SignEventScope && scope.kind == null) {
+        warnings.add('Broad sign_event permission requested.');
+      }
+    }
+
+    return Nip55ParsedPermissions(scopes: scopes, warnings: warnings);
+  }
+
+  /// Attempts to decode [normalized] as a JSON array containing permission
+  /// objects (e.g. `[{"type":"sign_event","kind":1}, ...]`), the format sent
+  /// by apps like Amethyst. Returns null if it isn't a JSON array of objects,
+  /// so the caller can fall back to the legacy token-based formats.
+  List<Map<String, Object?>>? _tryDecodeJsonObjectList(String normalized) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(normalized);
+    } catch (_) {
+      return null;
+    }
+    if (decoded is! List || decoded.isEmpty) return null;
+    if (decoded.every((item) => item is Map)) {
+      return decoded.cast<Map<String, Object?>>();
+    }
+    return null;
+  }
+
+  Nip55ParsedPermissions _parseJsonObjectList(
+    List<Map<String, Object?>> items,
+  ) {
+    final scopes = <Nip55PermissionScope>[];
+    final warnings = <String>[];
+
+    for (final item in items) {
+      final scope = Nip55PermissionScope.fromJson(item);
+      if (scope is UnsupportedScope) {
+        warnings.add('Unsupported permission: ${scope.value}');
         continue;
       }
       scopes.add(scope);

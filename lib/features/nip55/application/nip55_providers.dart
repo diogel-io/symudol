@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:android_diogel/features/nip55/data/secure_storage_nip55_permission_store.dart';
@@ -12,6 +14,16 @@ import 'nip55_permission_controller.dart';
 
 final nip55GatewayProvider = Provider<Nip55Gateway>((ref) {
   return Nip55MethodChannelGateway();
+});
+
+/// Fetches the launcher icon for a requesting Android app, keyed by package
+/// name, so the signing request summary can show it instead of a generic
+/// icon. Returns null if the package can't be resolved (e.g. browser flows).
+final appIconProvider = FutureProvider.family<Uint8List?, String>((
+  ref,
+  packageName,
+) {
+  return ref.watch(nip55GatewayProvider).getAppIcon(packageName);
 });
 
 final nip55NativeSyncProvider = Provider<Nip55NativeMirrorSync>((ref) {

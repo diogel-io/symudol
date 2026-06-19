@@ -6,11 +6,16 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -27,6 +32,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private val appLabelCache = ConcurrentHashMap<String, String>()
         private val certificateCache = ConcurrentHashMap<String, String>()
+        private val appIconCache = ConcurrentHashMap<String, ByteArray>()
         @Volatile private var currentActivity: WeakReference<MainActivity>? = null
 
         fun deliverNip55BridgeIntent(intent: Intent): Boolean {
@@ -119,6 +125,17 @@ class MainActivity : FlutterActivity() {
                     Log.d(TAG, "onMethodCall: clearNip55ActiveKey")
                     Nip55CryptoBridge.clearActiveKey()
                     result.success(null)
+                }
+                "getAppIcon" -> {
+                    val packageName = call.arguments as? String
+                    if (packageName.isNullOrBlank()) {
+                        result.success(null)
+                    } else {
+                        backgroundExecutor.execute {
+                            val icon = resolveAppIcon(packageName)
+                            mainHandler.post { result.success(icon) }
+                        }
+                    }
                 }
                 "setNip55ActiveIdentityPubkey" -> {
                     val pubkey = call.arguments as? String
@@ -286,6 +303,34 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun resolveAppIcon(packageName: String): ByteArray? {
+        appIconCache[packageName]?.let { return it }
+        return try {
+            val drawable = packageManager.getApplicationIcon(packageName)
+            val bitmap = drawableToBitmap(drawable)
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            val bytes = stream.toByteArray()
+            appIconCache[packageName] = bytes
+            bytes
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun resolveSigningCertificateSha256(packageName: String?): String? {

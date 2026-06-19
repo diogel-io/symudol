@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
@@ -122,6 +123,9 @@ class FakeNip55Gateway implements Nip55Gateway {
     rejectedTokens.add(requestToken);
     rejectedErrorsByToken[requestToken] = error;
   }
+
+  @override
+  Future<Uint8List?> getAppIcon(String packageName) async => null;
 }
 
 void main() {
