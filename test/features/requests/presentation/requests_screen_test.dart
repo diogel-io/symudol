@@ -167,18 +167,6 @@ void main() {
 
       expect(find.text('Approval Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
-      expect(
-        find.textContaining('wants to sign a Kind 1 event'),
-        findsOneWidget,
-      );
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is RichText &&
-              widget.text.toPlainText().contains('Test User'),
-        ),
-        findsOneWidget,
-      );
 
       await tester.tap(find.text('Show details'));
       await tester.pump();
@@ -228,10 +216,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(
-        find.textContaining('wants to sign a Client authentication event'),
-        findsOneWidget,
-      );
+      expect(find.text('Client authentication'), findsOneWidget);
       expect(find.text('Risk note'), findsOneWidget);
       expect(find.textContaining('proves control of this key'), findsOneWidget);
       expect(find.text('Show details'), findsOneWidget);

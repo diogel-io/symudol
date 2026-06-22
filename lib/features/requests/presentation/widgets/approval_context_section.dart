@@ -69,34 +69,6 @@ class _PublicKeyContextSection extends StatelessWidget {
               ? 'No additional permissions were declared.'
               : scopes.map((s) => s.label).join(', '),
         ),
-        const SizedBox(height: DiogelSpacing.space3),
-        Container(
-          padding: const EdgeInsets.all(DiogelSpacing.space3),
-          decoration: BoxDecoration(
-            color: DiogelColors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(DiogelRadius.small),
-            border: Border.all(color: DiogelColors.borderSubtle),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(
-                Icons.info_outline,
-                size: 16,
-                color: DiogelColors.textTertiary,
-              ),
-              const SizedBox(width: DiogelSpacing.space2),
-              Expanded(
-                child: Text(
-                  'No signing will happen unless you approve a later signing request.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: DiogelColors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
         if (warnings.isNotEmpty) ...[
           const SizedBox(height: DiogelSpacing.space3),
           _PermissionWarnings(warnings: warnings),

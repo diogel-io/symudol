@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../theme/tokens.dart';
-import '../../../identity/domain/vault_identity.dart';
 import '../../../nip55/application/nip55_providers.dart';
+import '../../domain/known_app_directory.dart';
 
 class RequestSummaryCard extends ConsumerWidget {
   const RequestSummaryCard({
@@ -13,8 +13,6 @@ class RequestSummaryCard extends ConsumerWidget {
     this.packageName,
     required this.sourceName,
     required this.sourceVerified,
-    required this.actionDescription,
-    required this.activeIdentity,
   });
 
   final IconData icon;
@@ -22,8 +20,6 @@ class RequestSummaryCard extends ConsumerWidget {
   final String? packageName;
   final String sourceName;
   final bool sourceVerified;
-  final String actionDescription;
-  final VaultIdentity? activeIdentity;
 
   static final _packageNamePattern = RegExp(
     r'^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$',
@@ -31,7 +27,7 @@ class RequestSummaryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final identityName = activeIdentity?.displayName ?? 'Anonymous';
+    final appDescription = describeKnownPackage(packageName);
 
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -68,20 +64,15 @@ class RequestSummaryCard extends ConsumerWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: DiogelSpacing.space1),
-                Text.rich(
-                  TextSpan(
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    children: [
-                      TextSpan(text: '$actionDescription using '),
-                      TextSpan(
-                        text: identityName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const TextSpan(text: '.'),
-                    ],
+                if (appDescription != null) ...[
+                  const SizedBox(height: DiogelSpacing.space1),
+                  Text(
+                    appDescription,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: DiogelColors.textSecondary,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

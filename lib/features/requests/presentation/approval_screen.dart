@@ -6,7 +6,7 @@ import '../../accounts/presentation/widgets/profile_avatar.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../../nip55/application/nip55_providers.dart';
 import '../../nip55/domain/nip55_permission_parser.dart';
-import '../../nip55/domain/nip55_permission_scope.dart';
+import '../../profile/application/profile_providers.dart';
 import '../../vault/application/vault_providers.dart';
 import '../application/request_providers.dart';
 import '../domain/approval_context.dart';
@@ -19,11 +19,29 @@ import 'widgets/provenance_warning.dart';
 import 'widgets/remember_row.dart';
 import 'widgets/request_summary_card.dart';
 
-class ApprovalScreen extends ConsumerWidget {
+class ApprovalScreen extends ConsumerStatefulWidget {
   const ApprovalScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ApprovalScreen> createState() => _ApprovalScreenState();
+}
+
+class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // See AccountsScreen.initState: profile metadata is cached for the
+    // provider's lifetime, so re-entering this tab is the refresh trigger.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final activeIdentity = ref.read(vaultControllerProvider).activeIdentity;
+      if (activeIdentity != null) {
+        ref.invalidate(nostrProfileProvider(activeIdentity.publicKey));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final approval = _resolveContext(ref);
     final nip55State = ref.watch(nip55ControllerProvider);
 
@@ -237,8 +255,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
     final nip55State = ref.watch(nip55ControllerProvider);
 
     // Derive the trust status and source info based on context type.
-    final (trustStatus, sourceName, packageName, sourceVerified, actionDescription) =
-        _sourceInfo(approval, activeIdentity);
+    final (trustStatus, sourceName, packageName, sourceVerified) = _sourceInfo(approval);
 
     // For signing: check for failure or completed state.
     final signingFailureMsg = switch (approval) {
@@ -295,8 +312,6 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
               packageName: packageName,
               sourceName: sourceName,
               sourceVerified: sourceVerified,
-              actionDescription: actionDescription,
-              activeIdentity: activeIdentity,
             ),
             const SizedBox(height: DiogelSpacing.space6),
             ApprovalContextSection(approval: approval),
@@ -506,17 +521,13 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  (RequestTrustStatus, String, String?, bool, String) _sourceInfo(
-    ApprovalContext approval,
-    VaultIdentity? activeIdentity,
-  ) {
+  (RequestTrustStatus, String, String?, bool) _sourceInfo(ApprovalContext approval) {
     return switch (approval) {
       SigningApprovalContext() => (
         approval.request.provenance.trustStatus,
         approval.request.provenance.sourceDisplayName,
         approval.request.provenance.sourceIdentifier,
         approval.request.provenance.trustStatus == RequestTrustStatus.knownTrusted,
-        _signingActionDescription(approval),
       ),
       PublicKeyApprovalContext() => (
         approval.request.clientIdentity.provenanceVerified
@@ -525,7 +536,6 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.clientIdentity.displayName,
         approval.request.clientIdentity.packageName,
         approval.request.clientIdentity.provenanceVerified,
-        _publicKeyActionDescription(approval),
       ),
       CryptoApprovalContext() => (
         approval.request.clientIdentity.provenanceVerified
@@ -534,30 +544,8 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.clientIdentity.displayName,
         approval.request.clientIdentity.packageName,
         approval.request.clientIdentity.provenanceVerified,
-        'requests a ${approval.request.method.displayLabel} operation',
       ),
     };
-  }
-
-  String _signingActionDescription(SigningApprovalContext approval) {
-    final review = approval.eventReview;
-    if (review != null && !review.isUnknownKind) {
-      return 'wants to sign a ${review.kindLabel} event';
-    }
-    return 'wants to sign a Kind ${approval.request.eventKind} event';
-  }
-
-  String _publicKeyActionDescription(PublicKeyApprovalContext approval) {
-    final scopes = approval.parsedPermissions.scopes;
-    final kinds = <int?>{};
-    for (final scope in scopes) {
-      if (scope is SignEventScope) kinds.add(scope.kind);
-    }
-    if (kinds.isEmpty) return 'wants to connect';
-    if (kinds.contains(null)) return 'wants permission to sign any event kind';
-    final sortedKinds = kinds.whereType<int>().toList()..sort();
-    final kindLabel = sortedKinds.length == 1 ? 'Kind' : 'Kinds';
-    return 'wants permission to sign $kindLabel ${sortedKinds.join(', ')} events';
   }
 
   IconData _iconFor(ApprovalContext approval) {
