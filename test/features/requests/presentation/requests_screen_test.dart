@@ -13,7 +13,7 @@ import 'package:android_diogel/features/requests/domain/request_trust_status.dar
 import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/requests/presentation/requests_screen.dart';
+import 'package:android_diogel/features/requests/presentation/approval_screen.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
@@ -119,11 +119,11 @@ void main() {
           FakeRelayProfileService(),
         ),
       ],
-      child: const MaterialApp(home: RequestsScreen()),
+      child: const MaterialApp(home: ApprovalScreen()),
     );
   }
 
-  group('RequestsScreen', () {
+  group('ApprovalScreen', () {
     testWidgets('shows empty state when no active requests', (tester) async {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
@@ -165,7 +165,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
       expect(
         find.textContaining('wants to sign a Kind 1 event'),
@@ -183,7 +183,7 @@ void main() {
       await tester.tap(find.text('Show details'));
       await tester.pump();
 
-      expect(find.text('Hello Nostr'), findsOneWidget);
+      expect(find.text('Hello Nostr'), findsAtLeastNWidgets(1));
       expect(find.text('1234567890'), findsOneWidget);
     });
 
@@ -299,7 +299,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
 
       await tester.tap(find.text('Reject'));
       await tester.pumpAndSettle();
@@ -395,7 +395,7 @@ void main() {
               FakeRelayProfileService(),
             ),
           ],
-          child: const MaterialApp(home: RequestsScreen()),
+          child: const MaterialApp(home: ApprovalScreen()),
         ),
       );
       await tester.pump();
@@ -441,7 +441,7 @@ void main() {
       // Should show failure message
       expect(find.textContaining('Vault is locked'), findsOneWidget);
       // Still on the same screen (not cleared)
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
     });
 
     testWidgets('signing failure displays safe failure message', (
@@ -492,7 +492,7 @@ void main() {
               FakeRelayProfileService(),
             ),
           ],
-          child: const MaterialApp(home: RequestsScreen()),
+          child: const MaterialApp(home: ApprovalScreen()),
         ),
       );
       await tester.pump();
@@ -504,7 +504,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Fake signer error'), findsOneWidget);
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
     });
 
     testWidgets(
@@ -528,7 +528,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pump();
 
-        expect(find.text('Sign-in Request'), findsOneWidget);
+        expect(find.text('Approval Request'), findsOneWidget);
         expect(find.text('Reject'), findsOneWidget);
         expect(find.text('Share public key'), findsOneWidget);
 
@@ -575,7 +575,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pump();
 
-        expect(find.text('NIP-55 nip04_decrypt'), findsOneWidget);
+        expect(find.text('Approval Request'), findsOneWidget);
         expect(find.text('Reject'), findsOneWidget);
         expect(find.text('Decrypt'), findsOneWidget);
 
