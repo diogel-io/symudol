@@ -22,6 +22,9 @@ String vaultFailureMessage(VaultFailure failure) {
   if (failure is InvalidPinFailure) {
     return 'Invalid PIN. Please try again.';
   }
+  if (failure is VaultLockedOutFailure) {
+    return 'Too many failed attempts. Please wait and try again.';
+  }
   if (failure is IdentityNotFoundFailure) {
     return 'The requested identity was not found.';
   }

@@ -14,8 +14,8 @@ void main() {
     addTearDown(() => tester.view.resetDevicePixelRatio());
 
     final store = FakeVaultStore();
-    // Pre-populate store with a sentinel so it goes to VaultLocked initially
-    // await store.setSentinel('exists'); // DO NOT pre-populate, we want NoVault -> Setup
+    // Pre-populate store with a wrapped DEK so it goes to VaultLocked initially
+    // await store.setWrappedDek('wrapped-dek'); // DO NOT pre-populate, we want NoVault -> Setup
 
     await tester.pumpWidget(
       ProviderScope(
@@ -29,7 +29,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 1. Should be on SetupVaultScreen initially (because controller starts with NoVault from service.state)
-    expect(find.text('Welcome to Diogel'), findsOneWidget);
+    expect(find.text('Diogel'), findsOneWidget);
 
     // 2. Setup (any 6 digits)
     for (var i = 1; i <= 6; i++) {

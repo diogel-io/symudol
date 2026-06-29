@@ -38,13 +38,13 @@ void main() {
       await tester.pumpWidget(createTestWidget(child: const SetupVaultScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Welcome to Diogel'), findsOneWidget);
+      expect(find.text('Diogel'), findsOneWidget);
       expect(find.text('Local Access PIN'), findsOneWidget);
       expect(find.text('Create a security PIN'), findsOneWidget);
     });
 
     testWidgets('locked screen renders', (WidgetTester tester) async {
-      await store.setSentinel('exists');
+      await store.setWrappedDek('wrapped-dek-placeholder');
       await service.init();
       
       await tester.pumpWidget(createTestWidget(child: const UnlockVaultScreen()));
@@ -52,7 +52,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Unlock Vault'), findsAtLeastNWidgets(1));
-      expect(find.byIcon(Icons.shield), findsAtLeastNWidgets(1));
+      expect(find.byIcon(Icons.lock_open), findsAtLeastNWidgets(1));
     });
 
     testWidgets('accounts screen renders identity list', (WidgetTester tester) async {

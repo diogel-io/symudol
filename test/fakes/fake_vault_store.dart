@@ -1,10 +1,17 @@
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 
 class FakeVaultStore implements VaultStore {
   String? _version;
-  String? _sentinel;
+  Uint8List? _kdfSalt;
+  VaultKdfParams? _kdfParams;
+  String? _wrappedDek;
+  int _failedUnlockAttempts = 0;
+  DateTime? _lockoutUntil;
   String? _activeIdentityId;
   int? _inactivityTimeout;
   int? _backgroundLockDelayMinutes;
@@ -14,7 +21,7 @@ class FakeVaultStore implements VaultStore {
   /// Simulates a storage error when set to true.
   bool shouldThrowStorageError = false;
 
-  /// Simulates a missing vault (sentinel is null) when set to true.
+  /// Simulates a missing vault (no wrapped DEK) when set to true.
   bool simulateMissingVault = false;
 
   /// Simulates a duplicate identity error when set to true.
@@ -39,16 +46,66 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
-  Future<String?> getSentinel() async {
+  Future<Uint8List?> getKdfSalt() async {
     _checkError();
     if (simulateMissingVault) return null;
-    return _sentinel;
+    return _kdfSalt;
   }
 
   @override
-  Future<void> setSentinel(String sentinel) async {
+  Future<void> setKdfSalt(Uint8List salt) async {
     _checkError();
-    _sentinel = sentinel;
+    _kdfSalt = salt;
+  }
+
+  @override
+  Future<VaultKdfParams?> getKdfParams() async {
+    _checkError();
+    if (simulateMissingVault) return null;
+    return _kdfParams;
+  }
+
+  @override
+  Future<void> setKdfParams(VaultKdfParams params) async {
+    _checkError();
+    _kdfParams = params;
+  }
+
+  @override
+  Future<String?> getWrappedDek() async {
+    _checkError();
+    if (simulateMissingVault) return null;
+    return _wrappedDek;
+  }
+
+  @override
+  Future<void> setWrappedDek(String wrappedDek) async {
+    _checkError();
+    _wrappedDek = wrappedDek;
+  }
+
+  @override
+  Future<int> getFailedUnlockAttempts() async {
+    _checkError();
+    return _failedUnlockAttempts;
+  }
+
+  @override
+  Future<void> setFailedUnlockAttempts(int attempts) async {
+    _checkError();
+    _failedUnlockAttempts = attempts;
+  }
+
+  @override
+  Future<DateTime?> getLockoutUntil() async {
+    _checkError();
+    return _lockoutUntil;
+  }
+
+  @override
+  Future<void> setLockoutUntil(DateTime? until) async {
+    _checkError();
+    _lockoutUntil = until;
   }
 
   @override
@@ -133,7 +190,11 @@ class FakeVaultStore implements VaultStore {
   Future<void> clearAll() async {
     _checkError();
     _version = null;
-    _sentinel = null;
+    _kdfSalt = null;
+    _kdfParams = null;
+    _wrappedDek = null;
+    _failedUnlockAttempts = 0;
+    _lockoutUntil = null;
     _activeIdentityId = null;
     _inactivityTimeout = null;
     _backgroundLockDelayMinutes = null;

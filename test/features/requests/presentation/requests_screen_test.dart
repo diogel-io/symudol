@@ -1,6 +1,9 @@
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:android_diogel/features/profile/application/profile_providers.dart';
+import 'package:android_diogel/features/profile/data/relay_profile_service.dart';
+import 'package:android_diogel/features/profile/domain/nostr_profile.dart';
 import 'package:android_diogel/features/requests/application/request_controller.dart';
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/fake_signer_service.dart';
@@ -10,10 +13,12 @@ import 'package:android_diogel/features/requests/domain/request_trust_status.dar
 import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/requests/presentation/requests_screen.dart';
+import 'package:android_diogel/features/requests/presentation/approval_screen.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +71,15 @@ class FakeNip55Gateway implements Nip55Gateway {
   }) async {
     rejectedToken = requestToken;
   }
+
+  @override
+  Future<Uint8List?> getAppIcon(String packageName) async => null;
+}
+
+/// Avoids real relay/websocket connections from [ProfileAvatar] in tests.
+class FakeRelayProfileService extends RelayProfileService {
+  @override
+  Future<NostrProfile?> fetchProfile(String pubkeyHex) async => null;
 }
 
 void main() {
@@ -101,18 +115,20 @@ void main() {
         requestControllerProvider.overrideWith((ref) => requestController),
         nip55GatewayProvider.overrideWithValue(nip55Gateway),
         nip55ControllerProvider.overrideWith((ref) => nip55Controller),
+        relayProfileServiceProvider.overrideWithValue(
+          FakeRelayProfileService(),
+        ),
       ],
-      child: const MaterialApp(home: RequestsScreen()),
+      child: const MaterialApp(home: ApprovalScreen()),
     );
   }
 
-  group('RequestsScreen', () {
+  group('ApprovalScreen', () {
     testWidgets('shows empty state when no active requests', (tester) async {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
       expect(find.text('No active requests'), findsOneWidget);
-      expect(find.text('Load Demo Request (Dev)'), findsOneWidget);
     });
 
     testWidgets('shows pending request details', (tester) async {
@@ -149,12 +165,13 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
-      expect(find.text('https://example.com'), findsOneWidget);
-      expect(find.text('Sign Kind 1 Event'), findsOneWidget);
-      expect(find.text('Test User'), findsOneWidget);
-      expect(find.text('Hello Nostr'), findsOneWidget);
+
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      expect(find.text('Hello Nostr'), findsAtLeastNWidgets(1));
       expect(find.text('1234567890'), findsOneWidget);
     });
 
@@ -199,10 +216,13 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('Client authentication • signEvent'), findsOneWidget);
+      expect(find.text('Client authentication'), findsOneWidget);
       expect(find.text('Risk note'), findsOneWidget);
       expect(find.textContaining('proves control of this key'), findsOneWidget);
-      expect(find.text('Advanced: raw JSON'), findsOneWidget);
+      expect(find.text('Show details'), findsOneWidget);
+
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
 
       await tester.drag(
         find.byType(SingleChildScrollView),
@@ -264,7 +284,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
 
       await tester.tap(find.text('Reject'));
       await tester.pumpAndSettle();
@@ -356,8 +376,11 @@ void main() {
             requestControllerProvider.overrideWith(
               (ref) => realRequestController,
             ),
+            relayProfileServiceProvider.overrideWithValue(
+              FakeRelayProfileService(),
+            ),
           ],
-          child: const MaterialApp(home: RequestsScreen()),
+          child: const MaterialApp(home: ApprovalScreen()),
         ),
       );
       await tester.pump();
@@ -403,7 +426,7 @@ void main() {
       // Should show failure message
       expect(find.textContaining('Vault is locked'), findsOneWidget);
       // Still on the same screen (not cleared)
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
     });
 
     testWidgets('signing failure displays safe failure message', (
@@ -450,8 +473,11 @@ void main() {
             requestControllerProvider.overrideWith(
               (ref) => failingRequestController,
             ),
+            relayProfileServiceProvider.overrideWithValue(
+              FakeRelayProfileService(),
+            ),
           ],
-          child: const MaterialApp(home: RequestsScreen()),
+          child: const MaterialApp(home: ApprovalScreen()),
         ),
       );
       await tester.pump();
@@ -463,7 +489,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Fake signer error'), findsOneWidget);
-      expect(find.text('Signing Request'), findsOneWidget);
+      expect(find.text('Approval Request'), findsOneWidget);
     });
 
     testWidgets(
@@ -487,20 +513,24 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pump();
 
-        expect(find.text('Public Key Request'), findsOneWidget);
-        expect(find.textContaining('Requested permissions:'), findsOneWidget);
+        expect(find.text('Approval Request'), findsOneWidget);
+        expect(find.text('Reject'), findsOneWidget);
+        expect(find.text('Share public key'), findsOneWidget);
+
+        await tester.tap(find.text('Show details'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('REQUESTED PERMISSIONS'), findsOneWidget);
         expect(
-          find.textContaining('Requested permissions: Unsupported permission'),
+          find.textContaining('Unsupported permission'),
           findsNothing,
         );
-        expect(find.text('Reject request'), findsOneWidget);
-        expect(find.text('Share public key'), findsOneWidget);
 
         await tester.tap(find.text('Share public key'));
         await tester.pumpAndSettle();
 
         expect(find.text('No active requests'), findsOneWidget);
-        expect(find.text('Reject request'), findsNothing);
+        expect(find.text('Reject'), findsNothing);
         expect(find.text('Share public key'), findsNothing);
         expect(nip55Gateway.completedToken, 'pk-token');
       },
@@ -530,7 +560,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pump();
 
-        expect(find.text('NIP-55 nip04_decrypt'), findsOneWidget);
+        expect(find.text('Approval Request'), findsOneWidget);
         expect(find.text('Reject'), findsOneWidget);
         expect(find.text('Decrypt'), findsOneWidget);
 

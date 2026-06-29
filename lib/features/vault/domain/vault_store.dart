@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
 
 abstract class VaultStore {
   /// Returns the current version of the storage schema.
@@ -7,11 +10,38 @@ abstract class VaultStore {
   /// Sets the storage schema version.
   Future<void> setVersion(String version);
 
-  /// Reads the vault sentinel.
-  Future<String?> getSentinel();
+  /// Reads the Argon2id salt used to derive the key-encryption key (KEK)
+  /// from the user's PIN. A non-null value indicates a vault exists.
+  Future<Uint8List?> getKdfSalt();
 
-  /// Writes the vault sentinel.
-  Future<void> setSentinel(String sentinel);
+  /// Sets the Argon2id salt.
+  Future<void> setKdfSalt(Uint8List salt);
+
+  /// Reads the Argon2id parameters used to derive the KEK.
+  Future<VaultKdfParams?> getKdfParams();
+
+  /// Sets the Argon2id parameters.
+  Future<void> setKdfParams(VaultKdfParams params);
+
+  /// Reads the wrapped (encrypted) data-encryption key (DEK).
+  Future<String?> getWrappedDek();
+
+  /// Sets the wrapped data-encryption key.
+  Future<void> setWrappedDek(String wrappedDek);
+
+  /// Reads the number of consecutive failed unlock attempts.
+  Future<int> getFailedUnlockAttempts();
+
+  /// Sets the number of consecutive failed unlock attempts.
+  Future<void> setFailedUnlockAttempts(int attempts);
+
+  /// Reads the timestamp until which unlocking is locked out, if any.
+  Future<DateTime?> getLockoutUntil();
+
+  /// Sets the timestamp until which unlocking is locked out.
+  ///
+  /// Pass `null` to clear the lockout.
+  Future<void> setLockoutUntil(DateTime? until);
 
   /// Reads the active identity ID.
   Future<String?> getActiveIdentityId();

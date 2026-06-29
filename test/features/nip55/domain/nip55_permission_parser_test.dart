@@ -117,6 +117,34 @@ void main() {
       },
     );
 
+    test(
+      'parses Amethyst style JSON object array permissions',
+      () {
+        final parsed = const Nip55PermissionParser().parse(
+          '[{"type":"sign_event","kind":22242},{"type":"sign_event","kind":31234},'
+          '{"type":"nip04_encrypt"},{"type":"nip04_decrypt"},'
+          '{"type":"nip44_decrypt"},{"type":"nip44_decrypt"},'
+          '{"type":"decrypt_zap_event"}]',
+        );
+
+        expect(parsed.warnings, isEmpty);
+
+        final signEventKinds = parsed.scopes
+            .whereType<SignEventScope>()
+            .map((scope) => scope.kind)
+            .toList();
+        expect(signEventKinds, containsAll(<int?>[22242, 31234]));
+
+        expect(parsed.scopes.whereType<Nip04EncryptScope>(), hasLength(1));
+        expect(parsed.scopes.whereType<Nip04DecryptScope>(), hasLength(1));
+        expect(parsed.scopes.whereType<Nip44DecryptScope>(), hasLength(2));
+        expect(
+          parsed.scopes.whereType<DecryptZapEventScope>(),
+          hasLength(1),
+        );
+      },
+    );
+
     test('Amber extra permission tokens are warnings only, not scopes', () {
       final parsed = const Nip55PermissionParser().parse(
         'encrypt_clear_text decrypt_clear_text encrypt_event decrypt_event encrypt_tag_array decrypt_tag_array get_public_key',

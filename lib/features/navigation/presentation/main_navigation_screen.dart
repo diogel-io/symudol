@@ -5,7 +5,7 @@ import '../../../theme/tokens.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../nip55/application/nip55_providers.dart';
 import '../../requests/application/request_providers.dart';
-import '../../requests/presentation/requests_screen.dart';
+import '../../requests/presentation/approval_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 
 class MainNavigationScreen extends ConsumerStatefulWidget {
@@ -21,7 +21,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     AccountsScreen(),
-    RequestsScreen(),
+    ApprovalScreen(),
     SettingsScreen(),
   ];
 

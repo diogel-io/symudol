@@ -28,7 +28,7 @@ void main() {
       await controller.createVault('1234');
 
       expect(controller.state.vaultState, isA<VaultUnlocked>());
-      expect(await store.getSentinel(), isNotNull);
+      expect(await store.getWrappedDek(), isNotNull);
     });
 
     test(

@@ -195,7 +195,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       onPointerDown: (_) => _resetInactivityTimer(),
       onPointerMove: (_) => _resetInactivityTimer(),
       child: MaterialApp(
-        title: 'Android Diogel',
+        title: 'Diogel',
         theme: DiogelTheme.darkTheme,
         home: isLoading && vaultState is NoVault
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))

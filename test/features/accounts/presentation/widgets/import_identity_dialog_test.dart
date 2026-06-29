@@ -38,7 +38,6 @@ void main() {
 
   group('ImportIdentityDialog', () {
     testWidgets('should follow the import flow', (WidgetTester tester) async {
-      await store.setSentinel('vault_exists');
       await service.init();
       await service.unlock('1234');
       
@@ -89,7 +88,6 @@ void main() {
     });
 
     testWidgets('should show error for invalid key', (WidgetTester tester) async {
-      await store.setSentinel('vault_exists');
       await service.init();
       await service.unlock('1234');
       await tester.pumpWidget(createTestWidget());
@@ -116,7 +114,6 @@ void main() {
     });
 
     testWidgets('should show error for duplicate key', (WidgetTester tester) async {
-      await store.setSentinel('vault_exists');
       await service.init();
       await service.unlock('1234');
       final hexKey = '0000000000000000000000000000000000000000000000000000000000000001';

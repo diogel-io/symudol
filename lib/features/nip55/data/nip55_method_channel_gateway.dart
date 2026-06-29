@@ -19,6 +19,8 @@ abstract interface class Nip55Gateway {
   });
 
   Future<void> rejectNip55Intent({required String requestToken, String? error});
+
+  Future<Uint8List?> getAppIcon(String packageName);
 }
 
 class Nip55MethodChannelGateway implements Nip55Gateway {
@@ -99,6 +101,17 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
       arguments['error'] = error;
     }
     await _channel.invokeMethod<void>('rejectNip55Intent', arguments);
+  }
+
+  @override
+  Future<Uint8List?> getAppIcon(String packageName) async {
+    final result = await _channel.invokeMethod<Object?>(
+      'getAppIcon',
+      packageName,
+    );
+    if (result is Uint8List) return result;
+    if (result is List<int>) return Uint8List.fromList(result);
+    return null;
   }
 
   Map<String, Object?>? _castMap(Object? value) {

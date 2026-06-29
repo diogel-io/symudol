@@ -5,14 +5,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../profile/application/profile_providers.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
 import 'widgets/import_identity_dialog.dart';
 import 'widgets/profile_avatar.dart';
 
-class AccountsScreen extends ConsumerWidget {
+class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
+
+  @override
+  ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
+}
+
+class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Profile metadata (and its avatar URL) is fetched once and cached for
+    // the provider's lifetime, so re-entering this screen is the trigger to
+    // pick up any changes made on relays since the last visit.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final identity in ref.read(vaultControllerProvider).identities) {
+        ref.invalidate(nostrProfileProvider(identity.publicKey));
+      }
+    });
+  }
 
   Future<void> _showImportIdentityDialog(BuildContext context) async {
     final result = await showDialog<bool>(
@@ -31,7 +50,7 @@ class AccountsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final vaultControllerState = ref.watch(vaultControllerProvider);
     final identities = vaultControllerState.identities;
 
@@ -39,7 +58,11 @@ class AccountsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.privacy_tip, color: DiogelColors.actionPrimary),
+            Image.asset(
+              'assets/images/diogel.png',
+              width: 28,
+              height: 28,
+            ),
             const SizedBox(width: DiogelSpacing.space3),
             Text('Diogel', style: Theme.of(context).textTheme.titleLarge),
           ],
@@ -131,38 +154,6 @@ class AccountsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: DiogelSpacing.space8),
-          Container(
-            padding: const EdgeInsets.all(DiogelSpacing.space4),
-            decoration: BoxDecoration(
-              color: DiogelColors.surfaceBase,
-              borderRadius: BorderRadius.circular(DiogelRadius.large),
-              border: Border.all(color: DiogelColors.borderSubtle),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.verified_user, color: DiogelColors.stateInfo),
-                const SizedBox(width: DiogelSpacing.space4),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Secure Local Storage',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: DiogelSpacing.space1),
-                      Text(
-                        'All private keys are stored locally using the device platform secure-storage backend and never leave your device.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ],

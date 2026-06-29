@@ -176,43 +176,4 @@ class RequestController extends StateNotifier<RequestState> {
     }
     return null;
   }
-
-  /// Injects a demo request for development/demo purposes.
-  ///
-  /// This should only be used in development or demo modes.
-  Future<void> injectDemoRequest() async {
-    final activeIdentity = _vaultController.state.activeIdentity;
-    if (activeIdentity == null) {
-      state = state.copyWith(
-        failure: const RequestFailure(
-          'Cannot inject demo request: No active identity',
-        ),
-      );
-      return;
-    }
-
-    final demoRequest = SigningRequest(
-      id: 'demo-${DateTime.now().millisecondsSinceEpoch}',
-      provenance: const RequestProvenance(
-        sourceDisplayName: 'Demo DApp',
-        sourceIdentifier: 'https://demo.example.com',
-        trustStatus: RequestTrustStatus.unknown,
-      ),
-      actionType: SigningActionType.signEvent,
-      eventKind: 1,
-      eventPayload: {
-        'content': 'This is a demo request for development purposes.',
-        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        'kind': 1,
-        'tags': [],
-        'pubkey': activeIdentity.publicKey,
-      },
-      targetIdentityPublicKey: activeIdentity.publicKey,
-      targetIdentityLocalId: activeIdentity.localId,
-      createdAt: DateTime.now(),
-      status: SigningRequestStatus.pending,
-    );
-
-    await acceptRequest(demoRequest);
-  }
 }

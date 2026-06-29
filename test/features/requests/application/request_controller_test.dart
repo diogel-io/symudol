@@ -254,36 +254,6 @@ void main() {
       );
     });
 
-    test(
-      'injectDemoRequest should add a demo request when identity exists',
-      () async {
-        await vaultController.createVault('1234');
-        await vaultController.createIdentity(displayName: 'Demo User');
-
-        await requestController.injectDemoRequest();
-
-        expect(requestController.state.requests, hasLength(1));
-        final request = requestController.pendingRequest!;
-        expect(request.provenance.sourceDisplayName, equals('Demo DApp'));
-        expect(
-          request.provenance.trustStatus,
-          equals(RequestTrustStatus.unknown),
-        );
-        expect(request.targetIdentityLocalId, isNotNull);
-      },
-    );
-
-    test('injectDemoRequest should fail when no identity exists', () async {
-      await requestController.injectDemoRequest();
-
-      expect(requestController.state.requests, isEmpty);
-      expect(requestController.failure, isNotNull);
-      expect(
-        requestController.failure!.message,
-        contains('No active identity'),
-      );
-    });
-
     test('approveRequest should fail when identity mismatch occurs', () async {
       await vaultController.createVault('1234');
       await vaultController.createIdentity(displayName: 'Test');

@@ -60,8 +60,8 @@ void main() {
       await setScreenSize(tester);
       addTearDown(() => tester.view.resetPhysicalSize());
 
-      // Setup: manual sentinel in store
-      await fakeStore.setSentinel('vault_exists');
+      // Setup: simulate an existing vault
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
       
       await tester.pumpWidget(
         ProviderScope(

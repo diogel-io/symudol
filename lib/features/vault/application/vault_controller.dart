@@ -283,6 +283,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
     if (e is InvalidPinException) {
       return const InvalidPinFailure();
     }
+    if (e is VaultLockedOutException) {
+      return const VaultLockedOutFailure();
+    }
     if (e is IdentityNotFoundException) {
       return const IdentityNotFoundFailure();
     }

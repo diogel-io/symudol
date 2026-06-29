@@ -37,6 +37,29 @@ enum Nip55Method {
     };
   }
 
+  String get displayLabel {
+    return switch (this) {
+      Nip55Method.getPublicKey => 'Share Public Key',
+      Nip55Method.signMessage => 'Sign Message',
+      Nip55Method.signEvent => 'Sign Event',
+      Nip55Method.nip04Encrypt => 'NIP-04 Encrypt',
+      Nip55Method.nip04Decrypt => 'NIP-04 Decrypt',
+      Nip55Method.nip44Encrypt => 'NIP-44 Encrypt',
+      Nip55Method.nip44Decrypt => 'NIP-44 Decrypt',
+      Nip55Method.decryptZapEvent => 'Decrypt Zap Event',
+      Nip55Method.unsupported => 'Unsupported',
+    };
+  }
+
+  bool get isDecrypt {
+    return switch (this) {
+      Nip55Method.nip04Decrypt ||
+      Nip55Method.nip44Decrypt ||
+      Nip55Method.decryptZapEvent => true,
+      _ => false,
+    };
+  }
+
   bool get requiresPeerPubkey {
     return switch (this) {
       Nip55Method.nip04Encrypt ||

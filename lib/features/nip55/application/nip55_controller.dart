@@ -227,7 +227,15 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (_isParsingIntent || state.hasPendingExternalRequest) {
       final busyRequest = _safeParseForRejection(raw);
       if (busyRequest == null) return;
-      if (await _tryCompleteRememberedBusyRequest(busyRequest)) return;
+      // When still parsing the previous intent (_isParsingIntent == true),
+      // skip async permission lookups — the first intent hasn't produced any
+      // pending UI or approval session yet, so auto-completion is impossible
+      // and the async _decide call could block indefinitely (e.g. slow store).
+      // Only try auto-completion when a pending request already exists in
+      // the UI, meaning an approval session may be active.
+      if (!_isParsingIntent) {
+        if (await _tryCompleteRememberedBusyRequest(busyRequest)) return;
+      }
       if (_shouldDeferClientAuthenticationRequest(busyRequest)) {
         _deferClientAuthenticationRequest(busyRequest);
         return;
@@ -1175,7 +1183,24 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55IncomingRequest incoming,
     Nip55PermissionGrant grant,
   ) {
-    final requested = _scopeFor(incoming);
+    // Build the requested scope using the actual peer pubkey from the
+    // incoming request — NOT the controller's _scopeFor which always
+    // uses null/wildcard for decrypt.  The wildcard _scopeFor is correct
+    // for *saving* grants (trust-all-DMs policy) but breaks *matching*
+    // peer-scoped grants because it strips the peer.  This must match
+    // Nip55ApprovalPolicy._scopeFor which preserves the peer.
+    //
+    // decrypt_zap_event is also matched here because NIP-57 zap receipts
+    // are NIP-04 encrypted to the recipient. If the user trusts an app
+    // to decrypt DMs, they trust it to decrypt zap receipts too, so
+    // nip04_decrypt/nip44_decrypt grants also satisfy decrypt_zap_event.
+    final requested = switch (incoming.method) {
+      Nip55Method.nip04Decrypt => Nip04DecryptScope(incoming.pubkey),
+      Nip55Method.nip44Decrypt => Nip44DecryptScope(incoming.pubkey),
+      Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
+      _ => null,
+    };
+    if (requested == null) return false;
     final grantScope = grant.scope;
     return switch ((grantScope, requested)) {
       // Wildcard (null peer) matches any requested peer;
@@ -1190,6 +1215,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         Nip44DecryptScope(peerPubkey: final requestedPeer),
       ) =>
         grantPeer == null || grantPeer == requestedPeer,
+      // nip04_decrypt and nip44_decrypt grants also satisfy decrypt_zap_event.
+      // This mirrors Nip55PermissionMirror.scopeMatches on the Kotlin side.
+      (Nip04DecryptScope(), DecryptZapEventScope()) => true,
+      (Nip44DecryptScope(), DecryptZapEventScope()) => true,
+      // Direct decrypt_zap_event grant matches directly.
+      (DecryptZapEventScope(), DecryptZapEventScope()) => true,
       _ => false,
     };
   }
@@ -1205,6 +1236,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return switch (scope) {
       Nip04DecryptScope() => true,
       Nip44DecryptScope() => true,
+      DecryptZapEventScope() => true,
       _ => false,
     };
   }
@@ -1270,8 +1302,14 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool _shouldDeferClientAuthenticationRequest(Nip55IncomingRequest incoming) {
     // Defer any request that has a remembered grant (not just kind 22242).
     if (!_isAutoCompletableMethod(incoming)) return false;
+    // Do not defer while still parsing the previous intent. At this point no
+    // pending UI or approval session exists yet, so we don't know whether
+    // the first request will be auto-completed, rejected, or shown to the
+    // user. Deferring would leave the caller hanging without a response,
+    // which can cause deadlocks (e.g. slow permission store).
+    if (_isParsingIntent) return false;
     final pending = state.pendingIncoming;
-    if (pending == null) return _isParsingIntent;
+    if (pending == null) return false;
     // Only defer if the pending request is also auto-completable (i.e. same class)
     if (!_isAutoCompletableMethod(pending)) return false;
     return _sameClientAndIdentity(incoming, pending);

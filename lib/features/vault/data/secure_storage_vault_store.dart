@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
 import 'package:android_diogel/features/vault/domain/vault_store.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -7,7 +10,11 @@ class SecureStorageVaultStore implements VaultStore {
   final FlutterSecureStorage _storage;
 
   static const String _keyVersion = 'vault_version';
-  static const String _keySentinel = 'vault_sentinel';
+  static const String _keyKdfSalt = 'vault_kdf_salt';
+  static const String _keyKdfParams = 'vault_kdf_params';
+  static const String _keyWrappedDek = 'vault_wrapped_dek';
+  static const String _keyFailedUnlockAttempts = 'vault_failed_attempts';
+  static const String _keyLockoutUntil = 'vault_lockout_until';
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
   static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
@@ -40,11 +47,53 @@ class SecureStorageVaultStore implements VaultStore {
   Future<void> setVersion(String version) => _writeCached(_keyVersion, version);
 
   @override
-  Future<String?> getSentinel() => _readCached(_keySentinel);
+  Future<Uint8List?> getKdfSalt() async {
+    final value = await _readCached(_keyKdfSalt);
+    return value != null ? base64Decode(value) : null;
+  }
 
   @override
-  Future<void> setSentinel(String sentinel) =>
-      _writeCached(_keySentinel, sentinel);
+  Future<void> setKdfSalt(Uint8List salt) =>
+      _writeCached(_keyKdfSalt, base64Encode(salt));
+
+  @override
+  Future<VaultKdfParams?> getKdfParams() async {
+    final value = await _readCached(_keyKdfParams);
+    if (value == null) return null;
+    return VaultKdfParams.fromJson(jsonDecode(value) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> setKdfParams(VaultKdfParams params) =>
+      _writeCached(_keyKdfParams, jsonEncode(params.toJson()));
+
+  @override
+  Future<String?> getWrappedDek() => _readCached(_keyWrappedDek);
+
+  @override
+  Future<void> setWrappedDek(String wrappedDek) =>
+      _writeCached(_keyWrappedDek, wrappedDek);
+
+  @override
+  Future<int> getFailedUnlockAttempts() async {
+    final value = await _readCached(_keyFailedUnlockAttempts);
+    return value != null ? int.parse(value) : 0;
+  }
+
+  @override
+  Future<void> setFailedUnlockAttempts(int attempts) =>
+      _writeCached(_keyFailedUnlockAttempts, attempts.toString());
+
+  @override
+  Future<DateTime?> getLockoutUntil() async {
+    final value = await _readCached(_keyLockoutUntil);
+    if (value == null || value.isEmpty) return null;
+    return DateTime.parse(value);
+  }
+
+  @override
+  Future<void> setLockoutUntil(DateTime? until) =>
+      _writeCached(_keyLockoutUntil, until?.toIso8601String() ?? '');
 
   @override
   Future<String?> getActiveIdentityId() => _readCached(_keyActiveIdentityId);
