@@ -215,6 +215,56 @@ void main() {
       expect(jsonDecode(decrypted), jsonDecode(privateEventJson));
     });
 
+    test('decryptZapEvent decrypts NIP-04 format anon tag (Amethyst style)', () {
+      final deterministicCrypto = DartNostrCryptoService(
+        randomBytes: (length) =>
+            Uint8List.fromList(List<int>.generate(length, (index) => index + 1)),
+      );
+      const senderEphemeralKey =
+          '0000000000000000000000000000000000000000000000000000000000000001';
+      const receiverPrivateKey =
+          '0000000000000000000000000000000000000000000000000000000000000002';
+      final senderEphemeralPubkey =
+          NostrKeyPairs(private: senderEphemeralKey).public;
+      final receiverPubkey =
+          NostrKeyPairs(private: receiverPrivateKey).public;
+      final privateEventJson = jsonEncode({
+        'id': 'a' * 64,
+        'pubkey': senderEphemeralPubkey,
+        'created_at': 1778170497,
+        'kind': 9733,
+        'tags': [
+          ['p', receiverPubkey],
+        ],
+        'content': 'private zap message',
+        'sig': 'b' * 128,
+      });
+      // Standard NIP-04 format as sent by clients like Amethyst
+      final nip04AnonPayload = deterministicCrypto.nip04Encrypt(
+        privateKeyHex: senderEphemeralKey,
+        peerPubkeyHex: receiverPubkey,
+        plaintext: privateEventJson,
+      );
+
+      final decrypted = deterministicCrypto.decryptZapEvent(
+        privateKeyHex: receiverPrivateKey,
+        eventJson: {
+          'id': 'c' * 64,
+          'pubkey': senderEphemeralPubkey,
+          'created_at': 1778170497,
+          'kind': 9734,
+          'tags': [
+            ['p', receiverPubkey],
+            ['anon', nip04AnonPayload],
+          ],
+          'content': '',
+          'sig': 'd' * 128,
+        },
+      );
+
+      expect(jsonDecode(decrypted), jsonDecode(privateEventJson));
+    });
+
     test('decryptZapEvent keeps legacy NIP-44 content fallback', () {
       final deterministicCrypto = DartNostrCryptoService(
         randomBytes: (_) => Uint8List.fromList([...List<int>.filled(31, 0), 1]),

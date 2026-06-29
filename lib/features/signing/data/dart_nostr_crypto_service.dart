@@ -182,11 +182,17 @@ class DartNostrCryptoService implements NostrCryptoService {
         ? eventPubkey
         : recipientPubkey;
 
-    final decrypted = _decryptPrivateZapMessage(
-      encryptedPayload: anonPayload,
-      privateKeyHex: decryptKey,
-      peerPubkeyHex: peerPubkey,
-    );
+    final decrypted = anonPayload.contains('?iv=')
+        ? nip04Decrypt(
+            privateKeyHex: decryptKey,
+            peerPubkeyHex: peerPubkey,
+            ciphertext: anonPayload,
+          )
+        : _decryptPrivateZapMessage(
+            encryptedPayload: anonPayload,
+            privateKeyHex: decryptKey,
+            peerPubkeyHex: peerPubkey,
+          );
 
     final decoded = jsonDecode(decrypted);
     if (decoded is! Map<String, Object?> || decoded['kind'] != 9733) {
