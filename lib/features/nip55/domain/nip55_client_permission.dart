@@ -46,7 +46,7 @@ class Nip55PermissionGrant {
     };
   }
 
-  Nip55PermissionGrant copyWith({DateTime? lastUsedAt}) {
+  Nip55PermissionGrant copyWith({DateTime? lastUsedAt, DateTime? expiresAt}) {
     return Nip55PermissionGrant(
       id: id,
       identityPubkey: identityPubkey,
@@ -56,7 +56,7 @@ class Nip55PermissionGrant {
       decision: decision,
       createdAt: createdAt,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
-      expiresAt: expiresAt,
+      expiresAt: expiresAt ?? this.expiresAt,
       userLabel: userLabel,
     );
   }

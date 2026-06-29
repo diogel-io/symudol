@@ -22,6 +22,7 @@ import '../domain/nip55_incoming_request.dart';
 import '../domain/nip55_intent_parser.dart';
 import '../domain/nip55_method.dart';
 import '../domain/nip55_payload.dart';
+import '../domain/nip55_approval_timeframe.dart';
 import '../domain/nip55_permission_decision.dart';
 import '../domain/nip55_permission_scope.dart';
 import '../domain/nip55_permission_store.dart';
@@ -463,7 +464,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
     if (decision is AutoAllow) {
-      if (!_canUseApprovalSession(decision.grant)) {
+      if (!_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
         state = state.copyWith(
           isLoading: false,
           pendingIncoming: incoming,
@@ -589,9 +590,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       state = state.copyWith(isLoading: false, clearPendingIncoming: true);
       return;
     }
-    if (decision is AutoAllow && _canUseApprovalSession(decision.grant)) {
+    if (decision is AutoAllow &&
+        _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
       await _markGrantUsed(decision.grant);
-      await _completeCryptoOperation(incoming, remember: false);
+      await _completeCryptoOperation(incoming);
       return;
     }
 
@@ -602,7 +604,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
-  Future<void> approvePublicKeyRequest({bool remember = false}) async {
+  Future<void> approvePublicKeyRequest({
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
     final request = state.pendingPublicKeyRequest;
     final activeIdentity = _vaultController.state.activeIdentity;
     if (request == null || activeIdentity == null) return;
@@ -610,12 +614,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // Enter loading state to prevent duplicate submissions
     state = state.copyWith(isLoading: true);
 
-    if (remember) {
+    if (timeframe != Nip55ApprovalTimeframe.justOnce) {
       await _saveGrant(
         incoming: request,
         identityPubkey: activeIdentity.publicKey,
         scope: const GetPublicKeyScope(),
         decision: Nip55PermissionDecision.allow,
+        expiresAt: _expiresAtFor(timeframe),
       );
     }
 
@@ -634,7 +639,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       clearPendingSigningRequestId: true,
       approvalSessionExpiresAt: approvalSessionExpiresAt,
       clearApprovalSession: approvalSessionExpiresAt == null,
-      lastSuccessMessage: remember
+      lastSuccessMessage: timeframe != Nip55ApprovalTimeframe.justOnce
           ? 'Public key shared and permission remembered.'
           : 'Public key shared with requesting Android app.',
       isLoading: false,
@@ -668,7 +673,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
-  Future<void> approveCryptoRequest({bool remember = false}) async {
+  Future<void> approveCryptoRequest({
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
     final request = state.pendingCryptoRequest;
     if (request == null) return;
 
@@ -676,7 +683,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(isLoading: true);
 
     try {
-      await _completeCryptoOperation(request, remember: remember);
+      await _completeCryptoOperation(request, timeframe: timeframe);
       _extendApprovalSession();
     } on VaultException catch (error) {
       await _gateway.rejectNip55Intent(
@@ -734,19 +741,21 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   Future<void> _completeCryptoOperation(
     Nip55IncomingRequest request, {
-    required bool remember,
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
   }) async {
     final activeIdentity = _vaultController.state.activeIdentity;
     if (activeIdentity == null) {
       throw const Nip55Failure('Select an identity before completing request.');
     }
     final result = await _cryptoResult(request, activeIdentity.localId);
-    if (remember && _canRememberCryptoRequest(request)) {
+    if (timeframe != Nip55ApprovalTimeframe.justOnce &&
+        _canRememberCryptoRequest(request)) {
       await _saveGrant(
         incoming: request,
         identityPubkey: activeIdentity.publicKey,
         scope: _scopeFor(request),
         decision: Nip55PermissionDecision.allow,
+        expiresAt: _expiresAtFor(timeframe),
       );
     }
     await _gateway.completeNip55Intent(
@@ -847,7 +856,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
   Future<void> approveSigningRequest(
     String requestId, {
-    bool remember = false,
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
   }) async {
     if (state.pendingSigningRequestId != requestId) return;
     final incoming = state.pendingIncoming;
@@ -857,6 +866,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await _requestController.approveRequest(requestId);
     final signedEvent = _requestController.state.signedEvents[requestId];
 
+    final remember = timeframe != Nip55ApprovalTimeframe.justOnce;
     if (remember && signedEvent != null) {
       try {
         await _saveGrant(
@@ -864,6 +874,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           identityPubkey: activeIdentity.publicKey,
           scope: _scopeFor(incoming),
           decision: Nip55PermissionDecision.allow,
+          expiresAt: _expiresAtFor(timeframe),
         );
       } catch (e) {
         dev.log('Failed to save permission grant: $e', name: 'Diogel');
@@ -1029,24 +1040,32 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(clearFailure: true, clearSuccess: true);
   }
 
-  bool canRememberPendingSigningRequest(String requestId) {
+  bool canSelectTimeframeForPendingSigningRequest(String requestId) {
     return state.pendingSigningRequestId == requestId &&
         state.pendingIncoming?.clientIdentity.packageName != null &&
         state.pendingIncoming?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
 
-  bool canRememberPendingPublicKeyRequest() {
+  bool canSelectTimeframeForPendingPublicKeyRequest() {
     return state.pendingPublicKeyRequest?.clientIdentity.packageName != null &&
         state.pendingPublicKeyRequest?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
 
-  bool canRememberPendingCryptoRequest() {
+  bool canSelectTimeframeForPendingCryptoRequest() {
     final request = state.pendingCryptoRequest;
     if (request == null) return false;
     return _canRememberCryptoRequest(request);
   }
+
+  // Keep backwards-compatible aliases used by existing tests and UI.
+  bool canRememberPendingSigningRequest(String requestId) =>
+      canSelectTimeframeForPendingSigningRequest(requestId);
+  bool canRememberPendingPublicKeyRequest() =>
+      canSelectTimeframeForPendingPublicKeyRequest();
+  bool canRememberPendingCryptoRequest() =>
+      canSelectTimeframeForPendingCryptoRequest();
 
   Future<Nip55ApprovalDecision> _decide(
     Nip55IncomingRequest incoming,
@@ -1061,25 +1080,35 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
+  DateTime? _expiresAtFor(Nip55ApprovalTimeframe timeframe) =>
+      switch (timeframe) {
+        Nip55ApprovalTimeframe.justOnce => null,
+        Nip55ApprovalTimeframe.eightHours =>
+          _now().add(const Duration(hours: 8)),
+        Nip55ApprovalTimeframe.always => null,
+      };
+
   Future<void> _saveGrant({
     required Nip55IncomingRequest incoming,
     required String identityPubkey,
     required Nip55PermissionScope scope,
     required Nip55PermissionDecision decision,
+    DateTime? expiresAt,
   }) async {
     final store = _permissionStore;
     final packageName = incoming.clientIdentity.packageName;
     if (store == null || packageName == null) return;
     await store.saveGrant(
       Nip55PermissionGrant(
-        id: 'nip55-${decision.name}-${scope.wire}-${DateTime.now().microsecondsSinceEpoch}',
+        id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
         identityPubkey: identityPubkey,
         packageName: packageName,
         certificateSha256: incoming.clientIdentity.certificateSha256,
         scope: scope,
         decision: decision,
-        createdAt: DateTime.now(),
-        lastUsedAt: DateTime.now(),
+        createdAt: _now(),
+        lastUsedAt: _now(),
+        expiresAt: expiresAt,
         userLabel: incoming.clientIdentity.displayName,
       ),
     );
@@ -1167,6 +1196,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) {
     if (_isRememberedClientAuthentication(incoming, grant)) return true;
     if (_isRememberedScopedDecrypt(incoming, grant)) return true;
+    // Any explicitly saved non-broad grant can auto-approve without a live
+    // approval session. The policy's _isExpired check already filtered out
+    // expired grants before returning AutoAllow, so no extra check is needed.
+    if (!grant.scope.isBroad) return true;
+    // Broad scopes (wildcard sign_event with null kind) still require the
+    // approval session as a safety gate.
     return _canUseApprovalSession(grant);
   }
 

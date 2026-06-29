@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_approval_timeframe.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
@@ -221,7 +222,7 @@ void main() {
 
         await permissionController.approveSigningRequest(
           request.id,
-          remember: true,
+          timeframe: Nip55ApprovalTimeframe.always,
         );
 
         expect(permissionStore.grants, hasLength(1));
@@ -231,6 +232,7 @@ void main() {
         expect(grant.decision, Nip55PermissionDecision.allow);
         expect(grant.scope, isA<SignEventScope>());
         expect((grant.scope as SignEventScope).kind, 1);
+        expect(grant.expiresAt, isNull);
         expect(gateway.completedExtras?['event'], contains('"sig"'));
       },
     );
@@ -292,7 +294,7 @@ void main() {
 
         await permissionController.approveSigningRequest(
           request.id,
-          remember: true,
+          timeframe: Nip55ApprovalTimeframe.always,
         );
 
         expect(permissionStore.grants, isEmpty);
@@ -301,7 +303,7 @@ void main() {
     );
 
     test(
-      'remembered allow grant still asks outside approval session',
+      'remembered allow grant auto-approves without an active approval session',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         permissionStore.grants.add(
@@ -329,8 +331,9 @@ void main() {
           'callerCertificateSha256': 'AA:BB',
         });
 
-        expect(gateway.completedExtras, isNull);
-        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+        // Bug fix: saved grants now auto-approve outside the approval session.
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+        expect(permissionController.state.pendingSigningRequestId, isNull);
       },
     );
 
@@ -462,7 +465,7 @@ void main() {
 
         await permissionController.approveSigningRequest(
           first.id,
-          remember: true,
+          timeframe: Nip55ApprovalTimeframe.always,
         );
 
         expect(
@@ -546,7 +549,7 @@ void main() {
         final first = requestController.state.requests.single;
         await permissionController.approveSigningRequest(
           first.id,
-          remember: true,
+          timeframe: Nip55ApprovalTimeframe.always,
         );
 
         expect(permissionController.state.approvalSessionExpiresAt, isNotNull);
@@ -842,7 +845,9 @@ void main() {
         'callingPackage': 'com.example.app',
       });
 
-      await permissionController.approvePublicKeyRequest(remember: true);
+      await permissionController.approvePublicKeyRequest(
+        timeframe: Nip55ApprovalTimeframe.always,
+      );
 
       expect(permissionStore.grants, hasLength(1));
       expect(permissionStore.grants.single.scope, isA<GetPublicKeyScope>());
@@ -850,6 +855,7 @@ void main() {
         permissionStore.grants.single.decision,
         Nip55PermissionDecision.allow,
       );
+      expect(permissionStore.grants.single.expiresAt, isNull);
       expect(gateway.completedToken, 'pk-token');
     });
 
@@ -997,7 +1003,9 @@ void main() {
 
       expect(permissionController.canRememberPendingCryptoRequest(), isTrue);
 
-      await permissionController.approveCryptoRequest(remember: true);
+      await permissionController.approveCryptoRequest(
+        timeframe: Nip55ApprovalTimeframe.always,
+      );
 
       expect(gateway.completedExtras?['result'], 'secret');
       expect(permissionStore.grants.single.scope, isA<Nip44DecryptScope>());
@@ -1093,7 +1101,9 @@ void main() {
 
       expect(permissionController.canRememberPendingCryptoRequest(), isTrue);
 
-      await permissionController.approveCryptoRequest(remember: true);
+      await permissionController.approveCryptoRequest(
+        timeframe: Nip55ApprovalTimeframe.always,
+      );
 
       expect(gateway.completedExtras?['result'], isNotNull);
       expect(
@@ -1449,6 +1459,216 @@ void main() {
       expect(gateway.rejectedError, contains('cancelled'));
       expect(controller.state.pendingIncoming, isNull);
     });
+
+    // -------------------------------------------------------------------------
+    // Timeframe-based approval tests
+    // -------------------------------------------------------------------------
+
+    test(
+      'justOnce leaves no grant in the store',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.justOnce,
+        );
+
+        expect(permissionStore.grants, isEmpty);
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+      },
+    );
+
+    test(
+      'eightHours stores grant with expiresAt approximately now + 8h',
+      () async {
+        final now = DateTime.utc(2026, 6, 1, 12);
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+          now: () => now,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.eightHours,
+        );
+
+        expect(permissionStore.grants, hasLength(1));
+        final grant = permissionStore.grants.single;
+        expect(grant.expiresAt, isNotNull);
+        expect(
+          grant.expiresAt!.difference(now).inMinutes,
+          closeTo(480, 1),
+        );
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+      },
+    );
+
+    test(
+      'always stores grant with null expiresAt',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(permissionStore.grants, hasLength(1));
+        expect(permissionStore.grants.single.expiresAt, isNull);
+      },
+    );
+
+    test(
+      'non-expired saved grant auto-approves without an approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'saved-grant',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const GetPublicKeyScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+            expiresAt: DateTime.now().add(const Duration(hours: 8)),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'pk-auto',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        // No approval session set — grant alone should suffice.
+        expect(permissionController.state.approvalSessionExpiresAt, isNull);
+        expect(gateway.completedToken, 'pk-auto');
+        expect(permissionController.state.pendingPublicKeyRequest, isNull);
+      },
+    );
+
+    test(
+      'expired 8-hour grant does not auto-approve',
+      () async {
+        final past = DateTime.utc(2026, 6, 1, 3);
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'expired-grant',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 6, 1),
+            // Saved 9 hours ago, already expired.
+            expiresAt: past,
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        // Expired grant — must show review UI.
+        expect(gateway.completedExtras, isNull);
+        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+      },
+    );
+
+    test(
+      'broad sign_event (null kind) grant still requires approval session',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'broad-grant',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(null),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.now(),
+          ),
+        );
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        // Broad wildcard scope: no active session → must show review.
+        expect(gateway.completedExtras, isNull);
+        expect(permissionController.state.pendingSigningRequestId, isNotNull);
+      },
+    );
 
     test('locked pending request times out', () async {
       final activePubkey = vaultController.state.activeIdentity!.publicKey;

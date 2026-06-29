@@ -5,6 +5,7 @@ import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/profile_avatar.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../../nip55/application/nip55_providers.dart';
+import '../../nip55/domain/nip55_approval_timeframe.dart';
 import '../../nip55/domain/nip55_permission_parser.dart';
 import '../../profile/application/profile_providers.dart';
 import '../../vault/application/vault_providers.dart';
@@ -16,7 +17,7 @@ import '../domain/signed_nostr_event.dart';
 import 'widgets/approval_context_section.dart';
 import 'widgets/approval_details_section.dart';
 import 'widgets/provenance_warning.dart';
-import 'widgets/remember_row.dart';
+import 'widgets/remember_row.dart' show TimeframeRow;
 import 'widgets/request_summary_card.dart';
 
 class ApprovalScreen extends ConsumerStatefulWidget {
@@ -244,7 +245,7 @@ class _ApprovalContent extends ConsumerStatefulWidget {
 
 class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
   bool _showDetails = false;
-  bool _remember = false;
+  Nip55ApprovalTimeframe _timeframe = Nip55ApprovalTimeframe.justOnce;
 
   @override
   Widget build(BuildContext context) {
@@ -389,9 +390,9 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (canRemember)
-            RememberRow(
-              value: _remember,
-              onChanged: (v) => setState(() => _remember = v),
+            TimeframeRow(
+              value: _timeframe,
+              onChanged: (v) => setState(() => _timeframe = v),
             ),
           Row(
             children: [
@@ -465,47 +466,53 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
   Future<void> _onApprove(ApprovalContext approval) async {
     final nip55 = ref.read(nip55ControllerProvider.notifier);
     final requests = ref.read(requestControllerProvider.notifier);
+    final canRemember = switch (approval) {
+      SigningApprovalContext(:final canRemember) => canRemember,
+      PublicKeyApprovalContext(:final canRemember) => canRemember,
+      CryptoApprovalContext(:final canRemember) => canRemember,
+    };
+    final timeframe =
+        canRemember ? _timeframe : Nip55ApprovalTimeframe.justOnce;
 
     switch (approval) {
       case SigningApprovalContext():
         if (approval.isNip55Request) {
           await nip55.approveSigningRequest(
             approval.request.id,
-            remember: approval.canRemember && _remember,
+            timeframe: timeframe,
           );
         } else {
           await requests.approveRequest(approval.request.id);
         }
       case PublicKeyApprovalContext():
-        await nip55.approvePublicKeyRequest(
-          remember: approval.canRemember && _remember,
-        );
+        await nip55.approvePublicKeyRequest(timeframe: timeframe);
       case CryptoApprovalContext():
-        await nip55.approveCryptoRequest(
-          remember: approval.canRemember && _remember,
-        );
+        await nip55.approveCryptoRequest(timeframe: timeframe);
     }
   }
 
   Future<void> _onReject(ApprovalContext approval) async {
     final nip55 = ref.read(nip55ControllerProvider.notifier);
     final requests = ref.read(requestControllerProvider.notifier);
+    final canRemember = switch (approval) {
+      SigningApprovalContext(:final canRemember) => canRemember,
+      PublicKeyApprovalContext(:final canRemember) => canRemember,
+      CryptoApprovalContext(:final canRemember) => canRemember,
+    };
+    final rememberRejection =
+        canRemember && _timeframe != Nip55ApprovalTimeframe.justOnce;
 
     switch (approval) {
       case SigningApprovalContext():
         await requests.rejectRequest(approval.request.id);
         await nip55.rejectSigningRequest(
           approval.request.id,
-          remember: approval.canRemember && _remember,
+          remember: rememberRejection,
         );
       case PublicKeyApprovalContext():
-        await nip55.rejectPublicKeyRequest(
-          remember: approval.canRemember && _remember,
-        );
+        await nip55.rejectPublicKeyRequest(remember: rememberRejection);
       case CryptoApprovalContext():
-        await nip55.rejectCryptoRequest(
-          remember: approval.canRemember && _remember,
-        );
+        await nip55.rejectCryptoRequest(remember: rememberRejection);
     }
   }
 
