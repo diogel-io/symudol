@@ -536,6 +536,130 @@ void main() {
       },
     );
 
+    testWidgets('shows kind 31234 NIP-37 Draft Wrap approval summary', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test User');
+      final activeIdentity = vaultController.state.activeIdentity!;
+
+      final request = SigningRequest(
+        id: 'req-nip37',
+        provenance: const RequestProvenance(
+          sourceDisplayName: 'Amethyst',
+          sourceIdentifier: 'com.vitorpamplona.amethyst',
+          trustStatus: RequestTrustStatus.knownTrusted,
+        ),
+        actionType: SigningActionType.signEvent,
+        eventKind: 31234,
+        eventPayload: const {
+          'kind': 31234,
+          'nip55Method': 'sign_event',
+          'nip55PermissionScope': 'sign_event:31234',
+          'content': 'encrypted-payload',
+          'tags': [
+            ['d', 'draft-id'],
+            ['k', '1'],
+            ['expiration', '1777618800'],
+          ],
+        },
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
+        createdAt: DateTime.now(),
+        status: SigningRequestStatus.pending,
+      );
+
+      await requestController.acceptRequest(request);
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      expect(find.text('Draft wrap / NIP-37'), findsOneWidget);
+      expect(find.text('Encrypted draft payload'), findsOneWidget);
+      expect(find.text('Risk note'), findsOneWidget);
+      expect(find.textContaining('Unknown event kind'), findsNothing);
+
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -500),
+      );
+      await tester.pump();
+
+      expect(find.text('sign_event'), findsOneWidget);
+      expect(
+        find.text('Remember permission: sign kind 31234 only'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows kind 5 NIP-09 Event Deletion Request approval summary', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test User');
+      final activeIdentity = vaultController.state.activeIdentity!;
+
+      final request = SigningRequest(
+        id: 'req-nip09',
+        provenance: const RequestProvenance(
+          sourceDisplayName: 'Amethyst',
+          sourceIdentifier: 'com.vitorpamplona.amethyst',
+          trustStatus: RequestTrustStatus.knownTrusted,
+        ),
+        actionType: SigningActionType.signEvent,
+        eventKind: 5,
+        eventPayload: const {
+          'kind': 5,
+          'nip55Method': 'sign_event',
+          'nip55PermissionScope': 'sign_event:5',
+          'content': '',
+          'tags': [
+            ['e', '<event-id>'],
+            ['k', '1'],
+          ],
+        },
+        targetIdentityPublicKey: activeIdentity.publicKey,
+        targetIdentityLocalId: activeIdentity.localId,
+        createdAt: DateTime.now(),
+        status: SigningRequestStatus.pending,
+      );
+
+      await requestController.acceptRequest(request);
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      expect(find.text('Event deletion request / NIP-09'), findsOneWidget);
+      expect(find.text('Deletion request with no reason text.'), findsOneWidget);
+      expect(find.text('Risk note'), findsOneWidget);
+      expect(find.textContaining('Unknown event kind'), findsNothing);
+
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -500),
+      );
+      await tester.pump();
+
+      expect(find.text('sign_event'), findsOneWidget);
+      expect(
+        find.text('Remember permission: sign kind 5 only'),
+        findsOneWidget,
+      );
+      expect(find.text('2 tag(s): e:1, k:1'), findsOneWidget);
+    });
+
     testWidgets(
       'crypto NIP-55 completion failure removes stale action buttons',
       (tester) async {

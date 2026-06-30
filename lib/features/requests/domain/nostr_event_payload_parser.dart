@@ -1,4 +1,5 @@
 import 'nostr_event_draft.dart';
+import 'nostr_event_kind_registry.dart';
 import 'signing_request.dart';
 
 class NostrEventPayloadParseException implements Exception {
@@ -60,37 +61,53 @@ class NostrEventPayloadParser {
   NostrEventPayloadReview review(Map<String, Object?> payload) {
     final kind = payload['kind'] is int ? payload['kind'] as int : -1;
     final permission = payload['nip55PermissionScope']?.toString();
-    final unknownKind = !_knownKindLabels.containsKey(kind);
+    final entry = registryEntry(kind);
+    final notInRegistry = entry == null;
     final broadPermission = permission == 'sign_event';
-    final sensitive = _sensitiveKinds.contains(kind) || broadPermission;
+    final sensitive = (entry?.sensitive ?? false) || broadPermission;
 
     return NostrEventPayloadReview(
       kind: kind,
       kindLabel: kindLabel(kind),
-      contentPreview: contentPreview(payload['content'], kind),
+      contentPreview: contentPreview(payload['content'], kind, payload['tags']),
       tagsSummary: tagsSummary(payload['tags']),
       riskNote: riskNote(kind: kind, isBroadPermission: broadPermission),
       permissionLabel: permissionLabel(permission, kind),
-      isUnknownKind: unknownKind,
+      isUnknownKind: notInRegistry,
       isSensitive: sensitive,
       isBroadPermission: broadPermission,
     );
   }
 
   String kindLabel(int kind) {
-    return _knownKindLabels[kind] ??
-        'Unknown event kind. Review carefully before signing.';
+    return registryEntry(kind)?.label ?? fallbackKindLabel(kind);
   }
 
-  String contentPreview(Object? content, int kind) {
+  String contentPreview(
+    Object? content,
+    int kind, [
+    Object? tags,
+  ]) {
     final text = content?.toString() ?? '';
+    final entry = registryEntry(kind);
     if (text.trim().isEmpty) {
-      return switch (kind) {
-        0 => 'Profile metadata with empty content.',
-        3 => 'Contact list update with no text content.',
-        10002 => 'Relay list metadata with no text content.',
-        _ => 'No content',
-      };
+      final emptyPreview = entry?.emptyContentPreview;
+      if (emptyPreview != null) return emptyPreview;
+      // NIP-31: for unregistered kinds, surface alt tag when content is absent
+      if (entry == null) {
+        final alt = _firstTagValue(tags, 'alt');
+        if (alt != null) {
+          final trimmed = alt.trim();
+          if (trimmed.isNotEmpty) {
+            if (trimmed.length <= 276) return 'Alt: $trimmed';
+            return 'Alt: ${trimmed.substring(0, 276)}…';
+          }
+        }
+      }
+      return 'No content';
+    }
+    if (entry?.nonEmptyContentPreview != null) {
+      return entry!.nonEmptyContentPreview!;
     }
     final singleLine = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (singleLine.length <= 280) return singleLine;
@@ -117,20 +134,12 @@ class NostrEventPayloadParser {
     if (isBroadPermission) {
       return 'Broad sign_event permission. Remembering this would allow this app to request any event kind covered by that grant.';
     }
-    return switch (kind) {
-      0 => 'This can change your public profile metadata.',
-      1 =>
-        'This is a public text note. Anyone may be able to read it after the requesting app publishes it.',
-      3 => 'This can replace your contact list.',
-      4 => 'Legacy encrypted DM / NIP-04. Review recipient tags carefully.',
-      6 => 'This reposts another event from your account.',
-      7 => 'This reacts to another event from your account.',
-      9735 =>
-        'Zap receipts are usually service-generated. Check the source carefully.',
-      10002 => 'This can update your public relay list metadata.',
-      22242 => 'Client authentication proves control of this key to a service.',
-      _ => 'Unknown event kind. Review carefully before signing.',
-    };
+    final entry = registryEntry(kind);
+    if (entry != null) {
+      return entry.riskNote ??
+          'This is a known Nostr protocol event. Review the requesting app and content before signing.';
+    }
+    return fallbackRiskNote(kind);
   }
 
   String permissionLabel(String? permission, int kind) {
@@ -176,16 +185,15 @@ class NostrEventPayloadParser {
   }
 }
 
-const _knownKindLabels = <int, String>{
-  0: 'Metadata/profile',
-  1: 'Text note',
-  3: 'Contact list',
-  4: 'Legacy encrypted DM / NIP-04',
-  6: 'Repost',
-  7: 'Reaction',
-  9735: 'Zap receipt',
-  10002: 'Relay list metadata',
-  22242: 'Client authentication',
-};
-
-const _sensitiveKinds = <int>{0, 3, 4, 10002, 22242};
+/// Returns the first value of a tag named [name] from a raw tags list,
+/// or null if not present. Used for NIP-31 alt tag surfacing.
+String? _firstTagValue(Object? tags, String name) {
+  if (tags is! List) return null;
+  for (final tag in tags) {
+    if (tag is List && tag.length >= 2 && tag.first == name) {
+      final value = tag[1];
+      if (value is String && value.trim().isNotEmpty) return value;
+    }
+  }
+  return null;
+}
