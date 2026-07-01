@@ -5,6 +5,8 @@ import 'package:android_diogel/features/nip55/domain/nip55_payload.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_web_return_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../fixtures/amethyst_sign_event.dart';
+
 void main() {
   final fixedNow = DateTime.utc(2026, 5, 1);
   late Nip55IntentParser parser;
@@ -209,6 +211,17 @@ void main() {
         () => parser.parse({'type': 'get_public_key'}),
         throwsA(isA<Nip55ParseException>()),
       );
+    });
+
+    test('parses Amethyst-style sign_event extras', () {
+      final request = parser.parse(amethystSignEventExtras());
+
+      expect(request.method, Nip55Method.signEvent);
+      expect(request.externalId, 'amethyst-req-1');
+      expect(request.currentUser, amethystSignerPubkey);
+      expect(request.eventJson?['kind'], 1);
+      expect(request.eventJson?['content'], 'hello from amethyst');
+      expect(request.payload, isA<SignEventPayload>());
     });
   });
 }

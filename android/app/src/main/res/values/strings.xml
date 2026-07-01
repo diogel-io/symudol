@@ -23,6 +23,7 @@
     <string name="key_source_hint">sourceHint</string>
     <string name="key_data_uri">dataUri</string>
     <string name="key_request_token">requestToken</string>
+    <string name="key_rejected">rejected</string>
 
     <!-- NIP-55 Protocol Values -->
     <string name="method_nip04_decrypt">nip04_decrypt</string>

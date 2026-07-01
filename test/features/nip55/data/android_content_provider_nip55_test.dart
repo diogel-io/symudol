@@ -10,15 +10,17 @@ void main() {
 
     expect(manifest, contains('android:name=".Nip55ContentProvider"'));
     expect(manifest, contains('android:exported="true"'));
-    expect(manifest, contains('io.threenine.diogel.SIGN_EVENT'));
-    expect(manifest, contains('io.threenine.diogel.SIGN_MESSAGE'));
-    expect(manifest, contains('io.threenine.diogel.NIP44_ENCRYPT'));
-    expect(manifest, contains('io.threenine.diogel.NIP44_DECRYPT'));
-    expect(manifest, contains('io.threenine.diogel.NIP04_ENCRYPT'));
-    expect(manifest, contains('io.threenine.diogel.NIP04_DECRYPT'));
-    expect(manifest, contains('io.threenine.diogel.DECRYPT_ZAP_EVENT'));
-    expect(manifest, contains('io.threenine.diogel.GET_PUBLIC_KEY'));
-    expect(manifest, contains('io.threenine.diogel.PING'));
+    // Authorities use ${applicationId} so debug/release/flavor builds expose
+    // the correct content:// URI — clients build URIs from the signer package name.
+    expect(manifest, contains(r'${applicationId}.SIGN_EVENT'));
+    expect(manifest, contains(r'${applicationId}.SIGN_MESSAGE'));
+    expect(manifest, contains(r'${applicationId}.NIP44_ENCRYPT'));
+    expect(manifest, contains(r'${applicationId}.NIP44_DECRYPT'));
+    expect(manifest, contains(r'${applicationId}.NIP04_ENCRYPT'));
+    expect(manifest, contains(r'${applicationId}.NIP04_DECRYPT'));
+    expect(manifest, contains(r'${applicationId}.DECRYPT_ZAP_EVENT'));
+    expect(manifest, contains(r'${applicationId}.GET_PUBLIC_KEY'));
+    expect(manifest, contains(r'${applicationId}.PING'));
   });
 
   test('ContentProvider bridges warm-session queries without launching UI', () {
@@ -80,17 +82,16 @@ void main() {
       ),
     );
 
-    // Workstream E: Exact authority/mapping assertions
+    // Workstream A: Authorities derived from BuildConfig.APPLICATION_ID so
+    // debug/release/flavor builds expose the correct content:// authority.
     expect(
       codec,
-      contains(
-        'const val AUTHORITY_GET_PUBLIC_KEY = "io.threenine.diogel.GET_PUBLIC_KEY"',
-      ),
+      contains('val AUTHORITY_GET_PUBLIC_KEY = "\${BuildConfig.APPLICATION_ID}.GET_PUBLIC_KEY"'),
     );
     expect(codec, contains('AUTHORITY_GET_PUBLIC_KEY -> "get_public_key"'));
     expect(
       codec,
-      contains('const val AUTHORITY_PING = "io.threenine.diogel.PING"'),
+      contains('val AUTHORITY_PING = "\${BuildConfig.APPLICATION_ID}.PING"'),
     );
     expect(codec, contains('AUTHORITY_PING -> "ping"'));
   });
@@ -122,6 +123,75 @@ void main() {
       provider,
       contains('PING is treated as a stateless capability probe'),
     );
+  });
+
+  test('kind 22242 relay auth uses remembered-grant path, not unconditional auto-sign', () {
+    final provider = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+    ).readAsStringSync();
+    final mirror = File(
+      'android/app/src/main/kotlin/io/threenine/diogel/Nip55PermissionMirror.kt',
+    ).readAsStringSync();
+
+    // Kind 22242 must NOT be auto-signed without a grant
+    expect(provider, isNot(contains('kind 22242 client auth for')));
+    expect(provider, isNot(contains('isKind22242')));
+    // Relay URL extraction and relay-aware grant matching must be present
+    expect(provider, contains('relayUrl'));
+    expect(provider, contains('normalizeRelayUrl'));
+    expect(mirror, contains('scopeRelayUrl'));
+    expect(mirror, contains('grant.scopeRelayUrl != null && grant.scopeRelayUrl != relayUrl'));
+  });
+
+  group('provider contract semantics (null / rejected / result)', () {
+    late String provider;
+
+    setUpAll(() {
+      provider = File(
+        'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+      ).readAsStringSync();
+    });
+
+    test('first-time request returns null so client falls back to foreground approval', () {
+      // No remembered grant: shouldBridge=false → return null
+      expect(provider, contains('// No remembered grant, vault unlocked — legitimate first-time request'));
+      expect(provider, contains('else -> false'));
+      expect(provider, contains('if (!shouldBridge) return null'));
+    });
+
+    test('explicit remembered reject returns rejected cursor, not null', () {
+      expect(provider, contains('hasRememberedReject('));
+      expect(provider, contains('return Nip55RequestCodec.rejectedCursor()'));
+    });
+
+    test('sign_event success returns cursor with signature, result, and full event columns', () {
+      expect(provider, contains('signEventCursor(operationResult, eventJson)'));
+      final codec = File(
+        'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
+      ).readAsStringSync();
+      expect(codec, contains('MatrixCursor(arrayOf("signature", "result", "event"))'));
+    });
+
+    test('vault-locked decrypt returns null without rejected cursor', () {
+      // Vault locked path: no remembered grant → shouldBridge=false → return null.
+      // Amethyst treats null as signal to fall back to foreground Intent.
+      expect(provider, contains('// No remembered grant, vault locked — can\'t bridge'));
+    });
+
+    test('background decrypt requires remembered allow — no auto-approve without grant', () {
+      // Workstream D: decrypt is no longer auto-approved when vault is unlocked.
+      // A remembered allow grant is required for background plaintext decryption.
+      expect(provider, isNot(contains('decrypting natively (auto-approve)')));
+      expect(provider, contains('Decrypt operations'));
+      expect(provider, contains('fall through to the standard permission path'));
+    });
+
+    test('rejected cursor is reserved for explicit permission reject only', () {
+      // Verify rejected is only returned from remembered-reject paths,
+      // not from missing-permission or vault-locked paths.
+      expect(provider, isNot(contains('rejectedCursor() // vault')));
+      expect(provider, isNot(contains('rejectedCursor() // no grant')));
+    });
   });
 
   test('ContentProvider MVP deferral is documented', () {

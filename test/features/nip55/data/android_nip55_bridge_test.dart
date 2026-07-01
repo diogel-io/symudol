@@ -48,7 +48,7 @@ void main() {
     expect(
       bridgeActivity,
       contains(
-        'Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent)',
+        'Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent)',
       ),
     );
     expect(mainActivity, contains('parsedTypeExtra'));

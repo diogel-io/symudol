@@ -8,9 +8,9 @@ import 'nip55_incoming_request.dart';
 import 'nip55_web_return_options.dart';
 
 class Nip55ResponseBuilder {
-  static const signerPackage = 'io.threenine.diogel';
+  final String signerPackage;
 
-  const Nip55ResponseBuilder();
+  const Nip55ResponseBuilder({this.signerPackage = 'io.threenine.diogel'});
 
   Map<String, Object?> signEventExtras({
     required Nip55IncomingRequest incoming,

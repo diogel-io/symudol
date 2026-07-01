@@ -177,6 +177,47 @@ void main() {
     });
   });
 
+  test('get_public_key package field uses signerPackage constructor param', () {
+    const customBuilder = Nip55ResponseBuilder(signerPackage: 'com.example.custom');
+    final identity = VaultIdentity(
+      localId: 'local',
+      publicKey: 'a' * 64,
+      createdAt: DateTime.utc(2026, 5, 1),
+      origin: IdentityOrigin.generated,
+    );
+
+    final extras = customBuilder.getPublicKeyExtras(identity);
+
+    expect(extras['package'], 'com.example.custom');
+  });
+
+  test('sign_event Amethyst-style: id echoed, event full JSON, result is signature', () {
+    final incoming = Nip55IncomingRequest(
+      localId: 'local',
+      requestToken: 'token-amethyst',
+      method: Nip55Method.signEvent,
+      externalId: 'amethyst-req-id',
+      receivedAt: DateTime.utc(2026, 5, 1),
+    );
+    final event = SignedNostrEvent(
+      id: 'event-aaa',
+      pubkey: 'p' * 64,
+      createdAt: 1777618800,
+      kind: 1,
+      tags: [],
+      content: 'hello nostr',
+      sig: 'sig-aaa',
+    );
+
+    final extras = builder.signEventExtras(incoming: incoming, signedEvent: event);
+
+    expect(extras['id'], 'amethyst-req-id');
+    expect(extras['result'], 'sig-aaa');
+    final decoded = jsonDecode(extras['event']! as String) as Map<String, dynamic>;
+    expect(decoded['id'], 'event-aaa');
+    expect(decoded['sig'], 'sig-aaa');
+  });
+
   test('browser get_public_key callback includes callback result metadata', () {
     final identity = VaultIdentity(
       localId: 'local',

@@ -197,6 +197,117 @@ void main() {
       expect(decision, isA<AutoAllow>());
     });
 
+    group('kind 22242 relay-specific permission (NIP-42 relay auth)', () {
+      Nip55IncomingRequest relayAuthRequest({String? relayUrl}) {
+        return Nip55IncomingRequest(
+          localId: 'local',
+          requestToken: 'token',
+          method: Nip55Method.signEvent,
+          receivedAt: now,
+          clientIdentity: const Nip55ClientIdentity(
+            packageName: 'com.example.client',
+            certificateSha256: 'AA:BB',
+            provenanceVerified: true,
+          ),
+          eventJson: {
+            'kind': 22242,
+            'content': '',
+            'tags': [
+              if (relayUrl != null) ['relay', relayUrl],
+              ['challenge', 'test-challenge'],
+            ],
+          },
+        );
+      }
+
+      test('no grant for kind 22242 requires review', () {
+        final decision = policy.decide(
+          request: relayAuthRequest(relayUrl: 'wss://relay.example'),
+          vaultState: const VaultUnlocked(),
+          activeIdentityPubkey: identity,
+          grants: const [],
+        );
+
+        expect(decision, isA<RequireReview>());
+      });
+
+      test('relay-specific allow for relay-A does not auto-allow relay-B', () {
+        final decision = policy.decide(
+          request: relayAuthRequest(relayUrl: 'wss://relay-b.example'),
+          vaultState: const VaultUnlocked(),
+          activeIdentityPubkey: identity,
+          grants: [
+            _grant(
+              identityPubkey: identity,
+              packageName: 'com.example.client',
+              scope: const SignEventScope(22242, 'wss://relay-a.example'),
+              decision: Nip55PermissionDecision.allow,
+              now: now,
+            ),
+          ],
+        );
+
+        expect(decision, isA<RequireReview>());
+      });
+
+      test('relay-specific allow for relay-A auto-allows relay-A', () {
+        final decision = policy.decide(
+          request: relayAuthRequest(relayUrl: 'wss://relay-a.example'),
+          vaultState: const VaultUnlocked(),
+          activeIdentityPubkey: identity,
+          grants: [
+            _grant(
+              identityPubkey: identity,
+              packageName: 'com.example.client',
+              scope: const SignEventScope(22242, 'wss://relay-a.example'),
+              decision: Nip55PermissionDecision.allow,
+              now: now,
+            ),
+          ],
+        );
+
+        expect(decision, isA<AutoAllow>());
+      });
+
+      test('relay-null grant is a wildcard — allows any relay', () {
+        final decision = policy.decide(
+          request: relayAuthRequest(relayUrl: 'wss://any-relay.example'),
+          vaultState: const VaultUnlocked(),
+          activeIdentityPubkey: identity,
+          grants: [
+            _grant(
+              identityPubkey: identity,
+              packageName: 'com.example.client',
+              scope: const SignEventScope(22242),
+              decision: Nip55PermissionDecision.allow,
+              now: now,
+            ),
+          ],
+        );
+
+        expect(decision, isA<AutoAllow>());
+      });
+
+      test('relay URL is normalized before matching (trailing slash stripped)', () {
+        final decision = policy.decide(
+          request: relayAuthRequest(relayUrl: 'wss://relay.example/'),
+          vaultState: const VaultUnlocked(),
+          activeIdentityPubkey: identity,
+          grants: [
+            _grant(
+              identityPubkey: identity,
+              packageName: 'com.example.client',
+              scope: const SignEventScope(22242, 'wss://relay.example'),
+              decision: Nip55PermissionDecision.allow,
+              now: now,
+            ),
+          ],
+        );
+
+        expect(decision, isA<AutoAllow>());
+      });
+    });
+
     test('current_user mismatch blocks auto signing', () {
       final decision = policy.decide(
         request: _request(

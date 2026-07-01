@@ -48,23 +48,6 @@ class Nip55ContentProvider : ContentProvider() {
             return Nip55RequestCodec.operationResultCursor("pong")
         }
 
-        // ── Kind 22242 (NIP-42 client authentication) auto-approve ───────────
-        // These are protocol-level relay auth handshakes, not user content.
-        // Amber auto-approves these silently. We sign them natively when the
-        // vault is unlocked — no grant required, no Intent, no bridge.
-        // If the vault is locked, we return null (ContentProvider can't prompt).
-        val isKind22242 = method == "sign_event" && run {
-            val eventJson = Nip55RequestCodec.eventJsonFromProjection(projection)
-            eventJson != null && run {
-                try { org.json.JSONObject(eventJson).optInt("kind") == 22242 } catch (_: Exception) { false }
-            }
-        }
-
-        // ── Permission mirror: check for remembered reject ───────────────
-        // This uses the SharedPreferences-based mirror that is synced from
-        // the Dart side. Fast, synchronous, no Flutter bridge needed.
-        //
-        // Use CryptoBridge's in-memory pubkey if available (vault unlocked, key synced).
         // ── Resolve active identity pubkey ─────────────────────────────────
         // CryptoBridge has the in-memory pubkey if vault is unlocked and key synced.
         // Otherwise, fall back to the persisted identity pubkey from PermMirror.
@@ -73,59 +56,41 @@ class Nip55ContentProvider : ContentProvider() {
         val activePubkey = Nip55CryptoBridge.activePublicKey
             ?: permissionMirror.getActiveIdentityPubkey()
 
-        // ── Kind 22242 (NIP-42 relay auth): auto-approve natively ─────────
-        // No grant required. These are protocol-level relay auth handshakes.
-        // Sign natively when vault is unlocked. Return null if vault is locked.
-        if (isKind22242) {
-            val privateKey = Nip55CryptoBridge.activePrivateKey
-            if (privateKey != null && activePubkey != null) {
-                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — signing natively")
-                val nativeResult = performNativeCrypto("sign_event", projection, activePubkey)
-                if (nativeResult != null) return nativeResult
-                // Should not happen but fall through if it does
-            } else {
-                Log.d(TAG, "query: kind 22242 client auth for $callerPackage — vault locked, returning null")
-                return null
-            }
-        }
-
-        // ── Decrypt operations: auto-approve natively ───────────────────────
-        // nip04_decrypt and nip44_decrypt are background operations.
-        // If the vault is unlocked and we have the key, decrypt natively.
-        // No grant needed — the user has already chosen this app as their signer.
-        // If the vault is locked, return null (ContentProvider can't prompt).
-        // Explicit reject grants are still respected (checked below).
-        if (method == "nip04_decrypt" || method == "nip44_decrypt") {
-            val privateKey = Nip55CryptoBridge.activePrivateKey
-            if (privateKey != null && activePubkey != null) {
-                // Check explicit reject first
-                val peerPubkey = Nip55RequestCodec.peerPubkeyFromProjection(projection)
-                if (callerPackage != null && permissionMirror.hasRememberedReject(
-                        callerPackage, method, activePubkey,
-                        peerPubkey = peerPubkey,
-                        callerCertSha256 = callerCertSha256,
-                    )
-                ) {
-                    Log.d(TAG, "query: $method for $callerPackage — remembered reject")
-                    return Nip55RequestCodec.rejectedCursor()
-                }
-                Log.d(TAG, "query: $method for $callerPackage — decrypting natively (auto-approve)")
-                val nativeResult = performNativeCrypto(method, projection, activePubkey)
-                if (nativeResult != null) return nativeResult
-                // Fall through if native crypto fails
-            } else {
-                Log.d(TAG, "query: $method for $callerPackage — vault locked, returning null")
-                return null
-            }
-        }
+        // Decrypt operations (nip04_decrypt, nip44_decrypt) now require a remembered
+        // allow grant — they fall through to the standard permission path below.
+        // This prevents background plaintext exposure without explicit user approval.
+        // Vault-locked decrypt returns null (standard path handles that via activePubkey check).
 
         var nativeCryptoFellThrough = false
 
         if (activePubkey != null && callerPackage != null) {
             // Determine scope parameters for permission matching
-            val eventKind = if (method == "sign_event") {
-                Nip55RequestCodec.eventJsonFromProjection(projection)?.let { json ->
-                    try { org.json.JSONObject(json).optInt("kind") } catch (_: Exception) { null }
+            val eventJson = if (method == "sign_event") {
+                Nip55RequestCodec.eventJsonFromProjection(projection)
+            } else null
+
+            val eventKind = eventJson?.let { json ->
+                try { org.json.JSONObject(json).optInt("kind") } catch (_: Exception) { null }
+            }
+
+            // Extract relay URL for kind 22242 (NIP-42 relay auth) — needed for
+            // relay-specific grant matching. Normalized to match the Dart side.
+            val relayUrl = if (eventKind == 22242) {
+                eventJson?.let { json ->
+                    try {
+                        val tagsArray = org.json.JSONObject(json).optJSONArray("tags")
+                        var relay: String? = null
+                        if (tagsArray != null) {
+                            for (i in 0 until tagsArray.length()) {
+                                val tag = tagsArray.optJSONArray(i)
+                                if (tag != null && tag.length() >= 2 && tag.optString(0) == "relay") {
+                                    relay = Nip55PermissionMirror.normalizeRelayUrl(tag.optString(1))
+                                    break
+                                }
+                            }
+                        }
+                        relay
+                    } catch (_: Exception) { null }
                 }
             } else null
 
@@ -140,6 +105,7 @@ class Nip55ContentProvider : ContentProvider() {
                     callerPackage, method, activePubkey,
                     eventKind = eventKind,
                     peerPubkey = peerPubkey,
+                    relayUrl = relayUrl,
                     callerCertSha256 = callerCertSha256,
                 )
             ) {
@@ -155,6 +121,7 @@ class Nip55ContentProvider : ContentProvider() {
                     callerPackage, method, activePubkey,
                     eventKind = eventKind,
                     peerPubkey = peerPubkey,
+                    relayUrl = relayUrl,
                     callerCertSha256 = callerCertSha256,
                 )
             ) {

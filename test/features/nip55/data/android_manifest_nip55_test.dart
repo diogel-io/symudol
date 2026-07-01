@@ -48,6 +48,6 @@ void main() {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
-    expect(manifest, contains('io.threenine.diogel.SIGN_MESSAGE'));
+    expect(manifest, contains(r'${applicationId}.SIGN_MESSAGE'));
   });
 }

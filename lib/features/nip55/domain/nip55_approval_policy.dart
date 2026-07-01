@@ -102,8 +102,25 @@ class Nip55ApprovalPolicy {
       return const GetPublicKeyScope();
     }
     if (request.method == Nip55Method.signEvent) {
-      final kind = request.eventJson?['kind'];
-      return SignEventScope(kind is int ? kind : null);
+      final eventJson = request.eventJson;
+      final kind = eventJson?['kind'];
+      final kindInt = kind is int ? kind : null;
+      String? relayUrl;
+      if (kindInt == 22242) {
+        final tags = eventJson?['tags'];
+        if (tags is List) {
+          for (final tag in tags) {
+            if (tag is List && tag.length >= 2 && tag[0] == 'relay') {
+              final url = tag[1];
+              if (url is String) {
+                relayUrl = _normalizeRelayUrl(url);
+                break;
+              }
+            }
+          }
+        }
+      }
+      return SignEventScope(kindInt, relayUrl);
     }
     final peerPubkey = request.pubkey;
     return switch (request.method) {
@@ -153,5 +170,15 @@ class Nip55ApprovalPolicy {
   bool _isExpired(Nip55PermissionGrant grant) {
     final expiry = grant.expiresAt;
     return expiry != null && !expiry.isAfter(DateTime.now());
+  }
+
+  /// Normalizes a relay URL for consistent comparison when storing and matching
+  /// kind 22242 permission grants. Trims whitespace, lowercases, strips trailing slash.
+  String? _normalizeRelayUrl(String url) {
+    var normalized = url.trim().toLowerCase();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized.isEmpty ? null : normalized;
   }
 }

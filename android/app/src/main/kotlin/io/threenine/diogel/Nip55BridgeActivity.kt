@@ -12,6 +12,49 @@ import java.security.MessageDigest
 class Nip55BridgeActivity : Activity() {
     private var requestToken: String? = null
 
+    companion object {
+        // ── Foreground request rate limiter ───────────────────────────────
+        // Prevents abusive clients from spamming the approval UI. Keyed by
+        // callerPackage|method and optionally |kind for sign_event. Each entry
+        // stores a list of timestamps (epoch ms); old entries are pruned on access.
+        //
+        // Policy:
+        //   get_public_key: 5 per 30 s (login picker retries should not fail)
+        //   all others:     3 per 30 s
+        private const val WINDOW_MS = 30_000L
+        private const val DEFAULT_BURST = 3
+        private const val GET_PUBLIC_KEY_BURST = 5
+        private val rateBuckets = LinkedHashMap<String, ArrayDeque<Long>>(16, 0.75f, true)
+
+        /**
+         * Returns true if the request should be rate-limited. Advances the
+         * window counter for the key. Not synchronized — BridgeActivity runs
+         * on the main thread so this is safe.
+         */
+        internal fun isRateLimited(callerPackage: String?, method: String?, kind: Int?): Boolean {
+            val bucket = buildKey(callerPackage, method, kind)
+            val nowMs = System.currentTimeMillis()
+            val timestamps = rateBuckets.getOrPut(bucket) { ArrayDeque() }
+            // Drop entries outside the window
+            while (timestamps.isNotEmpty() && nowMs - timestamps.first() > WINDOW_MS) {
+                timestamps.removeFirst()
+            }
+            val burst = if (method == "get_public_key") GET_PUBLIC_KEY_BURST else DEFAULT_BURST
+            if (timestamps.size >= burst) return true
+            timestamps.addLast(nowMs)
+            // Evict LRU entries if the map grows large (shouldn't happen in normal use)
+            if (rateBuckets.size > 64) {
+                rateBuckets.entries.iterator().also { it.next(); it.remove() }
+            }
+            return false
+        }
+
+        private fun buildKey(callerPackage: String?, method: String?, kind: Int?): String {
+            val base = "${callerPackage ?: "unknown"}|${method ?: "unknown"}"
+            return if (kind != null) "$base|$kind" else base
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleNip55Intent(intent)
@@ -29,15 +72,37 @@ class Nip55BridgeActivity : Activity() {
             return
         }
 
-        val token = "${getString(R.string.token_prefix_bridge)}${System.currentTimeMillis()}-${System.identityHashCode(original)}"
-        requestToken = token
-        Nip55BridgeRegistry.register(token, this)
-
         val callerPackage = callingPackage ?: original.`package`
         val originalData = original.data!!
         val originalTypeExtra = original.getStringExtra(getString(R.string.key_type))
-        val originalType = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_type))
-        val shouldUseControlQueryForContent = originalTypeExtra == null || originalType == getString(R.string.method_nip04_decrypt)
+        val method = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_type))
+
+        // ── Rate limit ──────────────────────────────────────────────────
+        // Extract event kind for sign_event keying (best-effort, no throw).
+        val eventKind: Int? = if (method == "sign_event") {
+            try {
+                val contentRaw = original.getStringExtra(getString(R.string.key_content))
+                    ?: Nip55UriParser.content(originalData, method, true)
+                if (!contentRaw.isNullOrBlank()) org.json.JSONObject(contentRaw).optInt("kind").let { if (it == 0 && !contentRaw.contains('"' + "kind" + '"')) null else it } else null
+            } catch (_: Exception) { null }
+        } else null
+
+        if (isRateLimited(callerPackage, method, eventKind)) {
+            val rejectedIntent = Intent().apply {
+                val incomingId = original.getStringExtra(getString(R.string.key_id))
+                    ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))
+                putExtra(getString(R.string.key_rejected), "rate_limited")
+                if (incomingId != null) putExtra(getString(R.string.key_id), incomingId)
+            }
+            setResult(RESULT_CANCELED, rejectedIntent)
+            finish()
+            return
+        }
+
+        val token = "${getString(R.string.token_prefix_bridge)}${System.currentTimeMillis()}-${System.identityHashCode(original)}"
+        requestToken = token
+        Nip55BridgeRegistry.register(token, this)
+        val shouldUseControlQueryForContent = originalTypeExtra == null || method == getString(R.string.method_nip04_decrypt)
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
@@ -48,8 +113,8 @@ class Nip55BridgeActivity : Activity() {
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(getString(R.string.key_request_token), token)
-            putExtra(getString(R.string.key_type), originalType)
-            putExtra(getString(R.string.key_content), original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, originalType, shouldUseControlQueryForContent))
+            putExtra(getString(R.string.key_type), method)
+            putExtra(getString(R.string.key_content), original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent))
             putExtra(getString(R.string.key_id), original.getStringExtra(getString(R.string.key_id)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id)))
             putExtra(getString(R.string.key_current_user), original.getStringExtra(getString(R.string.key_current_user)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_current_user)))
             putExtra(getString(R.string.key_pubkey), original.getStringExtra(getString(R.string.key_pubkey)) ?: original.getStringExtra(getString(R.string.key_pubkey_alt)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_pubkey)))

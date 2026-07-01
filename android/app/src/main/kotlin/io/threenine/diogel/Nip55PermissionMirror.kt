@@ -25,6 +25,18 @@ class Nip55PermissionMirror(private val context: Context) {
         private const val PREFS_NAME = "nip55_permission_grants_v2"
         private const val KEY_GRANTS = "grants"
         private const val KEY_ACTIVE_IDENTITY_PUBKEY = "active_identity_pubkey"
+
+        /**
+         * Normalizes a relay URL for consistent storage and matching.
+         * Trims whitespace, lowercases, strips trailing slash.
+         * Must match [Nip55ApprovalPolicy._normalizeRelayUrl] on the Dart side.
+         */
+        fun normalizeRelayUrl(url: String?): String? {
+            if (url.isNullOrBlank()) return null
+            var normalized = url.trim().lowercase()
+            if (normalized.endsWith("/")) normalized = normalized.dropLast(1)
+            return normalized.ifEmpty { null }
+        }
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -41,6 +53,7 @@ class Nip55PermissionMirror(private val context: Context) {
         val scopeType: String,          // "get_public_key", "sign_event", "nip44_decrypt", etc.
         val scopeKind: Int?,            // null for non-sign_event scopes; event kind for sign_event
         val scopePeerPubkey: String?,   // null for peer-agnostic scopes
+        val scopeRelayUrl: String?,     // relay URL for kind 22242 (NIP-42); null = wildcard
         val decision: String,           // "allow", "reject", "ask"
         val expiresAtMillis: Long?,     // null = never expires
     ) {
@@ -73,6 +86,7 @@ class Nip55PermissionMirror(private val context: Context) {
         identityPubkey: String,
         eventKind: Int? = null,
         peerPubkey: String? = null,
+        relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
         if (callerPackage.isNullOrBlank()) return false
@@ -84,7 +98,7 @@ class Nip55PermissionMirror(private val context: Context) {
             grant.packageName == callerPackage &&
             grant.identityPubkey == identityPubkey &&
             certificateMatches(grant, callerCertSha256) &&
-            scopeMatches(grant, method, eventKind, peerPubkey)
+            scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
         }
     }
 
@@ -98,6 +112,7 @@ class Nip55PermissionMirror(private val context: Context) {
         identityPubkey: String,
         eventKind: Int? = null,
         peerPubkey: String? = null,
+        relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
         if (callerPackage.isNullOrBlank()) return false
@@ -109,7 +124,7 @@ class Nip55PermissionMirror(private val context: Context) {
             grant.packageName == callerPackage &&
             grant.identityPubkey == identityPubkey &&
             certificateMatches(grant, callerCertSha256) &&
-            scopeMatches(grant, method, eventKind, peerPubkey)
+            scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
         }
     }
 
@@ -180,6 +195,7 @@ class Nip55PermissionMirror(private val context: Context) {
         method: String,
         eventKind: Int?,
         peerPubkey: String?,
+        relayUrl: String? = null,
     ): Boolean {
         val grantScope = grant.scopeType
         return when (method) {
@@ -187,9 +203,11 @@ class Nip55PermissionMirror(private val context: Context) {
             "sign_message" -> grantScope == "sign_message"
             "sign_event" -> when {
                 grantScope != "sign_event" -> false
-                grant.scopeKind == null -> true  // wildcard: any kind
-                grant.scopeKind == eventKind -> true
-                else -> false
+                grant.scopeKind != null && grant.scopeKind != eventKind -> false
+                // Relay URL matching for kind 22242 (NIP-42 relay auth):
+                // A relay-specific grant only covers that relay; null = wildcard.
+                grant.scopeRelayUrl != null && grant.scopeRelayUrl != relayUrl -> false
+                else -> true
             }
             "nip44_encrypt" -> when {
                 grantScope != "nip44_encrypt" -> false
@@ -265,6 +283,7 @@ class Nip55PermissionMirror(private val context: Context) {
             scopeType = scopeObj.getString("type"),
             scopeKind = scopeObj.optInt("kind", -1).let { if (it == -1) null else it },
             scopePeerPubkey = scopeObj.optString("peerPubkey", null),
+            scopeRelayUrl = scopeObj.optString("relayUrl", null),
             decision = obj.getString("decision"),
             expiresAtMillis = obj.optString("expiresAt", null)?.let {
                 // Parse ISO 8601 date to epoch millis
@@ -284,6 +303,7 @@ class Nip55PermissionMirror(private val context: Context) {
                 put("type", grant.scopeType)
                 grant.scopeKind?.let { put("kind", it) }
                 grant.scopePeerPubkey?.let { put("peerPubkey", it) }
+                grant.scopeRelayUrl?.let { put("relayUrl", it) }
             }
             val obj = JSONObject().apply {
                 put("id", grant.id)

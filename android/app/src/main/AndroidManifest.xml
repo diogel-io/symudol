@@ -47,7 +47,7 @@
         </activity>
         <provider
             android:name=".Nip55ContentProvider"
-            android:authorities="io.threenine.diogel.SIGN_EVENT;io.threenine.diogel.SIGN_MESSAGE;io.threenine.diogel.NIP44_ENCRYPT;io.threenine.diogel.NIP44_DECRYPT;io.threenine.diogel.NIP04_ENCRYPT;io.threenine.diogel.NIP04_DECRYPT;io.threenine.diogel.DECRYPT_ZAP_EVENT;io.threenine.diogel.GET_PUBLIC_KEY;io.threenine.diogel.PING"
+            android:authorities="${applicationId}.SIGN_EVENT;${applicationId}.SIGN_MESSAGE;${applicationId}.NIP44_ENCRYPT;${applicationId}.NIP44_DECRYPT;${applicationId}.NIP04_ENCRYPT;${applicationId}.NIP04_DECRYPT;${applicationId}.DECRYPT_ZAP_EVENT;${applicationId}.GET_PUBLIC_KEY;${applicationId}.PING"
             android:exported="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

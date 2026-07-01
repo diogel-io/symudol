@@ -13,7 +13,10 @@ sealed class Nip55PermissionScope {
     final peerPubkey = json['peerPubkey'] as String?;
     return switch (type) {
       'get_public_key' => const GetPublicKeyScope(),
-      'sign_event' => SignEventScope(json['kind'] as int?),
+      'sign_event' => SignEventScope(
+          json['kind'] as int?,
+          json['relayUrl'] as String?,
+        ),
       'nip44_encrypt' => Nip44EncryptScope(peerPubkey),
       'nip44_decrypt' => Nip44DecryptScope(peerPubkey),
       'nip04_encrypt' => Nip04EncryptScope(peerPubkey),
@@ -67,20 +70,35 @@ final class GetPublicKeyScope extends Nip55PermissionScope {
 
 final class SignEventScope extends Nip55PermissionScope {
   final int? kind;
+  // Relay URL for kind 22242 (NIP-42 relay auth). A relay-specific grant only
+  // matches auth requests for that relay. A null relay is a wildcard.
+  final String? relayUrl;
 
-  const SignEventScope([this.kind]);
+  const SignEventScope([this.kind, this.relayUrl]);
 
   @override
-  String get wire => kind == null ? 'sign_event' : 'sign_event:$kind';
+  String get wire {
+    if (kind == null) return 'sign_event';
+    if (relayUrl == null) return 'sign_event:$kind';
+    return 'sign_event:$kind:$relayUrl';
+  }
 
   @override
-  String get label => kind == null ? 'Sign any event kind' : 'Sign kind $kind';
+  String get label {
+    if (kind == null) return 'Sign any event kind';
+    if (relayUrl == null) return 'Sign kind $kind';
+    return 'Sign kind $kind for $relayUrl';
+  }
 
   @override
   bool get isBroad => kind == null;
 
   @override
-  Map<String, Object?> toJson() => {'type': 'sign_event', 'kind': kind};
+  Map<String, Object?> toJson() => {
+    'type': 'sign_event',
+    'kind': kind,
+    'relayUrl': relayUrl,
+  };
 }
 
 final class Nip44EncryptScope extends Nip55PermissionScope {
@@ -183,7 +201,13 @@ extension Nip55PermissionScopeMatching on Nip55PermissionScope {
   bool matches(Nip55PermissionScope requested) {
     final grant = this;
     if (grant is SignEventScope && requested is SignEventScope) {
-      return grant.kind == null || grant.kind == requested.kind;
+      if (grant.kind != null && grant.kind != requested.kind) return false;
+      // Relay URL matching for kind 22242 (NIP-42 relay auth):
+      // A relay-specific grant only covers that relay; a null relay is a wildcard.
+      if (grant.relayUrl != null && grant.relayUrl != requested.relayUrl) {
+        return false;
+      }
+      return true;
     }
     if (grant is Nip44EncryptScope && requested is Nip44EncryptScope) {
       return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;

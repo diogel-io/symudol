@@ -2,17 +2,22 @@ package io.threenine.diogel
 
 import android.database.MatrixCursor
 import android.net.Uri
+import io.threenine.diogel.BuildConfig
 
 object Nip55RequestCodec {
-    const val AUTHORITY_SIGN_EVENT = "io.threenine.diogel.SIGN_EVENT"
-    const val AUTHORITY_SIGN_MESSAGE = "io.threenine.diogel.SIGN_MESSAGE"
-    const val AUTHORITY_NIP44_ENCRYPT = "io.threenine.diogel.NIP44_ENCRYPT"
-    const val AUTHORITY_NIP44_DECRYPT = "io.threenine.diogel.NIP44_DECRYPT"
-    const val AUTHORITY_NIP04_ENCRYPT = "io.threenine.diogel.NIP04_ENCRYPT"
-    const val AUTHORITY_NIP04_DECRYPT = "io.threenine.diogel.NIP04_DECRYPT"
-    const val AUTHORITY_DECRYPT_ZAP_EVENT = "io.threenine.diogel.DECRYPT_ZAP_EVENT"
-    const val AUTHORITY_GET_PUBLIC_KEY = "io.threenine.diogel.GET_PUBLIC_KEY"
-    const val AUTHORITY_PING = "io.threenine.diogel.PING"
+    // Authorities are derived from the installed application id so that debug,
+    // release, and flavored builds all expose the correct content:// authority.
+    // Clients (Amethyst, Quartz) build URIs as content://<signerPackage>.SIGN_EVENT;
+    // using the selected signer's package name — this keeps that contract intact.
+    val AUTHORITY_SIGN_EVENT = "${BuildConfig.APPLICATION_ID}.SIGN_EVENT"
+    val AUTHORITY_SIGN_MESSAGE = "${BuildConfig.APPLICATION_ID}.SIGN_MESSAGE"
+    val AUTHORITY_NIP44_ENCRYPT = "${BuildConfig.APPLICATION_ID}.NIP44_ENCRYPT"
+    val AUTHORITY_NIP44_DECRYPT = "${BuildConfig.APPLICATION_ID}.NIP44_DECRYPT"
+    val AUTHORITY_NIP04_ENCRYPT = "${BuildConfig.APPLICATION_ID}.NIP04_ENCRYPT"
+    val AUTHORITY_NIP04_DECRYPT = "${BuildConfig.APPLICATION_ID}.NIP04_DECRYPT"
+    val AUTHORITY_DECRYPT_ZAP_EVENT = "${BuildConfig.APPLICATION_ID}.DECRYPT_ZAP_EVENT"
+    val AUTHORITY_GET_PUBLIC_KEY = "${BuildConfig.APPLICATION_ID}.GET_PUBLIC_KEY"
+    val AUTHORITY_PING = "${BuildConfig.APPLICATION_ID}.PING"
 
     private val supportedAuthorities = setOf(
         AUTHORITY_SIGN_EVENT,
