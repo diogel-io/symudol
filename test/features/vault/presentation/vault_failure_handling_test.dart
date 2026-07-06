@@ -1,4 +1,5 @@
 import 'package:android_diogel/app/app.dart';
+import 'package:android_diogel/features/profile/application/profile_providers.dart';
 import 'package:android_diogel/features/vault/application/vault_providers.dart';
 import 'package:android_diogel/features/vault/presentation/setup_vault_screen.dart';
 import 'package:android_diogel/features/unlock/presentation/unlock_vault_screen.dart';
@@ -29,6 +30,7 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
+            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),
@@ -67,6 +69,7 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
+            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),
@@ -99,6 +102,7 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
+            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),

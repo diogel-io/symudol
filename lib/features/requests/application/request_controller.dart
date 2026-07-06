@@ -1,10 +1,7 @@
 import 'package:android_diogel/features/requests/domain/request_failure.dart';
-import 'package:android_diogel/features/requests/domain/request_provenance.dart';
 import 'package:android_diogel/features/requests/domain/request_state.dart';
-import 'package:android_diogel/features/requests/domain/request_trust_status.dart';
 import 'package:android_diogel/features/requests/domain/signed_request_result.dart';
 import 'package:android_diogel/features/requests/domain/signer_service.dart';
-import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';

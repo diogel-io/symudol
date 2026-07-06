@@ -1,10 +1,9 @@
-/// Amethyst/Quartz-style NIP-55 sign_event fixture data.
-///
-/// Amethyst passes the unsigned event as JSON in the `content` extra,
-/// the logged-in user's pubkey as `current_user`, and a correlation id
-/// as `id`. The signer is expected to populate `id`, `pubkey`, `created_at`,
-/// and `sig` before returning.
-library amethyst_sign_event;
+// Amethyst/Quartz-style NIP-55 sign_event fixture data.
+//
+// Amethyst passes the unsigned event as JSON in the `content` extra,
+// the logged-in user's pubkey as `current_user`, and a correlation id
+// as `id`. The signer is expected to populate `id`, `pubkey`, `created_at`,
+// and `sig` before returning.
 
 const amethystSignerPubkey =
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
