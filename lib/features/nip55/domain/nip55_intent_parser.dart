@@ -1,3 +1,5 @@
+import 'package:bech32/bech32.dart';
+
 import 'nip55_client.dart';
 import 'nip55_failure.dart';
 import 'nip55_incoming_request.dart';
@@ -22,12 +24,14 @@ class Nip55IntentParser {
       throw const Nip55ParseException('Unsupported NIP-55 request type');
     }
 
-    final currentUser = raw['currentUser'] as String?;
-    if (currentUser != null && !_isHex64(currentUser)) {
+    final rawCurrentUser = raw['currentUser'] as String?;
+    final currentUser = _normalizeHexOrNpub(rawCurrentUser);
+    if (rawCurrentUser != null && rawCurrentUser.trim().isNotEmpty && currentUser == null) {
       throw const Nip55ParseException('Invalid current_user pubkey');
     }
 
-    final pubkey = (raw['pubkey'] ?? raw['pubKey']) as String?;
+    final rawPubkey = (raw['pubkey'] ?? raw['pubKey']) as String?;
+    final pubkey = _normalizeHexOrNpub(rawPubkey);
     if (method.requiresPeerPubkey && !_isHex64(pubkey)) {
       throw Nip55ParseException(
         'Missing or invalid ${method.wireName} peer pubkey',
@@ -147,4 +151,41 @@ class Nip55IntentParser {
 
   bool _isHex64(String? value) =>
       value != null && RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value);
+
+  /// Normalize a pubkey that is either 64-char hex or an NIP-19 npub1...
+  /// bech32 string. Returns lowercase hex on success, null for blank/invalid.
+  /// Only npub is accepted; other NIP-19 entity types are rejected.
+  String? _normalizeHexOrNpub(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+    if (_isHex64(trimmed)) return trimmed;
+    if (!trimmed.startsWith('npub1')) return null;
+    try {
+      final decoded = bech32.decode(trimmed, 90);
+      if (decoded.hrp != 'npub') return null;
+      final bytes = _convertBits(decoded.data, 5, 8);
+      if (bytes == null || bytes.length != 32) return null;
+      return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static List<int>? _convertBits(List<int> data, int fromBits, int toBits) {
+    final out = <int>[];
+    int acc = 0, bits = 0;
+    final maxv = (1 << toBits) - 1;
+    for (final v in data) {
+      if (v < 0 || v >> fromBits != 0) return null;
+      acc = (acc << fromBits) | v;
+      bits += fromBits;
+      while (bits >= toBits) {
+        bits -= toBits;
+        out.add((acc >> bits) & maxv);
+      }
+    }
+    if (bits >= fromBits || ((acc << (toBits - bits)) & maxv) != 0) return null;
+    return out;
+  }
 }

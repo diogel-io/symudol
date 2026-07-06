@@ -223,5 +223,79 @@ void main() {
       expect(request.eventJson?['content'], 'hello from amethyst');
       expect(request.payload, isA<SignEventPayload>());
     });
+
+    // ── Pubkey normalization (hex-or-npub) ──────────────────────────────
+
+    // Known NIP-19 test vector:
+    // npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6
+    // = 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d
+    const npubTestVector = 'npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6';
+    const npubHexVector = '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d';
+
+    test('accepts npub currentUser and normalizes to hex', () {
+      final request = parser.parse({
+        'requestToken': 'token-npub-cu',
+        'type': 'sign_event',
+        'content': '{"kind":1,"content":"hello","tags":[]}',
+        'currentUser': npubTestVector,
+      });
+
+      expect(request.currentUser, npubHexVector);
+    });
+
+    test('accepts npub peer pubkey for nip04_decrypt and normalizes to hex', () {
+      final request = parser.parse({
+        'requestToken': 'token-npub-peer',
+        'type': 'nip04_decrypt',
+        'content': 'ciphertext',
+        'pubkey': npubTestVector,
+      });
+
+      expect(request.pubkey, npubHexVector);
+    });
+
+    test('accepts npub peer pubkey for nip44_encrypt and normalizes to hex', () {
+      final request = parser.parse({
+        'requestToken': 'token-npub-nip44',
+        'type': 'nip44_encrypt',
+        'content': 'plaintext',
+        'pubkey': npubTestVector,
+      });
+
+      expect(request.pubkey, npubHexVector);
+    });
+
+    test('rejects invalid npub as currentUser', () {
+      expect(
+        () => parser.parse({
+          'requestToken': 'token-invalid-npub',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":"hello","tags":[]}',
+          'currentUser': 'npub1invalidXXXXXX',
+        }),
+        throwsA(isA<Nip55ParseException>()),
+      );
+    });
+
+    test('rejects nprofile as currentUser', () {
+      expect(
+        () => parser.parse({
+          'requestToken': 'token-nprofile',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":"hello","tags":[]}',
+          'currentUser': 'nprofile1qqsfwl40',
+        }),
+        throwsA(isA<Nip55ParseException>()),
+      );
+    });
+
+    test('accepts null currentUser without error', () {
+      final request = parser.parse({
+        'requestToken': 'token-no-cu',
+        'type': 'get_public_key',
+      });
+
+      expect(request.currentUser, isNull);
+    });
   });
 }

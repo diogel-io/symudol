@@ -85,24 +85,34 @@ object Nip55NativeCrypto {
             val event = JSONObject(eventJson)
             val eventPubkey = event.optString("pubkey", "")
 
-            // Fix #4: Enforce that the event pubkey matches the active identity.
-            // This prevents signing events where the ID was computed for a different pubkey.
-            if (eventPubkey != activeIdentityPubkey) {
-                Log.w(TAG, "signEvent: pubkey mismatch — event has $eventPubkey but active identity is $activeIdentityPubkey")
-                return null
+            when {
+                eventPubkey.isBlank() -> {
+                    // Missing pubkey: inject the active identity pubkey before signing.
+                    // Primal and some clients omit pubkey from unsigned event templates.
+                    event.put("pubkey", activeIdentityPubkey)
+                }
+                eventPubkey != activeIdentityPubkey -> {
+                    // Mismatched pubkey: fail closed — signing would produce an event
+                    // whose ID was computed for a different pubkey than the signature key.
+                    Log.w(TAG, "signEvent: pubkey mismatch — event has $eventPubkey but active identity is $activeIdentityPubkey")
+                    return null
+                }
             }
 
             val createdAt = event.optLong("created_at", 0L)
             val kind = event.optInt("kind", 0)
             val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
             val content = event.optString("content", "")
+            // Use the (possibly injected) pubkey from the event object
+            val finalPubkey = event.getString("pubkey")
 
-            val serialized = serializeEvent(eventPubkey, createdAt, kind, tags, content)
+            val serialized = serializeEvent(finalPubkey, createdAt, kind, tags, content)
             val id = sha256Hex(serialized.toByteArray(Charsets.UTF_8))
 
             val sig = schnorrSign(privateKeyHex, id)
 
             val signedEvent = JSONObject(eventJson)
+            signedEvent.put("pubkey", finalPubkey)
             signedEvent.put("id", id)
             signedEvent.put("sig", sig)
 

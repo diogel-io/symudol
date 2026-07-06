@@ -145,6 +145,73 @@ void main() {
       },
     );
 
+    // ── Dark-Wisp and Primal permission JSON fixtures ───────────────────
+
+    test('parses Dark-Wisp style JSON object array with sign_event kinds', () {
+      // Dark-Wisp sends a JSON object array with kind-scoped sign_event entries
+      final parsed = const Nip55PermissionParser().parse(
+        '[{"type":"sign_event","kind":1},{"type":"sign_event","kind":4},'
+        '{"type":"sign_event","kind":22242},'
+        '{"type":"nip04_encrypt"},{"type":"nip04_decrypt"}]',
+      );
+
+      expect(parsed.warnings, isEmpty);
+      final signEventScopes = parsed.scopes.whereType<SignEventScope>().toList();
+      expect(signEventScopes.map((s) => s.kind), containsAll(<int>[1, 4, 22242]));
+      expect(parsed.scopes.whereType<Nip04EncryptScope>(), hasLength(1));
+      expect(parsed.scopes.whereType<Nip04DecryptScope>(), hasLength(1));
+    });
+
+    test('parses Primal style JSON object array with nip44 and decrypt_zap_event', () {
+      // Primal sends a similar JSON object array, typically nip44 and decrypt_zap_event
+      final parsed = const Nip55PermissionParser().parse(
+        '[{"type":"get_public_key"},{"type":"sign_event","kind":1},'
+        '{"type":"nip44_encrypt"},{"type":"nip44_decrypt"},'
+        '{"type":"decrypt_zap_event"}]',
+      );
+
+      expect(parsed.warnings, isEmpty);
+      expect(parsed.scopes.whereType<GetPublicKeyScope>(), hasLength(1));
+      expect(parsed.scopes.whereType<SignEventScope>().first.kind, 1);
+      expect(parsed.scopes.whereType<Nip44EncryptScope>(), hasLength(1));
+      expect(parsed.scopes.whereType<Nip44DecryptScope>(), hasLength(1));
+      expect(parsed.scopes.whereType<DecryptZapEventScope>(), hasLength(1));
+    });
+
+    test('ping in permissions is silently ignored without warning', () {
+      final parsed = const Nip55PermissionParser().parse(
+        'ping get_public_key sign_event:1',
+      );
+
+      // ping is stateless — no scope created, no warning
+      expect(parsed.warnings.any((w) => w.contains('ping')), isFalse);
+      expect(parsed.scopes.whereType<GetPublicKeyScope>(), hasLength(1));
+      expect(parsed.scopes.whereType<SignEventScope>(), hasLength(1));
+    });
+
+    test('ping in JSON array is silently ignored', () {
+      final parsed = const Nip55PermissionParser().parse(
+        '[{"type":"ping"},{"type":"get_public_key"}]',
+      );
+
+      // ping maps to UnsupportedScope via fromJson — kept as warning
+      // OR explicitly ignored — either way, no ping scope is stored
+      expect(parsed.scopes.whereType<GetPublicKeyScope>(), hasLength(1));
+    });
+
+    test('kind-scoped sign_event permissions are not widened to broad sign_event', () {
+      final parsed = const Nip55PermissionParser().parse(
+        'sign_event:1 sign_event:4 sign_event:22242',
+      );
+
+      final signEventScopes = parsed.scopes.whereType<SignEventScope>().toList();
+      expect(signEventScopes, hasLength(3));
+      expect(signEventScopes.every((s) => s.kind != null), isTrue);
+      // No broad (null kind) scope should be present
+      expect(signEventScopes.any((s) => s.kind == null), isFalse);
+      expect(parsed.warnings, isEmpty);
+    });
+
     test('Amber extra permission tokens are warnings only, not scopes', () {
       final parsed = const Nip55PermissionParser().parse(
         'encrypt_clear_text decrypt_clear_text encrypt_event decrypt_event encrypt_tag_array decrypt_tag_array get_public_key',

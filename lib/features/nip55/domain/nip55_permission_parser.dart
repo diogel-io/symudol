@@ -47,6 +47,7 @@ class Nip55PermissionParser {
         .where((value) => value.isNotEmpty);
 
     for (final token in tokens) {
+      if (_isStatelessToken(token)) continue; // e.g. ping — provider handles these without a stored grant
       final scope = _parseToken(token);
       if (scope == null) {
         warnings.add('Unsupported permission: $token');
@@ -99,6 +100,9 @@ class Nip55PermissionParser {
 
     return Nip55ParsedPermissions(scopes: scopes, warnings: warnings);
   }
+
+  /// Tokens that the provider handles statelessly — no persistent grant needed.
+  bool _isStatelessToken(String token) => token == 'ping';
 
   Nip55PermissionScope? _parseToken(String rawToken) {
     final token = rawToken.toLowerCase();

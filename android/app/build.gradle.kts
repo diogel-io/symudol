@@ -37,6 +37,12 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 kotlin {
@@ -50,4 +56,7 @@ flutter {
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
+    // org.json is bundled in android.jar as a stub; provide the real library so
+    // JVM unit tests that call JSON parsing (e.g. Nip55NativeCryptoTest) work.
+    testImplementation("org.json:json:20231013")
 }

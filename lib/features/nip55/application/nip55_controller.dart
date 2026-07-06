@@ -26,6 +26,7 @@ import '../domain/nip55_approval_timeframe.dart';
 import '../domain/nip55_permission_decision.dart';
 import '../domain/nip55_permission_scope.dart';
 import '../domain/nip55_permission_store.dart';
+import '../domain/nip55_permission_parser.dart';
 import '../domain/nip55_response_builder.dart';
 import 'nip55_request_mapper.dart';
 
@@ -615,12 +616,18 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     state = state.copyWith(isLoading: true);
 
     if (timeframe != Nip55ApprovalTimeframe.justOnce) {
+      final expiresAt = _expiresAtFor(timeframe);
       await _saveGrant(
         incoming: request,
         identityPubkey: activeIdentity.publicKey,
         scope: const GetPublicKeyScope(),
         decision: Nip55PermissionDecision.allow,
-        expiresAt: _expiresAtFor(timeframe),
+        expiresAt: expiresAt,
+      );
+      await _saveConnectTimePermissions(
+        incoming: request,
+        identityPubkey: activeIdentity.publicKey,
+        expiresAt: expiresAt,
       );
     }
 
@@ -1112,6 +1119,41 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         userLabel: incoming.clientIdentity.displayName,
       ),
     );
+  }
+
+  /// Saves supported scopes from the `permissions` field of a connect-time
+  /// `get_public_key` request. Called when the user approves with a remembered
+  /// timeframe so subsequent ContentProvider calls can auto-approve.
+  ///
+  /// Unsupported tokens are silently ignored (parser returns warnings, not errors).
+  /// `get_public_key` is skipped since it was already saved by the caller.
+  /// `ping` is stateless and never persisted.
+  Future<void> _saveConnectTimePermissions({
+    required Nip55IncomingRequest incoming,
+    required String identityPubkey,
+    required DateTime? expiresAt,
+  }) async {
+    final permissions = incoming.permissions;
+    if (permissions == null || permissions.trim().isEmpty) return;
+    final parsed = const Nip55PermissionParser().parse(permissions);
+    for (final scope in parsed.scopes) {
+      if (scope is UnsupportedScope) continue;
+      if (scope is GetPublicKeyScope) continue; // already saved by caller
+      try {
+        await _saveGrant(
+          incoming: incoming,
+          identityPubkey: identityPubkey,
+          scope: scope,
+          decision: Nip55PermissionDecision.allow,
+          expiresAt: expiresAt,
+        );
+      } catch (e) {
+        dev.log(
+          'Failed to save connect-time permission ${scope.wire}: $e',
+          name: 'Diogel',
+        );
+      }
+    }
   }
 
   Future<void> _markGrantUsed(Nip55PermissionGrant grant) async {

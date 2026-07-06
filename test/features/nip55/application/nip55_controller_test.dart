@@ -1670,6 +1670,177 @@ void main() {
       },
     );
 
+    // ── Connect-time permission persistence ────────────────────────────
+
+    test(
+      'remembered get_public_key approval saves requested sign_event and crypto grants',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-connect',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'permissions':
+              '[{"type":"sign_event","kind":1},{"type":"sign_event","kind":4},'
+              '{"type":"sign_event","kind":22242},'
+              '{"type":"nip04_encrypt"},{"type":"nip04_decrypt"},'
+              '{"type":"nip44_encrypt"},{"type":"nip44_decrypt"},'
+              '{"type":"decrypt_zap_event"}]',
+        });
+
+        await permissionController.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.eightHours,
+        );
+
+        // One get_public_key grant + 8 connect-time permission grants
+        expect(permissionStore.grants.length, greaterThanOrEqualTo(9));
+
+        final scopes = permissionStore.grants.map((g) => g.scope).toList();
+        expect(scopes.whereType<GetPublicKeyScope>(), hasLength(1));
+        expect(scopes.whereType<SignEventScope>().map((s) => s.kind),
+            containsAll(<int>[1, 4, 22242]));
+        expect(scopes.whereType<Nip04EncryptScope>(), hasLength(1));
+        expect(scopes.whereType<Nip04DecryptScope>(), hasLength(1));
+        expect(scopes.whereType<Nip44EncryptScope>(), hasLength(1));
+        expect(scopes.whereType<Nip44DecryptScope>(), hasLength(1));
+        expect(scopes.whereType<DecryptZapEventScope>(), hasLength(1));
+
+        // All grants must have the same expiry window (eightHours)
+        final nonExpiring = permissionStore.grants.where((g) => g.expiresAt == null);
+        expect(nonExpiring, isEmpty);
+      },
+    );
+
+    test(
+      'remembered get_public_key with justOnce does not save connect-time grants',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-connect-once',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'permissions': '[{"type":"sign_event","kind":1}]',
+        });
+
+        await permissionController.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.justOnce,
+        );
+
+        expect(permissionStore.grants, isEmpty);
+      },
+    );
+
+    test(
+      'connect-time grants have same expiry and package as get_public_key grant',
+      () async {
+        final fixedNow = DateTime.utc(2026, 7, 1, 12);
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+          now: () => fixedNow,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-expiry',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+          'permissions': '[{"type":"sign_event","kind":1},{"type":"nip44_decrypt"}]',
+        });
+
+        await permissionController.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.eightHours,
+        );
+
+        final expectedExpiry = fixedNow.add(const Duration(hours: 8));
+        for (final grant in permissionStore.grants) {
+          expect(grant.packageName, 'com.example.app');
+          expect(grant.certificateSha256, 'AA:BB');
+          expect(grant.expiresAt, expectedExpiry);
+        }
+      },
+    );
+
+    test(
+      'connect-time permissions with ping are silently ignored',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-ping',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'permissions': 'ping get_public_key',
+        });
+
+        await permissionController.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        // Only get_public_key is saved; ping is stateless and ignored
+        expect(permissionStore.grants, hasLength(1));
+        expect(permissionStore.grants.single.scope, isA<GetPublicKeyScope>());
+      },
+    );
+
+    test(
+      'connect-time unsupported permissions produce no grant and no crash',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          'requestToken': 'token-unknown',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'permissions': 'unknown_token get_public_key',
+        });
+
+        await permissionController.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        // unknown_token is not saved; get_public_key is
+        final scopes = permissionStore.grants.map((g) => g.scope).toList();
+        expect(scopes.whereType<GetPublicKeyScope>(), hasLength(1));
+        expect(scopes.whereType<UnsupportedScope>(), isEmpty);
+      },
+    );
+
     test('locked pending request times out', () async {
       final activePubkey = vaultController.state.activeIdentity!.publicKey;
       await vaultController.lock();

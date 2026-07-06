@@ -369,8 +369,24 @@ class Nip55ContentProvider : ContentProvider() {
 
     private fun resolveSigningCertificateSha256(packageName: String?): String? {
         if (packageName.isNullOrBlank()) return null
-        certificateCache[packageName]?.let { return it }
         val packageManager = context?.packageManager ?: return null
+
+        // Key the cache by package + version code so a package update
+        // (which may change the signing certificate on re-key) invalidates
+        // the cached value automatically.
+        val versionCode = try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, 0).longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+            }
+        } catch (_: Exception) {
+            return null
+        }
+        val cacheKey = "$packageName:$versionCode"
+        certificateCache[cacheKey]?.let { return it }
+
         return try {
             val signatures = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 val info = packageManager.getPackageInfo(
@@ -390,7 +406,7 @@ class Nip55ContentProvider : ContentProvider() {
             val signature = signatures?.firstOrNull() ?: return null
             val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
             val cert = digest.joinToString(":") { byte -> "%02X".format(byte) }
-            certificateCache[packageName] = cert
+            certificateCache[cacheKey] = cert
             cert
         } catch (_: Exception) {
             null

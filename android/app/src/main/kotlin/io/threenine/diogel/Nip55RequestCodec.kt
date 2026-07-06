@@ -5,6 +5,66 @@ import android.net.Uri
 import io.threenine.diogel.BuildConfig
 
 object Nip55RequestCodec {
+
+    // ── Pubkey normalization ──────────────────────────────────────────────
+
+    /**
+     * Normalize a public key that may be either 64-char lowercase hex or an
+     * NIP-19 npub1... bech32 string. Returns lowercase hex on success,
+     * null for blank/invalid input.
+     *
+     * Only npub is accepted; nprofile, nevent, and other NIP-19 entity types
+     * are rejected — NIP-55 pubkey fields are always plain public keys.
+     */
+    fun normalizeHexOrNpub(value: String?): String? {
+        val trimmed = value?.trim()?.lowercase() ?: return null
+        if (trimmed.isEmpty()) return null
+        if (trimmed.length == 64 && trimmed.all { it in '0'..'9' || it in 'a'..'f' }) {
+            return trimmed
+        }
+        if (trimmed.startsWith("npub1")) {
+            return decodeNpub(trimmed)
+        }
+        return null
+    }
+
+    // Minimal bech32 decoder for npub only. Decodes the 32-byte public key
+    // from an npub1... string without an external dependency.
+    private fun decodeNpub(lower: String): String? {
+        // npub bech32 = "npub" + "1" + <52 data chars> + <6 checksum chars> = 63 total
+        if (!lower.startsWith("npub1")) return null
+        val encoded = lower.substring(5) // drop "npub1"
+        if (encoded.length < 7) return null // need at least some data + 6 checksum
+
+        val charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+        val decoded5 = mutableListOf<Int>()
+        for (ch in encoded) {
+            val idx = charset.indexOf(ch)
+            if (idx < 0) return null
+            decoded5.add(idx)
+        }
+
+        // Drop last 6 groups (checksum) to get data groups
+        val dataGroups = decoded5.dropLast(6)
+
+        // Convert 5-bit groups to 8-bit bytes
+        val bytes = mutableListOf<Int>()
+        var acc = 0
+        var bits = 0
+        for (v5 in dataGroups) {
+            acc = (acc shl 5) or v5
+            bits += 5
+            while (bits >= 8) {
+                bits -= 8
+                bytes.add((acc shr bits) and 0xFF)
+            }
+        }
+        // Remaining bits must be zero padding (not a full byte)
+        if (bits >= 5 || (acc and ((1 shl bits) - 1)) != 0) return null
+        if (bytes.size != 32) return null
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
     // Authorities are derived from the installed application id so that debug,
     // release, and flavored builds all expose the correct content:// authority.
     // Clients (Amethyst, Quartz) build URIs as content://<signerPackage>.SIGN_EVENT;
@@ -59,28 +119,50 @@ object Nip55RequestCodec {
     }
 
     fun peerPubkeyFromProjection(projection: Array<out String>?): String? {
-        return projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
+        val raw = projection?.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
+        return normalizeHexOrNpub(raw)
     }
 
     fun currentUserFromProjection(projection: Array<out String>?, method: String? = null): String? {
-        val index = when (method) {
+        return when (method) {
             // Amethyst/Quartz probes GET_PUBLIC_KEY with projection ["login"].
             // That value is not a NIP-55 current_user pubkey, so never forward it
             // into Dart as currentUser or the parser will correctly reject it.
-            "get_public_key" -> return null
-            "sign_event", "sign_message", "decrypt_zap_event" -> 1
-            else -> 2
+            "get_public_key" -> null
+            "sign_event", "sign_message", "decrypt_zap_event" -> {
+                // Dark-Wisp sends [payload, "", current_user] — prefer index 2 when
+                // present and nonblank; fall back to index 1 for legacy [payload, current_user]
+                val atTwo = projection?.getOrNull(2)?.takeIf { it.isNotBlank() }
+                val atOne = projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
+                normalizeHexOrNpub(atTwo ?: atOne)
+            }
+            else -> normalizeHexOrNpub(projection?.getOrNull(2)?.takeIf { it.isNotBlank() })
         }
-        return projection?.getOrNull(index)?.takeIf { it.isNotBlank() }
     }
 
     fun zapCurrentUserFromProjection(projection: Array<out String>?): String? {
         return currentUserFromProjection(projection, "decrypt_zap_event")
     }
 
-    fun rejectedCursor(reason: String = "rejected"): MatrixCursor {
+    /**
+     * Rejection cursor with no explicit reason — column value is boolean true.
+     * Used for remembered rejects where the reason is implicit.
+     */
+    fun rejectedCursor(): MatrixCursor {
         return MatrixCursor(arrayOf("rejected")).apply {
             addRow(arrayOf(true))
+        }
+    }
+
+    /**
+     * Rejection cursor with an explicit reason string.
+     * If [reason] is blank or the default "rejected", falls back to boolean true
+     * so callers that only test for column presence keep working.
+     */
+    fun rejectedCursor(reason: String): MatrixCursor {
+        val value: Any = if (reason.isBlank() || reason == "rejected") true else reason
+        return MatrixCursor(arrayOf("rejected")).apply {
+            addRow(arrayOf(value))
         }
     }
 

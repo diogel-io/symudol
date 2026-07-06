@@ -74,7 +74,8 @@ void main() {
     expect(codec, contains('AUTHORITY_SIGN_MESSAGE -> "sign_message"'));
     expect(codec, contains('peerPubkeyFromProjection'));
     expect(codec, contains('zapCurrentUserFromProjection'));
-    expect(codec, contains('"get_public_key" -> return null'));
+    // Workstream A: get_public_key returns null as a when-expression value
+    expect(codec, contains('"get_public_key" -> null'));
     expect(
       codec,
       contains(
@@ -101,10 +102,14 @@ void main() {
       'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
     ).readAsStringSync();
 
+    // Workstream A: sign_event/sign_message/decrypt_zap_event now prefer index 2
+    // (Dark-Wisp format [payload, "", current_user]) with fallback to index 1.
     expect(
       codec,
-      contains('"sign_event", "sign_message", "decrypt_zap_event" -> 1'),
+      contains('"sign_event", "sign_message", "decrypt_zap_event" ->'),
     );
+    // Dark-Wisp index-2 preference is documented in the implementation
+    expect(codec, contains('Dark-Wisp'));
     expect(codec, contains('fun payloadFromProjection'));
     expect(
       codec,
