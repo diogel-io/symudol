@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import 'trusted_apps_screen.dart';
 import 'widgets/settings_tile.dart';
@@ -164,6 +165,19 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const TrustedAppsScreen()),
+              );
+            },
+          ),
+          SettingsTile(
+            icon: Icons.lan_outlined,
+            title: 'Remote Signer (NIP-46)',
+            subtitle:
+                'Manage relay-based remote signing sessions for Amethyst, Nostria, and other NIP-46 clients.',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const Nip46ConnectionsScreen(),
+                ),
               );
             },
           ),
