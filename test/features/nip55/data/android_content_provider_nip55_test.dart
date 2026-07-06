@@ -145,7 +145,8 @@ void main() {
     expect(provider, contains('relayUrl'));
     expect(provider, contains('normalizeRelayUrl'));
     expect(mirror, contains('scopeRelayUrl'));
-    expect(mirror, contains('grant.scopeRelayUrl != null && grant.scopeRelayUrl != relayUrl'));
+    // Relay URL is normalized during matching (BUG #2 fix: case-insensitive comparison)
+    expect(mirror, contains('normalizeRelayUrl(grant.scopeRelayUrl) != normalizeRelayUrl(relayUrl)'));
   });
 
   group('provider contract semantics (null / rejected / result)', () {

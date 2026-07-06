@@ -304,25 +304,25 @@ class Nip55ContentProvider : ContentProvider() {
     }
 
     private fun hasRequiredProjection(method: String, projection: Array<out String>?): Boolean {
+        // currentUser is intentionally not required here — it is optional per NIP-55.
+        // Clients that omit it (e.g. early Amethyst versions) will fall through to the
+        // Flutter bridge which resolves identity from the active vault key. Requiring
+        // currentUser here would block legitimate requests from clients that don't send it.
         return when (method) {
             "ping" -> true
             "get_public_key" -> true
             "sign_message" -> {
-                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
+                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank()
             }
             "sign_event" -> {
-                !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
+                !Nip55RequestCodec.eventJsonFromProjection(projection).isNullOrBlank()
             }
             "nip04_encrypt", "nip04_decrypt", "nip44_encrypt", "nip44_decrypt" -> {
                 !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.peerPubkeyFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.currentUserFromProjection(projection, method).isNullOrBlank()
+                    !Nip55RequestCodec.peerPubkeyFromProjection(projection).isNullOrBlank()
             }
             "decrypt_zap_event" -> {
-                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank() &&
-                    !Nip55RequestCodec.zapCurrentUserFromProjection(projection).isNullOrBlank()
+                !Nip55RequestCodec.payloadFromProjection(projection).isNullOrBlank()
             }
             else -> false
         }

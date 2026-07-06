@@ -44,6 +44,9 @@ object Nip55RequestCodec {
             decoded5.add(idx)
         }
 
+        // Verify bech32 checksum before accepting the data.
+        if (!bech32VerifyChecksum("npub", decoded5)) return null
+
         // Drop last 6 groups (checksum) to get data groups
         val dataGroups = decoded5.dropLast(6)
 
@@ -63,6 +66,25 @@ object Nip55RequestCodec {
         if (bits >= 5 || (acc and ((1 shl bits) - 1)) != 0) return null
         if (bytes.size != 32) return null
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun bech32VerifyChecksum(hrp: String, data: List<Int>): Boolean {
+        val values = buildList {
+            hrp.forEach { add(it.code ushr 5) }
+            add(0)
+            hrp.forEach { add(it.code and 31) }
+            addAll(data)
+        }
+        val gen = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
+        var c = 1
+        for (v in values) {
+            val b = c ushr 25
+            c = (c and 0x1ffffff) shl 5 xor v
+            for (i in 0..4) {
+                if ((b ushr i) and 1 != 0) c = c xor gen[i]
+            }
+        }
+        return c == 1
     }
 
     // Authorities are derived from the installed application id so that debug,
@@ -173,8 +195,11 @@ object Nip55RequestCodec {
     }
 
     fun operationResultCursor(result: String): MatrixCursor {
-        return MatrixCursor(arrayOf("signature", "result", "event")).apply {
-            addRow(arrayOf(result, result, result))
+        // Non-signing operations return only "result" and "event" columns.
+        // "signature" is intentionally absent — that column is only meaningful
+        // for sign_event; placing a pubkey or plaintext there is semantically wrong.
+        return MatrixCursor(arrayOf("result", "event")).apply {
+            addRow(arrayOf(result, result))
         }
     }
 }

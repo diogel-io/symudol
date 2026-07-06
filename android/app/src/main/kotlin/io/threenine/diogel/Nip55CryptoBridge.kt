@@ -48,6 +48,17 @@ object Nip55CryptoBridge {
      * Clear the active keys. Called from Flutter when the vault locks
      * or the app goes to background with auto-lock.
      */
+    /**
+     * Clear the active keys. Called from Flutter when the vault locks
+     * or the app goes to background with auto-lock.
+     *
+     * Note: JVM [String] objects are immutable — the underlying char array cannot
+     * be explicitly zeroed. Nulling the reference makes the String eligible for GC,
+     * but key material may linger in memory until the collector runs. A future
+     * improvement is to store the private key as [CharArray] or [ByteArray] so it
+     * can be zeroed before release; that change requires updating all callers in
+     * [Nip55NativeCrypto] as well.
+     */
     fun clearActiveKey() {
         _activePrivateKey = null
         _activePublicKey = null

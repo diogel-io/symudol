@@ -47,7 +47,7 @@ void main() {
   });
 
   group('parseNostrconnect', () {
-    String _buildNostrconnect({
+    String buildNostrconnect({
       String? pubkey,
       List<String> relays = const ['wss://relay.example.com'],
       String secret = 'mysecret',
@@ -65,7 +65,7 @@ void main() {
     }
 
     test('parses valid nostrconnect URI', () {
-      final token = Nip46TokenCodec.parseNostrconnect(_buildNostrconnect());
+      final token = Nip46TokenCodec.parseNostrconnect(buildNostrconnect());
       expect(token.clientPubkey, validPubkey);
       expect(token.relays, ['wss://relay.example.com']);
       expect(token.secret, 'mysecret');
@@ -73,7 +73,7 @@ void main() {
 
     test('handles multiple relay params', () {
       final token = Nip46TokenCodec.parseNostrconnect(
-        _buildNostrconnect(
+        buildNostrconnect(
           relays: ['wss://r1.example.com', 'wss://r2.example.com'],
         ),
       );
@@ -84,7 +84,7 @@ void main() {
 
     test('parses optional metadata', () {
       final token = Nip46TokenCodec.parseNostrconnect(
-        _buildNostrconnect(perms: 'sign_event', name: 'Test App'),
+        buildNostrconnect(perms: 'sign_event', name: 'Test App'),
       );
       expect(token.perms, 'sign_event');
       expect(token.name, 'Test App');

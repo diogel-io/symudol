@@ -25,6 +25,19 @@ object Nip55ProviderBridge {
         }
     }
 
+    /**
+     * Dispatch a NIP-55 query to the Flutter engine and block until a response
+     * arrives or the [QUERY_TIMEOUT_MS] deadline (3 s) passes.
+     *
+     * **Caller-blocking warning**: this method is invoked on the ContentProvider
+     * query thread, which is the *calling app's* Binder thread. It will hold that
+     * thread for up to 3 seconds while waiting for the Flutter engine to respond.
+     * Calling apps that issue the query on their main thread risk an ANR; well-
+     * behaved NIP-55 clients (Amethyst, Quartz) use a background thread for
+     * ContentResolver queries, so in practice the ANR risk is on the client side.
+     * A proper async ContentProvider using ContentResolver.notifyChange() would
+     * eliminate this ceiling entirely but requires a protocol change with clients.
+     */
     fun query(arguments: Map<String, Any?>): Map<String, Any?>? {
         val activeChannel = channel ?: return null
 

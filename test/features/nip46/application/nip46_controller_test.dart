@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:android_diogel/features/nip46/application/nip46_controller.dart';
 import 'package:android_diogel/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:android_diogel/features/nip46/domain/nip46_connection_token.dart';
@@ -109,16 +107,16 @@ void main() {
   });
 
   group('importNostrconnectToken', () {
-    const _validClientPubkey =
+    const validClientPubkey =
         'a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1';
 
-    String _buildNostrconnect({
+    String buildNostrconnect({
       String? pubkey,
       String secret = 'testsecret123',
       String? name,
       String? perms,
     }) {
-      final p = pubkey ?? _validClientPubkey;
+      final p = pubkey ?? validClientPubkey;
       var uri = 'nostrconnect://$p?secret=$secret';
       uri += '&relay=${Uri.encodeComponent("wss://relay.example.com")}';
       if (name != null) uri += '&name=${Uri.encodeComponent(name)}';
@@ -127,28 +125,28 @@ void main() {
     }
 
     test('sets pendingApproval in state', () async {
-      await controller.importNostrconnectToken(_buildNostrconnect());
+      await controller.importNostrconnectToken(buildNostrconnect());
       expect(controller.state.pendingApproval, isNotNull);
     });
 
     test('creates a pending session with correct client pubkey', () async {
-      await controller.importNostrconnectToken(_buildNostrconnect());
+      await controller.importNostrconnectToken(buildNostrconnect());
       expect(controller.state.sessions, hasLength(1));
       expect(
         controller.state.sessions.first.clientPubkey,
-        _validClientPubkey,
+        validClientPubkey,
       );
     });
 
     test('parses client metadata from perms and name', () async {
       await controller.importNostrconnectToken(
-        _buildNostrconnect(name: 'Test Client'),
+        buildNostrconnect(name: 'Test Client'),
       );
       expect(controller.state.sessions.first.clientName, 'Test Client');
     });
 
     test('starts relay for the session', () async {
-      await controller.importNostrconnectToken(_buildNostrconnect());
+      await controller.importNostrconnectToken(buildNostrconnect());
       expect(relayService.connectedSessions, hasLength(1));
     });
 

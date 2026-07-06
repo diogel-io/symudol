@@ -99,7 +99,7 @@ object Nip55NativeCrypto {
                 }
             }
 
-            val createdAt = event.optLong("created_at", 0L)
+            val createdAt = if (event.has("created_at")) event.getLong("created_at") else (System.currentTimeMillis() / 1000L)
             val kind = event.optInt("kind", 0)
             val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
             val content = event.optString("content", "")
@@ -111,9 +111,17 @@ object Nip55NativeCrypto {
 
             val sig = schnorrSign(privateKeyHex, id)
 
-            val signedEvent = JSONObject(eventJson)
-            signedEvent.put("pubkey", finalPubkey)
+            // Build signed event strictly from the canonical components used for id
+            // computation. Re-using the original eventJson would risk including extra
+            // fields (or different encoding) that clients cannot reproduce when
+            // verifying id == sha256(canonical_serialize(event)).
+            val signedEvent = JSONObject()
             signedEvent.put("id", id)
+            signedEvent.put("pubkey", finalPubkey)
+            signedEvent.put("created_at", createdAt)
+            signedEvent.put("kind", kind)
+            signedEvent.put("tags", tags)
+            signedEvent.put("content", content)
             signedEvent.put("sig", sig)
 
             SignEventResult(sig, signedEvent.toString())
@@ -428,6 +436,7 @@ object Nip55NativeCrypto {
     }
 
     private fun hexToBytes(hex: String): ByteArray {
+        if (hex.length % 2 != 0) throw IllegalArgumentException("Hex string must have even length, got ${hex.length}")
         val len = hex.length
         val data = ByteArray(len / 2)
         var i = 0

@@ -7,19 +7,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const policy = Nip46ApprovalPolicy();
-  const _pubkey =
+  const pubkey =
       'a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1';
-  const _clientPubkey =
+  const clientPubkey =
       'b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2';
 
-  Nip46Session _activeSession({
+  Nip46Session activeSession({
     List<Nip46PermissionScope> scopes = const [],
     Nip46SessionStatus status = Nip46SessionStatus.active,
   }) {
     return Nip46Session(
       id: 'sess-1',
-      clientPubkey: _clientPubkey,
-      remoteSignerPubkey: _pubkey,
+      clientPubkey: clientPubkey,
+      remoteSignerPubkey: pubkey,
       remoteSignerPrivkey: '0' * 64,
       relays: const ['wss://relay.example.com'],
       grantedScopes: scopes,
@@ -33,9 +33,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.getPublicKey,
-          session: _activeSession(),
+          session: activeSession(),
           vaultState: const VaultLocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46RequireUnlock>(),
       );
@@ -45,7 +45,7 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.ping,
-          session: _activeSession(),
+          session: activeSession(),
           vaultState: const VaultUnlocked(),
           activeIdentityPubkey: null,
         ),
@@ -59,9 +59,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.getPublicKey,
-          session: _activeSession(status: Nip46SessionStatus.revoked),
+          session: activeSession(status: Nip46SessionStatus.revoked),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoReject>(),
       );
@@ -71,9 +71,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.signEvent,
-          session: _activeSession(status: Nip46SessionStatus.pending),
+          session: activeSession(status: Nip46SessionStatus.pending),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoReject>(),
       );
@@ -92,9 +92,9 @@ void main() {
         expect(
           policy.decide(
             method: method,
-            session: _activeSession(),
+            session: activeSession(),
             vaultState: const VaultUnlocked(),
-            activeIdentityPubkey: _pubkey,
+            activeIdentityPubkey: pubkey,
           ),
           isA<Nip46AutoAllow>(),
         );
@@ -107,9 +107,9 @@ void main() {
       // User explicitly pre-approved all event kinds; policy auto-allows.
       final result = policy.decide(
         method: Nip46Method.signEvent,
-        session: _activeSession(scopes: [const Nip46SignEventScope()]),
+        session: activeSession(scopes: [const Nip46SignEventScope()]),
         vaultState: const VaultUnlocked(),
-        activeIdentityPubkey: _pubkey,
+        activeIdentityPubkey: pubkey,
       );
       expect(result, isA<Nip46AutoAllow>());
     });
@@ -122,9 +122,9 @@ void main() {
       // handles kind-specific checks at dispatch time.
       final result = policy.decide(
         method: Nip46Method.signEvent,
-        session: _activeSession(scopes: [const Nip46SignEventScope(1)]),
+        session: activeSession(scopes: [const Nip46SignEventScope(1)]),
         vaultState: const VaultUnlocked(),
-        activeIdentityPubkey: _pubkey,
+        activeIdentityPubkey: pubkey,
       );
       expect(result, isA<Nip46RequireReview>());
       expect((result as Nip46RequireReview).canRemember, isFalse);
@@ -133,9 +133,9 @@ void main() {
     test('no sign_event grant → RequireReview without canRemember', () {
       final result = policy.decide(
         method: Nip46Method.signEvent,
-        session: _activeSession(),
+        session: activeSession(),
         vaultState: const VaultUnlocked(),
-        activeIdentityPubkey: _pubkey,
+        activeIdentityPubkey: pubkey,
       );
       expect(result, isA<Nip46RequireReview>());
       expect((result as Nip46RequireReview).canRemember, isFalse);
@@ -147,9 +147,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.nip04Decrypt,
-          session: _activeSession(),
+          session: activeSession(),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46RequireReview>(),
       );
@@ -159,9 +159,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.nip04Decrypt,
-          session: _activeSession(scopes: [const Nip46Nip04DecryptScope()]),
+          session: activeSession(scopes: [const Nip46Nip04DecryptScope()]),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoAllow>(),
       );
@@ -171,9 +171,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.decryptZapEvent,
-          session: _activeSession(scopes: [const Nip46Nip44DecryptScope()]),
+          session: activeSession(scopes: [const Nip46Nip44DecryptScope()]),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoAllow>(),
       );
@@ -183,9 +183,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.decryptZapEvent,
-          session: _activeSession(scopes: [const Nip46Nip04DecryptScope()]),
+          session: activeSession(scopes: [const Nip46Nip04DecryptScope()]),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoAllow>(),
       );
@@ -195,9 +195,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.nip44Encrypt,
-          session: _activeSession(),
+          session: activeSession(),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46RequireReview>(),
       );
@@ -207,9 +207,9 @@ void main() {
       expect(
         policy.decide(
           method: Nip46Method.nip44Encrypt,
-          session: _activeSession(scopes: [const Nip46Nip44EncryptScope()]),
+          session: activeSession(scopes: [const Nip46Nip44EncryptScope()]),
           vaultState: const VaultUnlocked(),
-          activeIdentityPubkey: _pubkey,
+          activeIdentityPubkey: pubkey,
         ),
         isA<Nip46AutoAllow>(),
       );

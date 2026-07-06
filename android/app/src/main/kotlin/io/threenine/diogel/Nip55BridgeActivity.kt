@@ -13,6 +13,13 @@ class Nip55BridgeActivity : Activity() {
     private var requestToken: String? = null
 
     companion object {
+        // ── Certificate SHA-256 cache ────────────────────────────────────
+        // PackageManager.getPackageInfo(GET_SIGNING_CERTIFICATES) is a binder
+        // call that takes 1-5 ms. Cache per-package on first lookup; certificates
+        // don't change at runtime without reinstalling the app.
+        // Accessed only from the main thread (Activity lifecycle), so HashMap is safe.
+        private val certCache = HashMap<String, String?>()
+
         // ── Foreground request rate limiter ───────────────────────────────
         // Prevents abusive clients from spamming the approval UI. Keyed by
         // callerPackage|method and optionally |kind for sign_event. Each entry
@@ -28,8 +35,13 @@ class Nip55BridgeActivity : Activity() {
 
         /**
          * Returns true if the request should be rate-limited. Advances the
-         * window counter for the key. Not synchronized — BridgeActivity runs
-         * on the main thread so this is safe.
+         * window counter for the key.
+         *
+         * Thread safety: [rateBuckets] is accessed without synchronization.
+         * This is safe because [isRateLimited] is only called from
+         * [handleNip55Intent], which is invoked by [onCreate] and [onNewIntent]
+         * — both are main-thread Activity lifecycle callbacks. If this function
+         * is ever called from a background thread, it must be synchronized.
          */
         internal fun isRateLimited(callerPackage: String?, method: String?, kind: Int?): Boolean {
             val bucket = buildKey(callerPackage, method, kind)
@@ -168,7 +180,8 @@ class Nip55BridgeActivity : Activity() {
 
     private fun resolveSigningCertificateSha256(packageName: String?): String? {
         if (packageName.isNullOrBlank()) return null
-        return try {
+        if (certCache.containsKey(packageName)) return certCache[packageName]
+        val result = try {
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val info = packageManager.getPackageInfo(
                     packageName,
@@ -190,5 +203,7 @@ class Nip55BridgeActivity : Activity() {
         } catch (_: Exception) {
             null
         }
+        certCache[packageName] = result
+        return result
     }
 }

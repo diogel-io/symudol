@@ -206,7 +206,7 @@ class Nip55PermissionMirror(private val context: Context) {
                 grant.scopeKind != null && grant.scopeKind != eventKind -> false
                 // Relay URL matching for kind 22242 (NIP-42 relay auth):
                 // A relay-specific grant only covers that relay; null = wildcard.
-                grant.scopeRelayUrl != null && grant.scopeRelayUrl != relayUrl -> false
+                grant.scopeRelayUrl != null && normalizeRelayUrl(grant.scopeRelayUrl) != normalizeRelayUrl(relayUrl) -> false
                 else -> true
             }
             "nip44_encrypt" -> when {
@@ -236,11 +236,12 @@ class Nip55PermissionMirror(private val context: Context) {
             "decrypt_zap_event" -> when {
                 // NIP-57 zap receipts are NIP-04 encrypted to the recipient's pubkey.
                 // If the user trusts an app to decrypt their DMs, they trust it
-                // to decrypt zap receipts too. So nip04_decrypt/nip44_decrypt
-                // grants also satisfy decrypt_zap_event.
+                // to decrypt zap receipts too. So nip04_decrypt/nip44_decrypt grants
+                // also satisfy decrypt_zap_event — but the scopePeerPubkey constraint
+                // from the decrypt grant still applies for cross-scope matches.
                 grantScope == "decrypt_zap_event" -> true
-                grantScope == "nip04_decrypt" -> true
-                grantScope == "nip44_decrypt" -> true
+                grantScope == "nip04_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
+                grantScope == "nip44_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
                 else -> false
             }
             else -> false
