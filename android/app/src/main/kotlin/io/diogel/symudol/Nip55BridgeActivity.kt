@@ -1,4 +1,4 @@
-package io.threenine.diogel
+package io.diogel.symudol
 
 import android.app.Activity
 import android.content.Intent

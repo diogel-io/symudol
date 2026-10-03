@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-PACKAGE="io.threenine.diogel"
+PACKAGE="io.diogel.symudol"
 ADB=(adb)
 if [ -n "${ADB_DEVICE:-}" ]; then
   ADB=(adb -s "$ADB_DEVICE")

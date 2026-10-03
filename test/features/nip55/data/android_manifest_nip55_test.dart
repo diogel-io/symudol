@@ -78,7 +78,7 @@ void main() {
     expect(doc, contains('queryIntentActivities'));
     expect(doc, contains('nostrsigner:'));
     // Diogel production identity documented
-    expect(doc, contains('io.threenine.diogel'));
+    expect(doc, contains('io.diogel.symudol'));
     // Platform constraints documented
     expect(
       doc,

@@ -129,7 +129,7 @@ The list of relevant NIPs:
    - https://developer.android.com/guide/topics/manifest/provider-element
    - Key point: provider authorities are declared in the manifest.
    - Relevant to Diogel:
-   - io.threenine.diogel.SIGN_EVENT, ...GET_PUBLIC_KEY, ...PING, etc. are provider authorities.
+   - io.diogel.symudol.SIGN_EVENT, ...GET_PUBLIC_KEY, ...PING, etc. are provider authorities.
    - If an authority is missing or mismatched, ContentResolver.query(content://...) won’t reach Diogel.
 7. Package visibility filtering
    - https://developer.android.com/training/package-visibility
@@ -159,7 +159,7 @@ The list of relevant NIPs:
    - sign_event returns result and event.
    - Other crypto methods return result.
    - nostrsigner: intent = manual UI approval path.
-   - `content://io.threenine.diogel.GET_PUBLIC_KEY` etc. = provider/warm-session path.
+   - `content://io.diogel.symudol.GET_PUBLIC_KEY` etc. = provider/warm-session path.
    - ContentProvider.getCallingPackage() = how Diogel identifies the calling app.
    - AndroidManifest.xml authorities = what clients can query.
    - BAL_BLOCK logs = Android refusing background UI launch.

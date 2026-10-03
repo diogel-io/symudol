@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('MainActivity uses shared parser for browser NIP-55 URL params', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
     ).readAsStringSync();
     final uriParser = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55UriParser.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55UriParser.kt',
     ).readAsStringSync();
 
     expect(
@@ -33,7 +33,7 @@ void main() {
 
   test('Bridge marks browsable nostrsigner URLs as browser flow', () {
     final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
     ).readAsStringSync();
 
     expect(
@@ -46,7 +46,7 @@ void main() {
 
   test('MainActivity supports callback launch and clipboard fallback', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
     ).readAsStringSync();
 
     expect(mainActivity, contains('maybeLaunchCallback(extras)'));

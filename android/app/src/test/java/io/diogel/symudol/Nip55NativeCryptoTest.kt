@@ -1,4 +1,4 @@
-package io.threenine.diogel
+package io.diogel.symudol
 
 import org.junit.Assert.*
 import org.junit.Test

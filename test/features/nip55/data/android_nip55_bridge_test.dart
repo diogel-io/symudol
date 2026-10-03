@@ -5,16 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('NIP-55 bridge owns caller results and MainActivity settles by token', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
     ).readAsStringSync();
     final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
     ).readAsStringSync();
     final registry = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeRegistry.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeRegistry.kt',
     ).readAsStringSync();
     final uriParser = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55UriParser.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55UriParser.kt',
     ).readAsStringSync();
     final app = File('lib/app/app.dart').readAsStringSync();
 
@@ -80,11 +80,11 @@ void main() {
 
   test('NIP-55 bridge can keep multiple active tokens for burst requests', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
     ).readAsStringSync();
 
     final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55BridgeActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
     ).readAsStringSync();
 
     expect(mainActivity, contains('activeRequestTokens'));

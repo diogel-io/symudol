@@ -1,8 +1,8 @@
-package io.threenine.diogel
+package io.diogel.symudol
 
 import android.database.MatrixCursor
 import android.net.Uri
-import io.threenine.diogel.BuildConfig
+import io.diogel.symudol.BuildConfig
 
 object Nip55RequestCodec {
 
