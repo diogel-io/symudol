@@ -19,8 +19,8 @@ NIP-55 defines a two-step discovery contract for Android clients:
 
 2. **Provider URI construction** — the client builds ContentProvider URIs using
    the resolved package name: `content://<signerPackage>.<METHOD>`. For example,
-   after discovering `io.threenine.diogel`, the client uses
-   `content://io.threenine.diogel.SIGN_EVENT`.
+   after discovering `io.diogel.symudol`, the client uses
+   `content://io.diogel.symudol.SIGN_EVENT`.
 
 This flow means **neither the signer nor the client needs to know each other's
 package name in advance**. The client discovers it at runtime.
@@ -31,12 +31,12 @@ package name in advance**. The client discovers it at runtime.
 
 | Property | Value |
 |----------|-------|
-| Application ID | `io.threenine.diogel` |
-| Provider authority prefix | `io.threenine.diogel.` |
-| Method authorities | `io.threenine.diogel.SIGN_EVENT`, `io.threenine.diogel.GET_PUBLIC_KEY`, etc. |
+| Application ID | `io.diogel.symudol` |
+| Provider authority prefix | `io.diogel.symudol.` |
+| Method authorities | `io.diogel.symudol.SIGN_EVENT`, `io.diogel.symudol.GET_PUBLIC_KEY`, etc. |
 | `nostrsigner:` intent filter | Declared in `Nip55BridgeActivity`, exported, with `DEFAULT` and `BROWSABLE`. |
 
-The production application ID must remain `io.threenine.diogel`. It is not
+The production application ID must remain `io.diogel.symudol`. It is not
 negotiable. Diogel is a distinct app with its own identity, security model, and
 update channel.
 
@@ -65,7 +65,7 @@ will fail for Diogel regardless of which provider authorities Diogel declares.
 
 When a client issues `intent.package = "com.greenart7c3.nostrsigner"`, Android's
 intent resolution only searches for matching activities in the named package. An
-activity in `io.threenine.diogel` cannot be found by a package-targeted intent
+activity in `io.diogel.symudol` cannot be found by a package-targeted intent
 for `com.greenart7c3.nostrsigner`. There is no manifest declaration, alias, or
 shim that can bridge this — it is an Android platform invariant.
 
@@ -90,11 +90,11 @@ would break users who have both apps installed.
 
 | Primal behaviour | Stock Diogel result | Root cause |
 |------------------|---------------------|------------|
-| `getPackageInfo("com.greenart7c3.nostrsigner")` | **Fails** (NameNotFoundException) | Diogel's application ID is `io.threenine.diogel`. Provider authorities are not package IDs. |
+| `getPackageInfo("com.greenart7c3.nostrsigner")` | **Fails** (NameNotFoundException) | Diogel's application ID is `io.diogel.symudol`. Provider authorities are not package IDs. |
 | `content://com.greenart7c3.nostrsigner.SIGN_EVENT` query | **Fails** in stock Diogel | Diogel does not declare Amber's provider authorities. |
 | `intent.package = "com.greenart7c3.nostrsigner"` | **Does not resolve** to Diogel | Package-targeted intents only search the named package. |
 | `queryIntentActivities(ACTION_VIEW, "nostrsigner:")` | **Finds Diogel** ✅ | Diogel exports `Nip55BridgeActivity` with the `nostrsigner:` intent filter. |
-| `content://io.threenine.diogel.SIGN_EVENT` (post-discovery) | **Works** ✅ | Standard NIP-55 authority convention after intent discovery. |
+| `content://io.diogel.symudol.SIGN_EVENT` (post-discovery) | **Works** ✅ | Standard NIP-55 authority convention after intent discovery. |
 
 **Conclusion**: stock Primal cannot discover stock Diogel through the current
 Amber-specific path. Primal's integration is gated on three Amber-specific checks
@@ -129,7 +129,7 @@ Primal's `ClientSignerUtils` checks `packageInfo.longVersionCode >= 115`
 
 - Is performed **after** `getPackageInfo("com.greenart7c3.nostrsigner")`.
 - Has no bearing on Diogel's production versionCode because the package check
-  already fails for `io.threenine.diogel`.
+  already fails for `io.diogel.symudol`.
 - Is relevant only if a compatibility build with `applicationId = "com.greenart7c3.nostrsigner"`
   is ever shipped — that build would need `versionCode >= 115`.
 
@@ -170,17 +170,17 @@ verify intent discovery works:
 adb shell cmd package query-intent-activities -a android.intent.action.VIEW -d nostrsigner:
 
 # Confirm Diogel resolves the nostrsigner: intent
-adb shell cmd package resolve-activity -a android.intent.action.VIEW -d nostrsigner: -p io.threenine.diogel
+adb shell cmd package resolve-activity -a android.intent.action.VIEW -d nostrsigner: -p io.diogel.symudol
 
 # Test the PING capability probe via ContentProvider
-adb shell content query --uri content://io.threenine.diogel.PING
+adb shell content query --uri content://io.diogel.symudol.PING
 
 # Confirm Amber package-targeted intent does NOT resolve to Diogel (negative check)
 adb shell cmd package resolve-activity -a android.intent.action.VIEW -d nostrsigner: -p com.greenart7c3.nostrsigner
 ```
 
 The positive checks pass when the resolved activity package is
-`io.threenine.diogel` and the activity name is `Nip55BridgeActivity`.
+`io.diogel.symudol` and the activity name is `Nip55BridgeActivity`.
 
 The negative check passes when no activity is resolved (Diogel is not Amber).
 

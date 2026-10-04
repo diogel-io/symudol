@@ -173,7 +173,7 @@ void main() {
 
     expect(extras, {
       'result': identity.publicKey,
-      'package': 'io.threenine.diogel',
+      'package': 'io.diogel.symudol',
     });
   });
 

@@ -145,7 +145,7 @@ the NIP-55 Intent protocol (key names in `strings.xml`).
 | `.PING` | Capability probe — always returns `pong` |
 
 All authorities are prefixed with the signer's discovered package name, e.g.
-`content://io.threenine.diogel.SIGN_EVENT`.
+`content://io.diogel.symudol.SIGN_EVENT`.
 
 ---
 

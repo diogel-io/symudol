@@ -18,7 +18,7 @@ The core trust model: keep signing material on-device, make every approval expli
 - `flutter run` — run the app on a connected device/emulator
 - `./fix_emulators.sh` — fixes stale Android emulator locks/snapshot issues (run if emulators fail to boot)
 
-For Android-native (Kotlin) changes under `android/app/src/main/kotlin/io/threenine/diogel/`, build/verify via Gradle (`android/gradlew`) or by running the Flutter app on an Android target — there are no separate Dart tests for native code paths.
+For Android-native (Kotlin) changes under `android/app/src/main/kotlin/io/diogel/symudol/`, build/verify via Gradle (`android/gradlew`) or by running the Flutter app on an Android target — there are no separate Dart tests for native code paths.
 
 ## Architecture
 
@@ -54,9 +54,9 @@ Both are skipped/deferred while a NIP-55 request is in flight (`nip55ControllerP
 
 This feature bridges Android-native IPC (intents + ContentProvider) to the Flutter signing/approval flow. Key pieces:
 
-- **Transport-side (Android/Kotlin)**: `android/app/src/main/kotlin/io/threenine/diogel/`
+- **Transport-side (Android/Kotlin)**: `android/app/src/main/kotlin/io/diogel/symudol/`
   - `MainActivity.kt` receives `nostrsigner:` intents (`singleTop`)
-  - `Nip55ContentProvider.kt` exposes content authorities (`io.threenine.diogel.GET_PUBLIC_KEY`, `SIGN_EVENT`, etc.) for warm/background calls when permission is already remembered
+  - `Nip55ContentProvider.kt` exposes content authorities (`io.diogel.symudol.GET_PUBLIC_KEY`, `SIGN_EVENT`, etc.) for warm/background calls when permission is already remembered
   - `Nip55BridgeActivity.kt`, `Nip55ProviderBridge.kt`, `Nip55BridgeRegistry.kt`, `Nip55RequestCodec.kt`, `Nip55UriParser.kt` handle request token assignment, result ownership, and parsing — see `documentation/nip55-bridge-activity-design.md` for the concurrency model (strict single-flight; a second concurrent caller must be rejected by its own bridge instance without touching the active request)
   - `Nip55PermissionMirror.kt` / `Nip55CryptoBridge.kt` / `Nip55NativeCrypto.kt` mirror permission/crypto state to native so the ContentProvider can answer without waking the Flutter engine
 

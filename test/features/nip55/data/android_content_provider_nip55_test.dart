@@ -25,7 +25,7 @@ void main() {
 
   test('ContentProvider bridges warm-session queries without launching UI', () {
     final provider = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55ContentProvider.kt',
     ).readAsStringSync();
 
     expect(
@@ -47,10 +47,10 @@ void main() {
 
   test('MainActivity attaches provider bridge to Flutter channel', () {
     final mainActivity = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/MainActivity.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
     ).readAsStringSync();
     final bridge = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ProviderBridge.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55ProviderBridge.kt',
     ).readAsStringSync();
 
     expect(mainActivity, contains('Nip55ProviderBridge.attach(it)'));
@@ -61,7 +61,7 @@ void main() {
 
   test('NIP-55 codec uses lowercase event result column', () {
     final codec = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55RequestCodec.kt',
     ).readAsStringSync();
 
     expect(
@@ -99,7 +99,7 @@ void main() {
 
   test('NIP-55 codec documents SIGN_MESSAGE projection current-user index', () {
     final codec = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55RequestCodec.kt',
     ).readAsStringSync();
 
     // Workstream A: sign_event/sign_message/decrypt_zap_event now prefer index 2
@@ -119,7 +119,7 @@ void main() {
 
   test('PING is treated as a capability probe and documented', () {
     final provider = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55ContentProvider.kt',
     ).readAsStringSync();
 
     expect(provider, contains('if (method == "ping")'));
@@ -132,10 +132,10 @@ void main() {
 
   test('kind 22242 relay auth uses remembered-grant path, not unconditional auto-sign', () {
     final provider = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55ContentProvider.kt',
     ).readAsStringSync();
     final mirror = File(
-      'android/app/src/main/kotlin/io/threenine/diogel/Nip55PermissionMirror.kt',
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55PermissionMirror.kt',
     ).readAsStringSync();
 
     // Kind 22242 must NOT be auto-signed without a grant
@@ -154,7 +154,7 @@ void main() {
 
     setUpAll(() {
       provider = File(
-        'android/app/src/main/kotlin/io/threenine/diogel/Nip55ContentProvider.kt',
+        'android/app/src/main/kotlin/io/diogel/symudol/Nip55ContentProvider.kt',
       ).readAsStringSync();
     });
 
@@ -173,7 +173,7 @@ void main() {
     test('sign_event success returns cursor with signature, result, and full event columns', () {
       expect(provider, contains('signEventCursor(operationResult, eventJson)'));
       final codec = File(
-        'android/app/src/main/kotlin/io/threenine/diogel/Nip55RequestCodec.kt',
+        'android/app/src/main/kotlin/io/diogel/symudol/Nip55RequestCodec.kt',
       ).readAsStringSync();
       expect(codec, contains('MatrixCursor(arrayOf("signature", "result", "event"))'));
     });

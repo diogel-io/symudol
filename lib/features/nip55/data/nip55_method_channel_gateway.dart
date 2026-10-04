@@ -24,7 +24,7 @@ abstract interface class Nip55Gateway {
 }
 
 class Nip55MethodChannelGateway implements Nip55Gateway {
-  static const channelName = 'io.threenine.diogel/nip55';
+  static const channelName = 'io.diogel.symudol/nip55';
   final MethodChannel _channel;
   void Function(Map<String, Object?> raw)? _handler;
   Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?

@@ -10,7 +10,7 @@ import 'nip55_web_return_options.dart';
 class Nip55ResponseBuilder {
   final String signerPackage;
 
-  const Nip55ResponseBuilder({this.signerPackage = 'io.threenine.diogel'});
+  const Nip55ResponseBuilder({this.signerPackage = 'io.diogel.symudol'});
 
   Map<String, Object?> signEventExtras({
     required Nip55IncomingRequest incoming,

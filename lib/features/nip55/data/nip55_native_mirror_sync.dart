@@ -10,7 +10,7 @@ import '../domain/nip55_client_permission.dart';
 /// [Nip55ContentProvider] can check remembered permissions synchronously
 /// without going through the Flutter engine.
 class Nip55NativeMirrorSync {
-  static const _channel = MethodChannel('io.threenine.diogel/nip55');
+  static const _channel = MethodChannel('io.diogel.symudol/nip55');
 
   /// Sync the full grant list to the native SharedPreferences mirror.
   Future<void> syncGrants(List<Nip55PermissionGrant> grants) async {

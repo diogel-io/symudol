@@ -1,4 +1,4 @@
-package io.threenine.diogel
+package io.diogel.symudol
 
 import android.app.Activity
 import android.content.ClipData
@@ -41,7 +41,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private val channelName = "io.threenine.diogel/nip55"
+    private val channelName = "io.diogel.symudol/nip55"
     private var channel: MethodChannel? = null
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
