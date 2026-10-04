@@ -1,0 +1,52 @@
+# Analyze and test Symudol on every pull request and push to master (diogel-io/symudol#5).
+#
+# The Flutter tests cover the Dart side; the Gradle unit tests cover the Android (Kotlin) side,
+# including the NIP-55 permission matching the background ContentProvider relies on. Both run in
+# the same pinned Flutter + Android SDK image used to verify changes locally:
+#   podman run --rm -v "$PWD:/app:Z" -w /app ghcr.io/cirruslabs/flutter:3.44.0 bash -c '...'
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cirruslabs/flutter:3.44.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache pub and Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-symudol-${{ hashFiles('pubspec.lock', 'android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Flutter tests
+        run: flutter test
+
+      # gradlew is not committed (Flutter's default .gitignore); this generates it without a build.
+      - name: Android unit tests
+        run: |
+          flutter build apk --config-only
+          cd android
+          ./gradlew testDebugUnitTest --console=plain

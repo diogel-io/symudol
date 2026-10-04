@@ -52,10 +52,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Approval session duration'), findsOneWidget);
-    expect(find.textContaining('verified native apps'), findsOneWidget);
+    expect(find.textContaining('Not currently used'), findsOneWidget);
     expect(
       find.textContaining(
-        'Allows only apply inside an active approval session',
+        'They apply whenever the vault is unlocked',
       ),
       findsOneWidget,
     );

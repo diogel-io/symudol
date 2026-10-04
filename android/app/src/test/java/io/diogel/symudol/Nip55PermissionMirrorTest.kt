@@ -6,94 +6,29 @@ import org.junit.Test
 import org.json.JSONArray
 import org.json.JSONObject
 
+private typealias Grant = Nip55PermissionMirror.Grant
+
 /**
- * Unit tests for Nip55PermissionMirror scope matching, certificate matching,
- * and grant filtering logic.
+ * Unit tests for Nip55PermissionMirror's grant matching.
  *
- * Tests are self-contained and don't require Android SharedPreferences;
- * they exercise the matching logic directly by constructing Grant objects
- * and calling scopeMatches/certificateMatches/hasRememberedAllow.
- *
- * To avoid Android SDK dependencies, we use a test harness that extracts
- * the pure logic from Nip55PermissionMirror.
+ * They drive the real matching in [Nip55PermissionMirror.Companion] (pure: no
+ * SharedPreferences, no Context), the code the ContentProvider relies on. They
+ * used to test a copy of it, which could not catch a bug in the shipped matcher:
+ * the copy asserted that a broad sign_event allow matches any kind, the bug
+ * fixed in diogel-io/symudol#5.
  */
 class Nip55PermissionMirrorTest {
-
-    // ── Minimal Grant model (mirrors Nip55PermissionMirror.Grant) ──────
-
-    data class Grant(
-        val id: String,
-        val identityPubkey: String,
-        val packageName: String?,
-        val certificateSha256: String?,
-        val scopeType: String,
-        val scopeKind: Int?,
-        val scopePeerPubkey: String?,
-        val decision: String,
-        val expiresAtMillis: Long?,
-    ) {
-        fun isExpired(nowMs: Long = System.currentTimeMillis()): Boolean {
-            return expiresAtMillis != null && expiresAtMillis!! <= nowMs
-        }
-    }
-
-    // ── Extract scope matching logic (mirrors Nip55PermissionMirror.scopeMatches) ──
 
     private fun scopeMatches(
         grant: Grant,
         method: String,
         eventKind: Int?,
         peerPubkey: String?,
-    ): Boolean {
-        val grantScope = grant.scopeType
-        return when (method) {
-            "get_public_key" -> grantScope == "get_public_key"
-            "sign_message" -> grantScope == "sign_message"
-            "sign_event" -> when {
-                grantScope != "sign_event" -> false
-                grant.scopeKind == null -> true  // wildcard: any kind
-                grant.scopeKind == eventKind -> true
-                else -> false
-            }
-            "nip44_encrypt" -> when {
-                grantScope != "nip44_encrypt" -> false
-                grant.scopePeerPubkey == null -> true  // wildcard: any peer
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip44_decrypt" -> when {
-                grantScope != "nip44_decrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip04_encrypt" -> when {
-                grantScope != "nip04_encrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip04_decrypt" -> when {
-                grantScope != "nip04_decrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "decrypt_zap_event" -> when {
-                grantScope == "decrypt_zap_event" -> true
-                grantScope == "nip04_decrypt" -> true
-                grantScope == "nip44_decrypt" -> true
-                else -> false
-            }
-            else -> false
-        }
-    }
+        relayUrl: String? = null,
+    ): Boolean = Nip55PermissionMirror.scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
 
-    private fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
-        if (grant.certificateSha256 == null) return true
-        if (callerCertSha256 == null) return false
-        return grant.certificateSha256 == callerCertSha256
-    }
+    private fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean =
+        Nip55PermissionMirror.certificateMatches(grant, callerCertSha256)
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -110,6 +45,7 @@ class Nip55PermissionMirrorTest {
         identityPubkey: String = identity,
         certificateSha256: String? = null,
         expiresAtMillis: Long? = null,
+        scopeRelayUrl: String? = null,
     ) = Grant(
         id = "grant-${scopeType}",
         identityPubkey = identityPubkey,
@@ -118,6 +54,7 @@ class Nip55PermissionMirrorTest {
         scopeType = scopeType,
         scopeKind = scopeKind,
         scopePeerPubkey = scopePeerPubkey,
+        scopeRelayUrl = scopeRelayUrl,
         decision = decision,
         expiresAtMillis = expiresAtMillis,
     )
@@ -160,10 +97,20 @@ class Nip55PermissionMirrorTest {
     // ── sign_event ─────────────────────────────────────────────────────
 
     @Test
-    fun testSignEvent_wildcardMatchesAnyKind() {
-        val grant = makeGrant(scopeType = "sign_event", scopeKind = null)
+    fun testSignEvent_broadAllowMatchesNoKind() {
+        // #5: a broad allow ("sign any kind") is never auto-approved here, so
+        // the ContentProvider cannot sign in the background without review.
+        val grant = makeGrant(scopeType = "sign_event", scopeKind = null, decision = "allow")
+        assertFalse(scopeMatches(grant, "sign_event", 1, null))
+        assertFalse(scopeMatches(grant, "sign_event", 22242, null))
+        assertFalse(scopeMatches(grant, "sign_event", 0, null))
+    }
+
+    @Test
+    fun testSignEvent_broadRejectStillMatchesEveryKind() {
+        // A remembered refusal covering every kind is safe, and is kept.
+        val grant = makeGrant(scopeType = "sign_event", scopeKind = null, decision = "reject")
         assertTrue(scopeMatches(grant, "sign_event", 1, null))
-        assertTrue(scopeMatches(grant, "sign_event", 22242, null))
         assertTrue(scopeMatches(grant, "sign_event", 0, null))
     }
 
@@ -273,14 +220,15 @@ class Nip55PermissionMirrorTest {
     }
 
     @Test
-    fun testDecryptZapEvent_specificPeerNip04DecryptSatisfies() {
-        // Even with a specific peer, a nip04_decrypt grant satisfies decrypt_zap_event
+    fun testDecryptZapEvent_specificPeerNip04DecryptSatisfiesOnlyThatPeer() {
+        // The shipped matcher keeps a decrypt grant's peer for zap receipts.
+        // The copy this test used to exercise ignored it, so it asserted
+        // behaviour the ContentProvider never had. (Dart ignores the peer here;
+        // Kotlin is the stricter side. Symudol saves decrypt grants with no
+        // peer, so the two agree in practice.)
         val grant = makeGrant(scopeType = "nip04_decrypt", scopePeerPubkey = peerA)
         assertTrue(scopeMatches(grant, "decrypt_zap_event", null, peerA))
-        // Note: the peer constraint from nip04_decrypt doesn't apply to decrypt_zap_event
-        // because decrypt_zap_event doesn't have a peer concept — it uses the P-tag from the event.
-        // The cross-scope rule says: if you trust an app to decrypt your DMs, you trust it for zaps.
-        assertTrue(scopeMatches(grant, "decrypt_zap_event", null, peerB))
+        assertFalse(scopeMatches(grant, "decrypt_zap_event", null, peerB))
     }
 
     @Test
@@ -420,18 +368,20 @@ class Nip55PermissionMirrorTest {
         eventKind: Int? = null,
         peerPubkey: String? = null,
         callerCertSha256: String? = null,
-    ): Boolean {
-        if (callerPackage.isNullOrBlank()) return false
-        val now = System.currentTimeMillis()
-        return grants.any { grant ->
-            !grant.isExpired(now) &&
-            grant.decision == "allow" &&
-            grant.packageName == callerPackage &&
-            grant.identityPubkey == identityPubkey &&
-            certificateMatches(grant, callerCertSha256) &&
-            scopeMatches(grant, method, eventKind, peerPubkey)
-        }
-    }
+    ): Boolean = Nip55PermissionMirror.matches(
+        grants, "allow", callerPackage, method, identityPubkey,
+        eventKind = eventKind, peerPubkey = peerPubkey, callerCertSha256 = callerCertSha256,
+    )
+
+    private fun hasRememberedReject(
+        grants: List<Grant>,
+        callerPackage: String?,
+        method: String,
+        identityPubkey: String,
+        eventKind: Int? = null,
+    ): Boolean = Nip55PermissionMirror.matches(
+        grants, "reject", callerPackage, method, identityPubkey, eventKind = eventKind,
+    )
 
     @Test
     fun testHasRememberedAllow_basicAllow() {
@@ -492,12 +442,25 @@ class Nip55PermissionMirrorTest {
     }
 
     @Test
-    fun testHasRememberedAllow_signEventWildcard() {
+    fun testHasRememberedAllow_signEventBroadNeverAllows() {
+        // #5: the path the ContentProvider takes. A broad allow grant, as an
+        // app could get from one remembered get_public_key approval, must not
+        // let any kind be signed in the background.
         val grants = listOf(
             makeGrant(scopeType = "sign_event", scopeKind = null, packageName = "com.example.app")
         )
-        assertTrue(hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = 1))
-        assertTrue(hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = 22242))
+        for (kind in listOf(0, 1, 3, 5, 9734, 22242)) {
+            assertFalse("kind $kind", hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = kind))
+        }
+    }
+
+    @Test
+    fun testHasRememberedReject_signEventBroadRejectsEveryKind() {
+        val grants = listOf(
+            makeGrant(scopeType = "sign_event", scopeKind = null, packageName = "com.example.app", decision = "reject")
+        )
+        assertTrue(hasRememberedReject(grants, "com.example.app", "sign_event", identity, eventKind = 0))
+        assertTrue(hasRememberedReject(grants, "com.example.app", "sign_event", identity, eventKind = 1))
     }
 
     @Test
@@ -533,8 +496,8 @@ class Nip55PermissionMirrorTest {
         )
         // Kind=1 matches, so this should pass
         assertTrue(hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = 1))
-        // Wildcard grant also matches kind=22242
-        assertTrue(hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = 22242))
+        // The broad grant alongside covers nothing more (#5).
+        assertFalse(hasRememberedAllow(grants, "com.example.app", "sign_event", identity, eventKind = 22242))
     }
 
     @Test

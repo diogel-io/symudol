@@ -151,7 +151,7 @@ class _TrustedAppsSessionNote extends StatelessWidget {
             const SizedBox(width: DiogelSpacing.space3),
             Expanded(
               child: Text(
-                'Remembered allow decisions are not permanent silent trust. They only auto-approve low-risk requests while the vault is unlocked and an explicit approval session is active. Browser flows are not remembered because the browser package is not the website origin.',
+                'A remembered allow covers only the kind or action you approved, and applies whenever the vault is unlocked, including requests answered in the background. A request to sign any kind of event is never remembered: you are asked each time. Revoke a decision here to be asked again. Browser flows are not remembered because the browser package is not the website origin.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: DiogelColors.textSecondary,
                 ),

@@ -258,7 +258,7 @@ void main() {
         await requestController.rejectRequest(request.id);
         await permissionController.rejectSigningRequest(
           request.id,
-          remember: true,
+          timeframe: Nip55ApprovalTimeframe.always,
         );
 
         expect(permissionStore.grants, hasLength(1));
@@ -857,6 +857,173 @@ void main() {
       );
       expect(permissionStore.grants.single.expiresAt, isNull);
       expect(gateway.completedToken, 'pk-token');
+    });
+
+    group('a broad sign_event is never remembered (#5)', () {
+      Nip55Controller withStore(FakeNip55PermissionStore store) =>
+          Nip55Controller(
+            gateway: gateway,
+            vaultController: vaultController,
+            vaultService: vaultService,
+            requestController: requestController,
+            permissionStore: store,
+          );
+
+      for (final permissions in [
+        'sign_event,sign_event:1',
+        '[{"type":"sign_event"},{"type":"sign_event","kind":1}]',
+      ]) {
+        test(
+          'connect-time permissions keep specific kinds only: $permissions',
+          () async {
+            final store = FakeNip55PermissionStore();
+            final controller = withStore(store);
+            await controller.handleRawIntent({
+              'requestToken': 'pk-token',
+              'type': 'get_public_key',
+              'callingPackage': 'com.example.app',
+              'permissions': permissions,
+            });
+
+            await controller.approvePublicKeyRequest(
+              timeframe: Nip55ApprovalTimeframe.always,
+            );
+
+            final signScopes = store.grants
+                .map((grant) => grant.scope)
+                .whereType<SignEventScope>()
+                .toList();
+            expect(signScopes.map((scope) => scope.kind), [1]);
+            expect(store.grants.where((grant) => grant.scope.isBroad), isEmpty);
+            expect(gateway.completedToken, 'pk-token');
+          },
+        );
+      }
+
+      test(
+        'a signing request with no kind is signed once, not remembered',
+        () async {
+          final store = FakeNip55PermissionStore();
+          final controller = withStore(store);
+          await controller.handleRawIntent({
+            ...signEventRaw(),
+            'content': '{"content":"hello","tags":[]}',
+            'callingPackage': 'com.example.app',
+          });
+          final pending = requestController.state.requests;
+          if (pending.isEmpty) return; // refused outright: nothing to remember
+          await controller.approveSigningRequest(
+            pending.single.id,
+            timeframe: Nip55ApprovalTimeframe.always,
+          );
+
+          expect(store.grants.where((grant) => grant.scope.isBroad), isEmpty);
+        },
+      );
+
+      test('a broad rejection is still remembered', () async {
+        final grant = Nip55PermissionGrant(
+          id: 'g',
+          identityPubkey: 'pk',
+          packageName: 'com.example.app',
+          scope: const SignEventScope(),
+          decision: Nip55PermissionDecision.reject,
+          createdAt: DateTime(2026),
+        );
+        expect(grant.isRememberable, isTrue);
+        expect(
+          Nip55PermissionGrant(
+            id: 'g',
+            identityPubkey: 'pk',
+            packageName: 'com.example.app',
+            scope: const SignEventScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime(2026),
+          ).isRememberable,
+          isFalse,
+        );
+      });
+    });
+
+    group('a rejection remembered for 8 hours expires (#5)', () {
+      test('public key', () async {
+        final store = FakeNip55PermissionStore();
+        final controller = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: store,
+        );
+        await controller.handleRawIntent({
+          'requestToken': 'pk-token',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+        });
+        final before = DateTime.now();
+
+        await controller.rejectPublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.eightHours,
+        );
+
+        final expiresAt = store.grants.single.expiresAt;
+        expect(store.grants.single.decision, Nip55PermissionDecision.reject);
+        expect(expiresAt, isNotNull);
+        expect(
+          expiresAt!.isAfter(before.add(const Duration(hours: 7))),
+          isTrue,
+        );
+        expect(
+          expiresAt.isBefore(before.add(const Duration(hours: 9))),
+          isTrue,
+        );
+      });
+
+      test('signing', () async {
+        final store = FakeNip55PermissionStore();
+        final controller = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: store,
+        );
+        await controller.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+        });
+        final request = requestController.state.requests.single;
+        await requestController.rejectRequest(request.id);
+
+        await controller.rejectSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.eightHours,
+        );
+
+        expect(store.grants.single.expiresAt, isNotNull);
+      });
+
+      test('"Always" still never expires', () async {
+        final store = FakeNip55PermissionStore();
+        final controller = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: store,
+        );
+        await controller.handleRawIntent({
+          'requestToken': 'pk-token',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+        });
+
+        await controller.rejectPublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(store.grants.single.expiresAt, isNull);
+      });
     });
 
     test('get_public_key rejection completes as rejected', () async {

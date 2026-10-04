@@ -65,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Example Nostr'), findsOneWidget);
-    expect(find.textContaining('not permanent silent trust'), findsOneWidget);
+    expect(find.textContaining('never remembered'), findsOneWidget);
     expect(
       find.textContaining('Browser flows are not remembered'),
       findsOneWidget,

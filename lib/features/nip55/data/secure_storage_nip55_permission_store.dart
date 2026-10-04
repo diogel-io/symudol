@@ -39,11 +39,25 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
       } else {
         final decoded = jsonDecode(raw);
         if (decoded is List) {
-          _cache =
+          final loaded =
               decoded
                   .whereType<Map>()
                   .map((item) => Nip55PermissionGrant.fromJson(item.cast()))
                   .toList();
+          // Broad allows saved before #5 are dropped, and the stored list is
+          // rewritten without them, so Trusted apps and the native mirror
+          // agree with what can actually be remembered.
+          _cache = loaded.where((grant) => grant.isRememberable).toList();
+          if (_cache!.length != loaded.length) {
+            debugPrint(
+              'SecureStorageNip55PermissionStore: dropped '
+              '${loaded.length - _cache!.length} broad allow grant(s)',
+            );
+            await _storage.write(
+              key: _key,
+              value: jsonEncode(_cache!.map((grant) => grant.toJson()).toList()),
+            );
+          }
         } else {
           _cache = [];
         }
@@ -70,6 +84,8 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
 
   @override
   Future<void> saveGrant(Nip55PermissionGrant grant) async {
+    // Never stored, whichever caller asks (#5).
+    if (!grant.isRememberable) return;
     await _ensureInitialized();
     final next = [
       for (final item in _cache!)

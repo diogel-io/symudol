@@ -499,20 +499,21 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       PublicKeyApprovalContext(:final canRemember) => canRemember,
       CryptoApprovalContext(:final canRemember) => canRemember,
     };
-    final rememberRejection =
-        canRemember && _timeframe != Nip55ApprovalTimeframe.justOnce;
+    // The chosen timeframe, so a rejection remembered for "8 hours" expires (#5).
+    final timeframe =
+        canRemember ? _timeframe : Nip55ApprovalTimeframe.justOnce;
 
     switch (approval) {
       case SigningApprovalContext():
         await requests.rejectRequest(approval.request.id);
         await nip55.rejectSigningRequest(
           approval.request.id,
-          remember: rememberRejection,
+          timeframe: timeframe,
         );
       case PublicKeyApprovalContext():
-        await nip55.rejectPublicKeyRequest(remember: rememberRejection);
+        await nip55.rejectPublicKeyRequest(timeframe: timeframe);
       case CryptoApprovalContext():
-        await nip55.rejectCryptoRequest(remember: rememberRejection);
+        await nip55.rejectCryptoRequest(timeframe: timeframe);
     }
   }
 

@@ -37,6 +37,121 @@ class Nip55PermissionMirror(private val context: Context) {
             if (normalized.endsWith("/")) normalized = normalized.dropLast(1)
             return normalized.ifEmpty { null }
         }
+
+        /**
+         * Whether any of [grants] is a remembered [decision] ("allow" or
+         * "reject") for this caller, method and identity. Pure, so the matching
+         * the ContentProvider relies on is tested directly.
+         */
+        internal fun matches(
+            grants: List<Grant>,
+            decision: String,
+            callerPackage: String?,
+            method: String,
+            identityPubkey: String,
+            eventKind: Int? = null,
+            peerPubkey: String? = null,
+            relayUrl: String? = null,
+            callerCertSha256: String? = null,
+            nowMs: Long = System.currentTimeMillis(),
+        ): Boolean {
+            if (callerPackage.isNullOrBlank()) return false
+            return grants.any { grant ->
+                !grant.isExpired(nowMs) &&
+                grant.decision == decision &&
+                grant.packageName == callerPackage &&
+                grant.identityPubkey == identityPubkey &&
+                certificateMatches(grant, callerCertSha256) &&
+                scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
+            }
+        }
+
+        // ── Scope matching ───────────────────────────────────────────────────
+
+        /**
+         * Matches grant scope to the requested method/kind/peerPubkey.
+         *
+         * Rules (must match Dart Nip55PermissionScope.matches and Nip55ApprovalPolicy):
+         * - SignEventScope with kind=null (broad, "any kind") never matches an
+         *   allow: every such signature is reviewed in the app. It still matches a
+         *   reject, so a remembered refusal covers every kind. Matching a broad
+         *   allow here let this ContentProvider sign any kind in the background
+         *   with no screen, while the Dart policy sent it to review
+         *   (diogel-io/symudol#5).
+         * - SignEventScope with kind=K matches sign_event for kind K
+         * - Nip44Encrypt/Decrypt with peerPubkey=null matches any peerPubkey
+         * - Nip44Encrypt/Decrypt with peerPubkey=P matches only peerPubkey P
+         * - Same for Nip04*
+         * - GetPublicKeyScope, SignMessageScope, DecryptZapEventScope match by type only
+         */
+        internal fun scopeMatches(
+            grant: Grant,
+            method: String,
+            eventKind: Int?,
+            peerPubkey: String?,
+            relayUrl: String? = null,
+        ): Boolean {
+            val grantScope = grant.scopeType
+            return when (method) {
+                "get_public_key" -> grantScope == "get_public_key"
+                "sign_message" -> grantScope == "sign_message"
+                "sign_event" -> when {
+                    grantScope != "sign_event" -> false
+                    grant.scopeKind == null && grant.decision == "allow" -> false
+                    grant.scopeKind != null && grant.scopeKind != eventKind -> false
+                    // Relay URL matching for kind 22242 (NIP-42 relay auth):
+                    // A relay-specific grant only covers that relay; null = wildcard.
+                    grant.scopeRelayUrl != null && normalizeRelayUrl(grant.scopeRelayUrl) != normalizeRelayUrl(relayUrl) -> false
+                    else -> true
+                }
+                "nip44_encrypt" -> when {
+                    grantScope != "nip44_encrypt" -> false
+                    grant.scopePeerPubkey == null -> true  // wildcard: any peer
+                    grant.scopePeerPubkey == peerPubkey -> true
+                    else -> false
+                }
+                "nip44_decrypt" -> when {
+                    grantScope != "nip44_decrypt" -> false
+                    grant.scopePeerPubkey == null -> true
+                    grant.scopePeerPubkey == peerPubkey -> true
+                    else -> false
+                }
+                "nip04_encrypt" -> when {
+                    grantScope != "nip04_encrypt" -> false
+                    grant.scopePeerPubkey == null -> true
+                    grant.scopePeerPubkey == peerPubkey -> true
+                    else -> false
+                }
+                "nip04_decrypt" -> when {
+                    grantScope != "nip04_decrypt" -> false
+                    grant.scopePeerPubkey == null -> true
+                    grant.scopePeerPubkey == peerPubkey -> true
+                    else -> false
+                }
+                "decrypt_zap_event" -> when {
+                    // NIP-57 zap receipts are NIP-04 encrypted to the recipient's pubkey.
+                    // If the user trusts an app to decrypt their DMs, they trust it
+                    // to decrypt zap receipts too. So nip04_decrypt/nip44_decrypt grants
+                    // also satisfy decrypt_zap_event — but the scopePeerPubkey constraint
+                    // from the decrypt grant still applies for cross-scope matches.
+                    grantScope == "decrypt_zap_event" -> true
+                    grantScope == "nip04_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
+                    grantScope == "nip44_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
+                    else -> false
+                }
+                else -> false
+            }
+        }
+
+        internal fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
+            // If the grant has no certificate recorded, it matches any caller
+            if (grant.certificateSha256 == null) return true
+            // Fail closed: if the grant requires a cert but we can't determine
+            // the caller's certificate, deny the match. This ensures native
+            // auto-approve is at least as strict as the Dart approval policy.
+            if (callerCertSha256 == null) return false
+            return grant.certificateSha256 == callerCertSha256
+        }
     }
 
     private val prefs: SharedPreferences by lazy {
@@ -89,17 +204,10 @@ class Nip55PermissionMirror(private val context: Context) {
         relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
-        if (callerPackage.isNullOrBlank()) return false
-        val grants = listGrants()
-        val now = System.currentTimeMillis()
-        return grants.any { grant ->
-            !grant.isExpired(now) &&
-            grant.decision == "allow" &&
-            grant.packageName == callerPackage &&
-            grant.identityPubkey == identityPubkey &&
-            certificateMatches(grant, callerCertSha256) &&
-            scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
-        }
+        return matches(
+            listGrants(), "allow", callerPackage, method, identityPubkey,
+            eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
+        )
     }
 
     /**
@@ -115,17 +223,10 @@ class Nip55PermissionMirror(private val context: Context) {
         relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
-        if (callerPackage.isNullOrBlank()) return false
-        val grants = listGrants()
-        val now = System.currentTimeMillis()
-        return grants.any { grant ->
-            !grant.isExpired(now) &&
-            grant.decision == "reject" &&
-            grant.packageName == callerPackage &&
-            grant.identityPubkey == identityPubkey &&
-            certificateMatches(grant, callerCertSha256) &&
-            scopeMatches(grant, method, eventKind, peerPubkey, relayUrl)
-        }
+        return matches(
+            listGrants(), "reject", callerPackage, method, identityPubkey,
+            eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
+        )
     }
 
     // ── Active identity ──────────────────────────────────────────────────
@@ -175,87 +276,6 @@ class Nip55PermissionMirror(private val context: Context) {
     fun clearAll() {
         prefs.edit().remove(KEY_GRANTS).apply()
         Log.d(TAG, "clearAll: all grants removed")
-    }
-
-    // ── Scope matching ───────────────────────────────────────────────────
-
-    /**
-     * Matches grant scope to the requested method/kind/peerPubkey.
-     *
-     * Rules (must match Dart Nip55PermissionScope.matches):
-     * - SignEventScope with kind=null matches any sign_event request
-     * - SignEventScope with kind=K matches sign_event for kind K
-     * - Nip44Encrypt/Decrypt with peerPubkey=null matches any peerPubkey
-     * - Nip44Encrypt/Decrypt with peerPubkey=P matches only peerPubkey P
-     * - Same for Nip04*
-     * - GetPublicKeyScope, SignMessageScope, DecryptZapEventScope match by type only
-     */
-    private fun scopeMatches(
-        grant: Grant,
-        method: String,
-        eventKind: Int?,
-        peerPubkey: String?,
-        relayUrl: String? = null,
-    ): Boolean {
-        val grantScope = grant.scopeType
-        return when (method) {
-            "get_public_key" -> grantScope == "get_public_key"
-            "sign_message" -> grantScope == "sign_message"
-            "sign_event" -> when {
-                grantScope != "sign_event" -> false
-                grant.scopeKind != null && grant.scopeKind != eventKind -> false
-                // Relay URL matching for kind 22242 (NIP-42 relay auth):
-                // A relay-specific grant only covers that relay; null = wildcard.
-                grant.scopeRelayUrl != null && normalizeRelayUrl(grant.scopeRelayUrl) != normalizeRelayUrl(relayUrl) -> false
-                else -> true
-            }
-            "nip44_encrypt" -> when {
-                grantScope != "nip44_encrypt" -> false
-                grant.scopePeerPubkey == null -> true  // wildcard: any peer
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip44_decrypt" -> when {
-                grantScope != "nip44_decrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip04_encrypt" -> when {
-                grantScope != "nip04_encrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "nip04_decrypt" -> when {
-                grantScope != "nip04_decrypt" -> false
-                grant.scopePeerPubkey == null -> true
-                grant.scopePeerPubkey == peerPubkey -> true
-                else -> false
-            }
-            "decrypt_zap_event" -> when {
-                // NIP-57 zap receipts are NIP-04 encrypted to the recipient's pubkey.
-                // If the user trusts an app to decrypt their DMs, they trust it
-                // to decrypt zap receipts too. So nip04_decrypt/nip44_decrypt grants
-                // also satisfy decrypt_zap_event — but the scopePeerPubkey constraint
-                // from the decrypt grant still applies for cross-scope matches.
-                grantScope == "decrypt_zap_event" -> true
-                grantScope == "nip04_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
-                grantScope == "nip44_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
-                else -> false
-            }
-            else -> false
-        }
-    }
-
-    private fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
-        // If the grant has no certificate recorded, it matches any caller
-        if (grant.certificateSha256 == null) return true
-        // Fail closed: if the grant requires a cert but we can't determine
-        // the caller's certificate, deny the match. This ensures native
-        // auto-approve is at least as strict as the Dart approval policy.
-        if (callerCertSha256 == null) return false
-        return grant.certificateSha256 == callerCertSha256
     }
 
     // ── Serialization ────────────────────────────────────────────────────
