@@ -22,7 +22,7 @@ void main() {
       expect((parsed.scopes.single as SignEventScope).kind, isNull);
       expect(
         parsed.warnings,
-        contains('Broad sign_event permission requested.'),
+        contains(Nip55PermissionParser.broadSignEventWarning),
       );
     });
 

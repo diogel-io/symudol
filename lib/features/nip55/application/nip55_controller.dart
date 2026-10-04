@@ -653,7 +653,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
-  Future<void> rejectPublicKeyRequest({bool remember = false}) async {
+  /// [timeframe] is what the user chose: a remembered rejection gets the same
+  /// expiry an approval would, so "8 hours" ends after 8 hours (#5).
+  Future<void> rejectPublicKeyRequest({
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
+    final remember = timeframe != Nip55ApprovalTimeframe.justOnce;
     final request = state.pendingPublicKeyRequest;
     final activeIdentity = _vaultController.state.activeIdentity;
     if (request == null) return;
@@ -667,6 +672,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         identityPubkey: activeIdentity.publicKey,
         scope: const GetPublicKeyScope(),
         decision: Nip55PermissionDecision.reject,
+        expiresAt: _expiresAtFor(timeframe),
       );
     }
     await _gateway.rejectNip55Intent(
@@ -717,7 +723,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
   }
 
-  Future<void> rejectCryptoRequest({bool remember = false}) async {
+  /// [timeframe] is what the user chose: a remembered rejection gets the same
+  /// expiry an approval would, so "8 hours" ends after 8 hours (#5).
+  Future<void> rejectCryptoRequest({
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
+    final remember = timeframe != Nip55ApprovalTimeframe.justOnce;
     final request = state.pendingCryptoRequest;
     if (request == null) return;
 
@@ -733,6 +744,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         identityPubkey: activeIdentity.publicKey,
         scope: _scopeFor(request),
         decision: Nip55PermissionDecision.reject,
+        expiresAt: _expiresAtFor(timeframe),
       );
     }
     await _gateway.rejectNip55Intent(
@@ -993,10 +1005,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
+  /// [timeframe] is what the user chose: a remembered rejection gets the same
+  /// expiry an approval would, so "8 hours" ends after 8 hours (#5).
   Future<void> rejectSigningRequest(
     String requestId, {
-    bool remember = false,
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
   }) async {
+    final remember = timeframe != Nip55ApprovalTimeframe.justOnce;
     if (state.pendingSigningRequestId != requestId) return;
     final incoming = state.pendingIncoming;
     if (incoming == null) return;
@@ -1007,6 +1022,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         identityPubkey: activeIdentity.publicKey,
         scope: _scopeFor(incoming),
         decision: Nip55PermissionDecision.reject,
+        expiresAt: _expiresAtFor(timeframe),
       );
     }
     await _gateway.rejectNip55Intent(
@@ -1105,20 +1121,29 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final store = _permissionStore;
     final packageName = incoming.clientIdentity.packageName;
     if (store == null || packageName == null) return;
-    await store.saveGrant(
-      Nip55PermissionGrant(
-        id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
-        identityPubkey: identityPubkey,
-        packageName: packageName,
-        certificateSha256: incoming.clientIdentity.certificateSha256,
-        scope: scope,
-        decision: decision,
-        createdAt: _now(),
-        lastUsedAt: _now(),
-        expiresAt: expiresAt,
-        userLabel: incoming.clientIdentity.displayName,
-      ),
+    final grant = Nip55PermissionGrant(
+      id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
+      identityPubkey: identityPubkey,
+      packageName: packageName,
+      certificateSha256: incoming.clientIdentity.certificateSha256,
+      scope: scope,
+      decision: decision,
+      createdAt: _now(),
+      lastUsedAt: _now(),
+      expiresAt: expiresAt,
+      userLabel: incoming.clientIdentity.displayName,
     );
+    // A broad allow (sign any kind) is never remembered: each such signature
+    // is reviewed (#5). This covers connect-time permissions and a signing
+    // request whose kind is missing.
+    if (!grant.isRememberable) {
+      dev.log(
+        'Not remembering broad permission ${scope.wire} for $packageName',
+        name: 'Diogel',
+      );
+      return;
+    }
+    await store.saveGrant(grant);
   }
 
   /// Saves supported scopes from the `permissions` field of a connect-time

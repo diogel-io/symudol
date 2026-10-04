@@ -132,9 +132,12 @@ class SettingsScreen extends ConsumerWidget {
           SettingsTile(
             icon: Icons.verified_user_outlined,
             title: 'Approval session duration',
+            // Says what the code does (#5): remembered decisions for a specific
+            // kind or action do not depend on an approval session, and a
+            // request to sign any kind is never remembered.
             subtitle:
-                'After a manual approval, remembered low-risk NIP-55 requests '
-                'from verified native apps can continue for: '
+                'Not currently used: remembered decisions apply whenever the '
+                'vault is unlocked. Set to: '
                 '${formatApprovalSessionDuration(approvalSessionDurationMinutes)}',
             onTap: () async {
               final newValue = await showDialog<int>(
@@ -161,7 +164,7 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.verified_user_outlined,
             title: 'Trusted Nostr apps',
             subtitle:
-                'Review remembered NIP-55 app permissions. Allows only apply inside an active approval session.',
+                'Review remembered NIP-55 app permissions. They apply whenever the vault is unlocked.',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const TrustedAppsScreen()),

@@ -15,6 +15,13 @@ class Nip55ParsedPermissions {
 }
 
 class Nip55PermissionParser {
+  /// Shown on the approval screen when an app asks to sign any event kind.
+  /// That permission is never remembered (#5), so the user is told each such
+  /// signature will be asked for, rather than led to think it was granted.
+  static const broadSignEventWarning =
+      'This app asked to sign any kind of event. That is not remembered: '
+      'you will be asked for each one.';
+
   const Nip55PermissionParser();
 
   Nip55ParsedPermissions parse(String? raw) {
@@ -55,7 +62,7 @@ class Nip55PermissionParser {
       }
       scopes.add(scope);
       if (scope is SignEventScope && scope.kind == null) {
-        warnings.add('Broad sign_event permission requested.');
+        warnings.add(broadSignEventWarning);
       }
     }
 
@@ -94,7 +101,7 @@ class Nip55PermissionParser {
       }
       scopes.add(scope);
       if (scope is SignEventScope && scope.kind == null) {
-        warnings.add('Broad sign_event permission requested.');
+        warnings.add(broadSignEventWarning);
       }
     }
 

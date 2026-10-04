@@ -26,6 +26,16 @@ class Nip55PermissionGrant {
     this.userLabel,
   });
 
+  /// Whether this grant may be kept as a remembered decision.
+  ///
+  /// A broad allow (signing any event kind) never is: every such signature is
+  /// reviewed. The Android ContentProvider matched it against every kind and
+  /// signed in the background without a screen, while this app's own policy
+  /// sent it to review (diogel-io/symudol#5). A broad reject is kept: refusing
+  /// everything for an app is safe.
+  bool get isRememberable =>
+      !(decision == Nip55PermissionDecision.allow && scope.isBroad);
+
   bool get isExpired {
     final expiry = expiresAt;
     return expiry != null && !expiry.isAfter(DateTime.now());
