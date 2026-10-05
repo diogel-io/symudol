@@ -103,6 +103,19 @@ void main() {
       expect(NostrKeyPairs.verify(pubkey, digest, signature), isTrue);
     });
 
+    test('signMessage refuses an event serialisation (#8)', () {
+      const privateKey =
+          '0000000000000000000000000000000000000000000000000000000000000001';
+      final pubkey = NostrKeyPairs(private: privateKey).public;
+      // Its sha256 is the id of a kind-1 event: the signature would sign it.
+      final serialised = '[0,"$pubkey",1700000000,1,[],"hi"]';
+
+      expect(
+        () => crypto.signMessage(privateKeyHex: privateKey, message: serialised),
+        throwsA(isA<NostrCryptoException>()),
+      );
+    });
+
     test('NIP-04 encrypts and decrypts between two identities', () {
       final alice = NostrKeyPairs(
         private:

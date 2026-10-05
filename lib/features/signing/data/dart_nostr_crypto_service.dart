@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
 import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
 import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
+import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
 import 'package:bech32/bech32.dart' as bech32;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:dart_nostr/dart_nostr.dart';
@@ -75,6 +76,10 @@ class DartNostrCryptoService implements NostrCryptoService {
 
   @override
   String signMessage({required String privateKeyHex, required String message}) {
+    // Its hash would be an event id: never sign one as a message (#8).
+    if (isNostrEventSerialisation(message)) {
+      throw const NostrCryptoException(refusedEventSerialisationMessage);
+    }
     final digest = crypto.sha256.convert(utf8.encode(message)).toString();
     final keyPairs = NostrKeyPairs(private: privateKeyHex);
     final signature = keyPairs.sign(digest);

@@ -244,6 +244,10 @@ class Nip55ContentProvider : ContentProvider() {
                 // That bug has been fixed — re-enabling native signing.
                 "sign_message" -> {
                     val message = Nip55RequestCodec.payloadFromProjection(projection) ?: return null
+                    // Its hash would be an event id: refused, never sent on to be signed (#8).
+                    if (Nip55NativeCrypto.isNostrEventSerialisation(message)) {
+                        return Nip55RequestCodec.rejectedCursor("refused")
+                    }
                     val signature = Nip55NativeCrypto.signMessage(privateKey, message)
                     Nip55RequestCodec.operationResultCursor(signature)
                 }

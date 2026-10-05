@@ -87,6 +87,7 @@ class _CryptoContextSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final method = approval.request.method;
     final isSensitive = method.isDecrypt;
+    final isSignMessage = approval.request.isSignMessage;
     final peer = approval.request.pubkey;
     final truncatedPeer = peer == null ? null : _shortFingerprint(peer);
 
@@ -94,12 +95,18 @@ class _CryptoContextSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         RequestDetailItem(
-          icon: isSensitive ? Icons.visibility_outlined : Icons.lock_outline,
+          icon: isSignMessage
+              ? Icons.draw_outlined
+              : isSensitive
+              ? Icons.visibility_outlined
+              : Icons.lock_outline,
           iconColor: isSensitive
               ? DiogelColors.stateWarning
               : DiogelColors.nostrAccentMuted,
           title: method.displayLabel,
-          subtitle: isSensitive
+          subtitle: isSignMessage
+              ? 'Signs this exact text with your key'
+              : isSensitive
               ? 'Sensitive decrypt operation — review carefully'
               : 'Encryption operation',
         ),
@@ -117,13 +124,18 @@ class _CryptoContextSection extends StatelessWidget {
         ],
         if (approval.request.content?.trim().isNotEmpty == true) ...[
           const SizedBox(height: DiogelSpacing.space4),
-          _SectionLabel(label: 'PAYLOAD PREVIEW'),
+          _SectionLabel(
+            label: isSignMessage ? 'MESSAGE' : 'PAYLOAD PREVIEW',
+          ),
           const SizedBox(height: DiogelSpacing.space2),
           Builder(
             builder: (context) {
               final preview = approval.request.content!.trim();
+              // A message is shown in full, never cut short: it is what gets signed.
               return Text(
-                preview.length > 400 ? '${preview.substring(0, 400)}…' : preview,
+                isSignMessage || preview.length <= 400
+                    ? preview
+                    : '${preview.substring(0, 400)}…',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   fontFamily: 'monospace',
                   color: DiogelColors.textSecondary,

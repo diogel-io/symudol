@@ -14,6 +14,7 @@ import 'package:android_diogel/features/requests/application/request_controller.
 import 'package:android_diogel/features/requests/application/request_providers.dart';
 import 'package:android_diogel/features/requests/data/real_signer_service.dart';
 import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
@@ -1138,6 +1139,24 @@ void main() {
       );
     });
 
+    test(
+      'sign_message of an event serialisation is rejected without review (#8)',
+      () async {
+        final identity = vaultController.state.activeIdentity!;
+        await controller.handleRawIntent({
+          'requestToken': 'sign-message-event-token',
+          'type': 'sign_message',
+          'content': '[0,"${identity.publicKey}",1700000000,1,[],"hi"]',
+          'currentUser': identity.publicKey,
+        });
+
+        expect(controller.state.pendingCryptoRequest, isNull);
+        expect(gateway.completedToken, isNull);
+        expect(gateway.rejectedToken, 'sign-message-event-token');
+        expect(gateway.rejectedError, refusedEventSerialisationMessage);
+      },
+    );
+
     test('peer-scoped decrypt requests can be remembered', () async {
       final bob = NostrKeyPairs(
         private:
@@ -1582,6 +1601,48 @@ void main() {
           NostrKeyPairs.verify(identity.publicKey, digest, signature!),
           isTrue,
         );
+      },
+    );
+
+    test(
+      'provider sign_message of an event serialisation is rejected (#8)',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final providerController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+        final identity = vaultController.state.activeIdentity!;
+        await permissionStore.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-sign-message-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignMessageScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        providerController.state = providerController.state.copyWith(
+          approvalSessionExpiresAt: DateTime.now().add(
+            const Duration(minutes: 1),
+          ),
+        );
+
+        final result = await providerController.handleProviderQuery({
+          'requestToken': 'provider-sign-message-event-token',
+          'type': 'sign_message',
+          'content': '[0,"${identity.publicKey}",1700000000,1,[],"hi"]',
+          'currentUser': identity.publicKey,
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(result, {'rejected': refusedEventSerialisationMessage});
       },
     );
 

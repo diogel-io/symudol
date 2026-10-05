@@ -561,7 +561,9 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       SigningApprovalContext() => Icons.edit_note,
       PublicKeyApprovalContext() => Icons.key,
       CryptoApprovalContext() =>
-        approval.request.method.isDecrypt
+        approval.request.isSignMessage
+            ? Icons.draw_outlined
+            : approval.request.method.isDecrypt
             ? Icons.visibility_outlined
             : Icons.lock_outline,
     };
@@ -572,7 +574,11 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       SigningApprovalContext() => Icons.check,
       PublicKeyApprovalContext() => Icons.key,
       CryptoApprovalContext() =>
-        approval.request.method.isDecrypt ? Icons.visibility : Icons.lock,
+        approval.request.isSignMessage
+            ? Icons.check
+            : approval.request.method.isDecrypt
+            ? Icons.visibility
+            : Icons.lock,
     };
   }
 
@@ -595,7 +601,11 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
           : 'Sign event',
       PublicKeyApprovalContext() => 'Share public key',
       CryptoApprovalContext() =>
-        approval.request.method.isDecrypt ? 'Decrypt' : 'Encrypt',
+        approval.request.isSignMessage
+            ? 'Sign'
+            : approval.request.method.isDecrypt
+            ? 'Decrypt'
+            : 'Encrypt',
     };
   }
 }

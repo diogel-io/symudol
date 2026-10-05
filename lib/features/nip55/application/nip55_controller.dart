@@ -5,6 +5,7 @@ import 'package:android_diogel/features/requests/application/request_controller.
 import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:android_diogel/features/requests/domain/signing_request.dart';
 import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
 import 'package:android_diogel/features/identity/domain/vault_identity.dart';
 import 'package:android_diogel/features/vault/application/vault_controller.dart';
 import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
@@ -341,6 +342,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   ) async {
     final parser = _parser;
     final incoming = parser.parse(raw);
+    if (_isEventSerialisationMessage(incoming)) {
+      return {'rejected': refusedEventSerialisationMessage};
+    }
     if (state.hasPendingExternalRequest &&
         !_isClientAuthenticationRequest(incoming)) {
       return null;
@@ -555,6 +559,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   Future<void> _handleCryptoOperation(Nip55IncomingRequest incoming) async {
+    // Refused before any unlock prompt or approval: it can never be signed.
+    if (_isEventSerialisationMessage(incoming)) {
+      throw const Nip55Failure(refusedEventSerialisationMessage);
+    }
     final activeIdentity = _vaultController.state.activeIdentity;
     if (_vaultController.state.vaultState is! VaultUnlocked) {
       state = state.copyWith(
@@ -797,6 +805,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55IncomingRequest request,
     String identityLocalId,
   ) async {
+    if (_isEventSerialisationMessage(request)) {
+      throw const Nip55Failure(refusedEventSerialisationMessage);
+    }
     final payload = request.payload;
     return switch (payload) {
       SignMessagePayload(:final message) => _vaultService.signMessage(
@@ -1346,6 +1357,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   bool _isClientAuthenticationRequest(Nip55IncomingRequest incoming) {
     return incoming.method == Nip55Method.signEvent &&
         incoming.eventJson?['kind'] == 22242;
+  }
+
+  /// A `sign_message` whose hash would be an event id (#8).
+  bool _isEventSerialisationMessage(Nip55IncomingRequest incoming) {
+    final payload = incoming.payload;
+    return payload is SignMessagePayload &&
+        isNostrEventSerialisation(payload.message);
   }
 
   bool _isAutoCompletableMethod(Nip55IncomingRequest incoming) {

@@ -1,6 +1,7 @@
 package io.diogel.symudol
 
 import android.util.Log
+import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
 import java.security.MessageDigest
@@ -131,7 +132,28 @@ object Nip55NativeCrypto {
         }
     }
 
+    /**
+     * Whether [message] has the shape of a Nostr event's id serialisation,
+     * `[0,pubkey,created_at,kind,tags,content]` (NIP-01).
+     *
+     * sign_message signs sha256(message), and the sha256 of that serialisation is the event's id:
+     * signing it would sign an event of any kind (diogel-io/symudol#8). Deliberately broad: any
+     * JSON array of six elements starting with the number 0 counts. The Dart
+     * `isNostrEventSerialisation` is the same rule.
+     */
+    fun isNostrEventSerialisation(message: String): Boolean {
+        val array = try {
+            JSONArray(message)
+        } catch (e: Exception) {
+            return false
+        }
+        val first = array.opt(0)
+        return array.length() == 6 && first is Number && first.toDouble() == 0.0
+    }
+
+    /** Signs sha256([message]); refuses an event serialisation (#8). */
     fun signMessage(privateKeyHex: String, message: String): String {
+        require(!isNostrEventSerialisation(message)) { "Refused: the message is a Nostr event serialisation" }
         val messageHash = sha256Hex(message.toByteArray(Charsets.UTF_8))
         return schnorrSign(privateKeyHex, messageHash)
     }
