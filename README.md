@@ -83,6 +83,30 @@ Run both checks together:
 flutter analyze && flutter test
 ```
 
+### Testing NIP-55 without a device
+
+The Android side of NIP-55 (the `nostrsigner:` bridge activity, request routing and the
+background ContentProvider) is tested on the JVM with
+[Robolectric](https://robolectric.org/), so its security behaviour is checked in CI with no
+emulator or client app:
+
+```bash
+flutter build apk --config-only   # generates android/gradlew, which is not committed
+cd android && ./gradlew testDebugUnitTest
+```
+
+- `Nip55BridgeActivityTest`: the caller is the one Android reports, whatever the intent's extras
+  say; MainActivity receives only a token; URL-parameter (browser) requests; rate limiting.
+- `Nip55RequestRouterTest`: MainActivity takes a request only from the bridge handoff, and
+  answers only that bridge.
+- `Nip55ContentProviderTest`: what the provider signs in the background, for which caller and
+  which remembered decision. It verifies signatures, and pins the cases still to fix (a missing
+  `kind`, `sign_message` given an event) so the fix flips them.
+
+A NIP-55 security change adds its attack case here, and checks it fails on the code before the
+fix. The fake caller is a package installed with `shadowOf(packageManager).installPackage(...)`
+(give it a `SigningInfo` as well as `signatures`), called with `setCallingPackage(...)`.
+
 ## Build Android artifacts
 
 Build a debug APK:

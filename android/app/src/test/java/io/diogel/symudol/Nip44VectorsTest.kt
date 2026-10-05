@@ -19,6 +19,13 @@ import javax.crypto.spec.SecretKeySpec
  * The replication mirrors Nip55NativeCrypto.kt exactly.
  */
 class Nip44VectorsTest {
+    private companion object {
+        // The JDK's IETF ChaCha20 (12-byte nonce), which NIP-44 uses. Named explicitly because
+        // Robolectric tests in the same JVM register BouncyCastle first, whose "ChaCha20" is the
+        // original 8-byte-nonce variant and gives different output (#68).
+        const val CHACHA_PROVIDER = "SunJCE"
+    }
+
 
     // ── Shared crypto helpers ────────────────────────────────────────────
 
@@ -91,14 +98,14 @@ class Nip44VectorsTest {
     }
 
     private fun chacha20Encrypt(key: ByteArray, nonce: ByteArray, plaintext: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance("ChaCha20")
+        val cipher = Cipher.getInstance("ChaCha20", CHACHA_PROVIDER)
         val paramSpec = ChaCha20ParameterSpec(nonce, 0)
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "ChaCha20"), paramSpec)
         return cipher.doFinal(plaintext)
     }
 
     private fun chacha20Decrypt(key: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance("ChaCha20")
+        val cipher = Cipher.getInstance("ChaCha20", CHACHA_PROVIDER)
         val paramSpec = ChaCha20ParameterSpec(nonce, 0)
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "ChaCha20"), paramSpec)
         return cipher.doFinal(ciphertext)

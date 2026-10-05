@@ -41,6 +41,9 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            // Robolectric runs the NIP-55 activities and ContentProvider on the JVM (#68); the
+            // bridge reads R.string resources, so they must be on the test classpath.
+            isIncludeAndroidResources = true
         }
     }
 }
@@ -59,4 +62,8 @@ dependencies {
     // org.json is bundled in android.jar as a stub; provide the real library so
     // JVM unit tests that call JSON parsing (e.g. Nip55NativeCryptoTest) work.
     testImplementation("org.json:json:20231013")
+    // Android components (activities, intents, the ContentProvider) in JVM tests, so NIP-55
+    // security behaviour is checked in CI without an emulator (#68).
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.6.1")
 }

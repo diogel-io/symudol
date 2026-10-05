@@ -62,8 +62,11 @@ void main() {
       mainActivity,
       contains('deliverNip55Payload: Cancelling pending completion'),
     );
-    expect(mainActivity, contains('Nip55BridgeRegistry.complete'));
-    expect(mainActivity, contains('Nip55BridgeRegistry.reject'));
+    final router = File(
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55RequestRouter.kt',
+    ).readAsStringSync();
+    expect(router, contains('Nip55BridgeRegistry.complete'));
+    expect(router, contains('Nip55BridgeRegistry.reject'));
     expect(mainActivity, contains('return CompletionAction.BACKGROUND'));
     expect(mainActivity, contains('CompletionAction.BACKGROUND'));
     expect(mainActivity, contains('moveTaskToBack(true)'));
@@ -76,62 +79,7 @@ void main() {
     );
   });
 
-  test('NIP-55 bridge can keep multiple active tokens for burst requests', () {
-    final mainActivity = File(
-      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
-    ).readAsStringSync();
-
-    final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
-    ).readAsStringSync();
-
-    expect(mainActivity, contains('activeRequestTokens'));
-    expect(mainActivity, contains('activeBridgeRequestTokens'));
-    expect(mainActivity, contains('activeRequestTokens.add'));
-    expect(mainActivity, contains('activeBridgeRequestTokens.add'));
-    expect(mainActivity, contains('activeRequestTokens.contains'));
-    expect(mainActivity, contains('activeBridgeRequestTokens.contains'));
-    expect(mainActivity, contains('clearActiveToken'));
-    expect(
-      bridgeActivity,
-      contains('Keep this bridge activity alive because it owns the caller'),
-    );
-    expect(
-      mainActivity,
-      isNot(contains('Diogel is already reviewing another NIP-55 request')),
-    );
-    expect(mainActivity, isNot(contains('finishing here can poison')));
-  });
-
-  // diogel-io/symudol#7: MainActivity is exported, so any app can send it
-  // extras. A request reaches it only as what the bridge registered.
-  test('MainActivity takes NIP-55 requests only from the bridge handoff', () {
-    final mainActivity = File(
-      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
-    ).readAsStringSync();
-    final bridgeActivity = File(
-      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
-    ).readAsStringSync();
-
-    expect(bridgeActivity, contains('Nip55Handoff.newToken('));
-    expect(bridgeActivity, contains('Nip55Handoff.register(token, mapOf('));
-    expect(bridgeActivity, isNot(contains('System.identityHashCode(original)')));
-    expect(mainActivity, contains('Nip55Handoff.resolve(token)'));
-    for (final extra in [
-      'callingPackage',
-      'callerCertificateSha256',
-      'callerAppLabel',
-      'content',
-      'type',
-    ]) {
-      expect(
-        mainActivity,
-        isNot(contains('getStringExtra("$extra")')),
-        reason: 'MainActivity must not read $extra from extras',
-      );
-    }
-    // Only the bridge answers the caller; nothing goes to whoever started
-    // MainActivity.
-    expect(mainActivity, isNot(contains('setResult(')));
-  });
+  // Active tokens, settling by token, and taking requests only from the bridge
+  // handoff (#7) are tested on the real code in Nip55RequestRouterTest and
+  // Nip55BridgeActivityTest (Robolectric, #68).
 }

@@ -61,6 +61,11 @@ class Nip55BridgeActivity : Activity() {
             return false
         }
 
+        /** Test seam: the rate limiter is process-wide, so tests start from an empty one. */
+        internal fun resetRateLimitsForTests() {
+            rateBuckets.clear()
+        }
+
         private fun buildKey(callerPackage: String?, method: String?, kind: Int?): String {
             val base = "${callerPackage ?: "unknown"}|${method ?: "unknown"}"
             return if (kind != null) "$base|$kind" else base
