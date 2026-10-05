@@ -101,7 +101,7 @@ cd android && ./gradlew testDebugUnitTest
   answers only that bridge.
 - `Nip55ContentProviderTest`: what the provider signs in the background, for which caller and
   which remembered decision. It verifies signatures, and pins the cases still to fix (a missing
-  `kind`, `sign_message` given an event) so the fix flips them.
+  `kind`) so the fix flips them.
 
 A NIP-55 security change adds its attack case here, and checks it fails on the code before the
 fix. The fake caller is a package installed with `shadowOf(packageManager).installPackage(...)`

@@ -94,6 +94,13 @@ class Nip55ContentProviderTest {
         Uri.parse("content://$appId.SIGN_EVENT"), arrayOf(eventJson, "", pubKey), null, null, null,
     )
 
+    private fun signMessage(message: String): Cursor? = provider.query(
+        Uri.parse("content://$appId.SIGN_MESSAGE"), arrayOf(message, "", pubKey), null, null, null,
+    )
+
+    private fun sha256Hex(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray())
+        .joinToString("") { "%02x".format(it) }
+
     private fun Cursor.only(column: String): String? {
         assertTrue(moveToFirst())
         return getString(getColumnIndexOrThrow(column))
@@ -166,6 +173,25 @@ class Nip55ContentProviderTest {
         assertNull(signEvent(event(1)))
     }
 
+    @Test
+    fun aRememberedSignMessageNeverSignsAnEventsHash() {
+        // #8: an event serialisation passed to sign_message would yield a valid event signature.
+        grants(grant("sign_message"))
+
+        val cursor = signMessage("""[0,"$pubKey",1700000000,1,[],"hi"]""")
+
+        assertEquals("refused", cursor!!.only("rejected"))
+    }
+
+    @Test
+    fun aRememberedSignMessageStillSignsAnOrdinaryMessage() {
+        grants(grant("sign_message"))
+
+        val signature = signMessage("hello")!!.only("result")!!
+
+        assertTrue("the signature verifies", Schnorr.verify(signature, sha256Hex("hello"), pubKey))
+    }
+
     // ── Current behaviour that other tickets change ────────────────────────
     // These record what the provider does today. The tickets named flip them.
 
@@ -177,19 +203,6 @@ class Nip55ContentProviderTest {
         val cursor = signEvent("""{"content":"hi","tags":[],"created_at":1700000000}""")
 
         assertNotNull("#10 should make this null", cursor)
-    }
-
-    @Test
-    fun currentBehaviour_aSignMessageGrantSignsAnEventsHash_seeIssue8() {
-        // #8: an event serialisation passed to sign_message yields a valid event signature.
-        grants(grant("sign_message"))
-        val serialised = """[0,"$pubKey",1700000000,1,[],"hi"]"""
-
-        val cursor = provider.query(
-            Uri.parse("content://$appId.SIGN_MESSAGE"), arrayOf(serialised, "", pubKey), null, null, null,
-        )
-
-        assertNotNull("#8 should make this refuse", cursor)
     }
 
     private fun eventId(event: JSONObject): String {

@@ -155,4 +155,53 @@ class Nip55NativeCryptoTest {
             signed.getString("id"),
         )
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  signMessage — never an event serialisation (#8)
+    // ════════════════════════════════════════════════════════════════════
+
+    @Test
+    fun isNostrEventSerialisation_matchesTheEventIdSerialisation() {
+        for (message in listOf(
+            "[0,\"$testPubKey\",1700000000,1,[],\"hi\"]",
+            "[0,\"$testPubKey\",1700000000,0,[[\"p\",\"$testPubKey\"]],\"{}\"]",
+            " [ 0 , \"x\" , 1 , 1 , [ ] , \"\" ] ",
+            "[0,null,null,null,null,null]",
+            "[0.0,1,2,3,4,5]",
+        )) {
+            assertTrue(message, Nip55NativeCrypto.isNostrEventSerialisation(message))
+        }
+    }
+
+    @Test
+    fun isNostrEventSerialisation_ignoresEverythingElse() {
+        for (message in listOf(
+            "[]",
+            "[1,\"$testPubKey\",1700000000,1,[],\"hi\"]",
+            "[\"0\",\"$testPubKey\",1700000000,1,[],\"hi\"]",
+            "[0,\"$testPubKey\",1700000000,1,[]]",
+            "[0,\"$testPubKey\",1700000000,1,[],\"hi\",\"extra\"]",
+            "{\"kind\":1,\"content\":\"hi\"}",
+            "[0,\"$testPubKey\",1700000000,1,[],\"hi\"",
+            "hello",
+            "0",
+            "",
+            "gm \uD83C\uDF05",
+        )) {
+            assertFalse(message, Nip55NativeCrypto.isNostrEventSerialisation(message))
+        }
+    }
+
+    @Test
+    fun signMessage_refusesAnEventSerialisation() {
+        val serialised = "[0,\"$testPubKey\",1700000000,1,[],\"hi\"]"
+        assertThrows(IllegalArgumentException::class.java) {
+            Nip55NativeCrypto.signMessage(testPrivKey, serialised)
+        }
+    }
+
+    @Test
+    fun signMessage_signsAnOrdinaryMessage() {
+        assertEquals(128, Nip55NativeCrypto.signMessage(testPrivKey, "hello").length)
+    }
 }

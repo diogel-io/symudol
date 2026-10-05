@@ -393,6 +393,34 @@ void main() {
       expect(find.textContaining(activeIdentity.localId), findsNothing);
     });
 
+    testWidgets('a sign_message request is shown as signing (#8)', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test User');
+      final identity = vaultController.state.activeIdentity!;
+      await nip55Controller.handleRawIntent({
+        'requestToken': 'sign-message-token',
+        'type': 'sign_message',
+        'content': 'hello message',
+        'currentUser': identity.publicKey,
+      });
+
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      expect(find.text('Sign'), findsOneWidget);
+      expect(find.text('Signs this exact text with your key'), findsOneWidget);
+      expect(find.text('MESSAGE'), findsOneWidget);
+      expect(find.text('hello message'), findsOneWidget);
+      expect(find.text('Encrypt'), findsNothing);
+      expect(find.text('Encryption operation'), findsNothing);
+    });
+
     testWidgets('approving while locked fails safely', (tester) async {
       tester.view.physicalSize = const Size(1200, 1600);
       tester.view.devicePixelRatio = 1.0;
