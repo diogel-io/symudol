@@ -44,10 +44,8 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var initialNip55Intent: Map<String, Any?>? = null
     private var latestNip55Intent: Map<String, Any?>? = null
-    private var activeRequestToken: String? = null
-    private val activeRequestTokens = LinkedHashSet<String>()
-    private val activeBridgeRequestTokens = LinkedHashSet<String>()
-    private var lastDeliveredToken: String? = null
+    // Which requests are active, and where answers go: only to the bridge (#7, #68).
+    private val router = Nip55RequestRouter()
     private var pendingCompletionRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
@@ -56,15 +54,9 @@ class MainActivity : FlutterActivity() {
         Log.d(TAG, "onCreate: intent=$intent")
         currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
-        initialNip55Intent = parseNip55Intent(intent)
-        activeRequestToken = initialNip55Intent?.get("requestToken") as? String
-        activeRequestToken?.let {
-            activeRequestTokens.add(it)
-            if (initialNip55Intent?.get("bridgeToken") != null) {
-                activeBridgeRequestTokens.add(it)
-            }
-        }
-        Log.d(TAG, "onCreate: initialNip55Intent=$initialNip55Intent, activeRequestToken=$activeRequestToken")
+        initialNip55Intent = router.parse(intent)
+        initialNip55Intent?.let { router.activate(it, markDelivered = false) }
+        Log.d(TAG, "onCreate: activeRequestToken=${router.activeRequestToken}")
         
         // Asynchronously resolve app label and certificate if they are missing
         initialNip55Intent?.let { resolveMetadataAsync(it) { updated -> initialNip55Intent = updated } }
@@ -167,12 +159,12 @@ class MainActivity : FlutterActivity() {
         Log.d(TAG, "onNewIntent: intent=$intent")
         super.onNewIntent(intent)
         setIntent(intent)
-        val payload = parseNip55Intent(intent)
+        val payload = router.parse(intent)
         if (payload != null) deliverNip55Payload(payload)
     }
 
     private fun deliverNip55IntentFromBridge(intent: Intent): Boolean {
-        val payload = parseNip55Intent(intent) ?: return false
+        val payload = router.parse(intent) ?: return false
         return deliverNip55Payload(payload)
     }
 
@@ -183,21 +175,10 @@ class MainActivity : FlutterActivity() {
             mainHandler.removeCallbacks(it)
             pendingCompletionRunnable = null
         }
-        val requestToken = payload["requestToken"] as? String
-
-        if (requestToken != null && requestToken == lastDeliveredToken) {
-            Log.d(TAG, "deliverNip55Payload: Token $requestToken already delivered, ignoring")
+        if (!router.activate(payload, markDelivered = true)) {
+            Log.d(TAG, "deliverNip55Payload: request already delivered, ignoring")
             return true
         }
-
-        activeRequestToken = requestToken
-        requestToken?.let {
-            activeRequestTokens.add(it)
-            if (payload["bridgeToken"] != null) {
-                activeBridgeRequestTokens.add(it)
-            }
-        }
-        lastDeliveredToken = requestToken
         latestNip55Intent = payload
 
         // Asynchronously resolve metadata before sending to Dart.
@@ -209,30 +190,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         return true
-    }
-
-    /**
-     * The NIP-55 request this intent hands over, or null if it hands over none.
-     *
-     * A request only ever arrives from [Nip55BridgeActivity], which registers it in
-     * [Nip55Handoff] with the caller as Android reports it, and sends just the token. This
-     * activity is exported (it is the launcher), so any app can send it any extras: none of
-     * them is read. An intent whose token isn't registered, including one with forged
-     * `callingPackage`/`callerCertificateSha256` extras or a `nostrsigner:` VIEW addressed here
-     * directly, is not a NIP-55 request (diogel-io/symudol#7).
-     */
-    private fun parseNip55Intent(intent: Intent?): Map<String, Any?>? {
-        if (intent == null) return null
-        val token = intent.getStringExtra("requestToken")
-        val request = Nip55Handoff.resolve(token)
-        if (request == null) {
-            if (token != null || intent.hasExtra("type") || intent.data?.scheme == "nostrsigner") {
-                // Never log the extras: they may carry event content or plaintext.
-                Log.w(TAG, "parseNip55Intent: ignored a NIP-55 intent that was not handed over by the bridge")
-            }
-            return null
-        }
-        return request
     }
 
     private fun resolveMetadataAsync(payload: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
@@ -332,21 +289,14 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun completeNip55Intent(arguments: Map<*, *>?): CompletionAction {
-        if (!isActiveRequest(arguments)) return CompletionAction.NONE
         val requestedToken = arguments?.get("requestToken") as? String
+        if (!router.isActive(requestedToken)) return CompletionAction.NONE
         val extras = arguments?.get("extras") as? Map<*, *> ?: emptyMap<Any, Any>()
         maybeLaunchCallback(extras)
         maybeCopyToClipboard(extras)
-        val bridgeToken = requestedToken ?: activeRequestToken
-        val isBridgeRequest = bridgeToken != null && activeBridgeRequestTokens.contains(bridgeToken)
-        if (requestedToken != null) clearActiveToken(requestedToken)
-        if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
-            return CompletionAction.BACKGROUND
-        }
-        // Every request came through the bridge, which owns the caller's result. If it has gone,
-        // there is nobody to answer: the result is never handed to whoever started this
+        // Only the bridge answers the caller; a result is never handed to whoever started this
         // activity (#7).
-        if (!isBridgeRequest) Log.w(TAG, "completeNip55Intent: no bridge for the request; result dropped")
+        router.complete(requestedToken, extras)
         return CompletionAction.BACKGROUND
     }
 
@@ -383,17 +333,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {
-        if (!isActiveRequest(arguments)) return CompletionAction.NONE
         val requestedToken = arguments?.get("requestToken") as? String
-        val bridgeToken = requestedToken ?: activeRequestToken
-        val isBridgeRequest = bridgeToken != null && activeBridgeRequestTokens.contains(bridgeToken)
-        val error = arguments?.get("error") as? String
-        if (requestedToken != null) clearActiveToken(requestedToken)
-        if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
-            return CompletionAction.BACKGROUND
-        }
-        // As in completeNip55Intent: only the bridge answers the caller (#7).
-        if (!isBridgeRequest) Log.w(TAG, "rejectNip55Intent: no bridge for the request; rejection dropped")
+        if (!router.isActive(requestedToken)) return CompletionAction.NONE
+        router.reject(requestedToken, arguments?.get("error") as? String)
         return CompletionAction.BACKGROUND
     }
 
@@ -420,18 +362,5 @@ class MainActivity : FlutterActivity() {
         // Give Flutter and plugins a short grace period to deliver MethodChannel
         // responses before we background/finish the activity for the caller handoff.
         mainHandler.postDelayed(runnable, 150L)
-    }
-
-    private fun isActiveRequest(arguments: Map<*, *>?): Boolean {
-        val requestedToken = arguments?.get("requestToken") as? String
-        return requestedToken != null && activeRequestTokens.contains(requestedToken)
-    }
-
-    private fun clearActiveToken(token: String) {
-        activeRequestTokens.remove(token)
-        activeBridgeRequestTokens.remove(token)
-        if (activeRequestToken == token) {
-            activeRequestToken = activeRequestTokens.firstOrNull()
-        }
     }
 }
