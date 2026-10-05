@@ -111,10 +111,35 @@ class Nip55BridgeActivity : Activity() {
             return
         }
 
-        val token = "${getString(R.string.token_prefix_bridge)}${System.currentTimeMillis()}-${System.identityHashCode(original)}"
+        // Unguessable: the token is the only thing MainActivity accepts a request by (#7).
+        val token = Nip55Handoff.newToken(getString(R.string.token_prefix_bridge))
         requestToken = token
         Nip55BridgeRegistry.register(token, this)
         val shouldUseControlQueryForContent = originalTypeExtra == null || method == getString(R.string.method_nip04_decrypt)
+        // The whole request, with the caller as Android reports it, stays in this process.
+        // MainActivity reads it from Nip55Handoff and never from intent extras, which any app
+        // could set (#7).
+        Nip55Handoff.register(token, mapOf(
+            "requestToken" to token,
+            "bridgeToken" to token,
+            "type" to method,
+            "content" to (original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent)),
+            "id" to (original.getStringExtra(getString(R.string.key_id)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))),
+            "currentUser" to (original.getStringExtra(getString(R.string.key_current_user)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_current_user))),
+            "pubkey" to (original.getStringExtra(getString(R.string.key_pubkey)) ?: original.getStringExtra(getString(R.string.key_pubkey_alt)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_pubkey))),
+            "permissions" to (original.getStringExtra(getString(R.string.key_permissions)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_permissions))),
+            "callbackUrl" to (original.getStringExtra(getString(R.string.key_callback_url)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_callback_url))),
+            "returnType" to (original.getStringExtra(getString(R.string.key_return_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_return_type))),
+            "compressionType" to (original.getStringExtra(getString(R.string.key_compression_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_compression_type))),
+            "isBrowserFlow" to original.hasCategory(Intent.CATEGORY_BROWSABLE),
+            "callingPackage" to callerPackage,
+            "callerAppLabel" to resolveAppLabel(callerPackage),
+            "callerCertificateSha256" to resolveSigningCertificateSha256(callerPackage),
+            "referrer" to referrer?.toString(),
+            "intentPackage" to original.`package`,
+            "sourceHint" to (callerPackage ?: referrer?.host),
+            "dataUri" to original.data?.toString(),
+        ))
         val mainIntent = Intent(this, MainActivity::class.java).apply {
             // Keep this bridge activity alive because it owns the caller's Activity result.
             // CLEAR_TOP would destroy/unregister the bridge when Diogel is already open,
@@ -124,24 +149,8 @@ class Nip55BridgeActivity : Activity() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // Only the token: MainActivity reads the request from Nip55Handoff (#7).
             putExtra(getString(R.string.key_request_token), token)
-            putExtra(getString(R.string.key_type), method)
-            putExtra(getString(R.string.key_content), original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent))
-            putExtra(getString(R.string.key_id), original.getStringExtra(getString(R.string.key_id)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id)))
-            putExtra(getString(R.string.key_current_user), original.getStringExtra(getString(R.string.key_current_user)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_current_user)))
-            putExtra(getString(R.string.key_pubkey), original.getStringExtra(getString(R.string.key_pubkey)) ?: original.getStringExtra(getString(R.string.key_pubkey_alt)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_pubkey)))
-            putExtra(getString(R.string.key_permissions), original.getStringExtra(getString(R.string.key_permissions)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_permissions)))
-            putExtra(getString(R.string.key_callback_url), original.getStringExtra(getString(R.string.key_callback_url)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_callback_url)))
-            putExtra(getString(R.string.key_return_type), original.getStringExtra(getString(R.string.key_return_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_return_type)))
-            putExtra(getString(R.string.key_compression_type), original.getStringExtra(getString(R.string.key_compression_type)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_compression_type)))
-            putExtra(getString(R.string.key_is_browser_flow), original.hasCategory(Intent.CATEGORY_BROWSABLE))
-            putExtra(getString(R.string.key_calling_package), callerPackage)
-            putExtra(getString(R.string.key_caller_app_label), resolveAppLabel(callerPackage))
-            putExtra(getString(R.string.key_caller_certificate_sha256), resolveSigningCertificateSha256(callerPackage))
-            putExtra(getString(R.string.key_referrer), referrer?.toString())
-            putExtra(getString(R.string.key_intent_package), original.`package`)
-            putExtra(getString(R.string.key_source_hint), callerPackage ?: referrer?.host)
-            putExtra(getString(R.string.key_data_uri), original.data?.toString())
         }
         startActivity(mainIntent)
         // If Flutter is already alive, deliver directly as a fallback after asking
