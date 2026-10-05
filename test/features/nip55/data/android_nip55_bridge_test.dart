@@ -36,7 +36,6 @@ void main() {
       bridgeActivity,
       contains('original.getStringExtra(getString(R.string.key_pubkey_alt))'),
     );
-    expect(mainActivity, contains('intent.getStringExtra("pubKey")'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_NEW_TASK'));
     expect(bridgeActivity, contains('Intent.FLAG_ACTIVITY_REORDER_TO_FRONT'));
     expect(bridgeActivity, isNot(contains('Intent.FLAG_ACTIVITY_CLEAR_TOP')));
@@ -51,7 +50,6 @@ void main() {
         'Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent)',
       ),
     );
-    expect(mainActivity, contains('parsedTypeExtra'));
     expect(uriParser, contains('controlQueryStart(raw)'));
     expect(uriParser, contains('rawQueryParameter(uri, "iv")'));
     expect(uriParser, contains(r'"$decodedPayload?iv=${Uri.decode(rawIv)}"'));
@@ -103,5 +101,37 @@ void main() {
       isNot(contains('Diogel is already reviewing another NIP-55 request')),
     );
     expect(mainActivity, isNot(contains('finishing here can poison')));
+  });
+
+  // diogel-io/symudol#7: MainActivity is exported, so any app can send it
+  // extras. A request reaches it only as what the bridge registered.
+  test('MainActivity takes NIP-55 requests only from the bridge handoff', () {
+    final mainActivity = File(
+      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
+    ).readAsStringSync();
+    final bridgeActivity = File(
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
+    ).readAsStringSync();
+
+    expect(bridgeActivity, contains('Nip55Handoff.newToken('));
+    expect(bridgeActivity, contains('Nip55Handoff.register(token, mapOf('));
+    expect(bridgeActivity, isNot(contains('System.identityHashCode(original)')));
+    expect(mainActivity, contains('Nip55Handoff.resolve(token)'));
+    for (final extra in [
+      'callingPackage',
+      'callerCertificateSha256',
+      'callerAppLabel',
+      'content',
+      'type',
+    ]) {
+      expect(
+        mainActivity,
+        isNot(contains('getStringExtra("$extra")')),
+        reason: 'MainActivity must not read $extra from extras',
+      );
+    }
+    // Only the bridge answers the caller; nothing goes to whoever started
+    // MainActivity.
+    expect(mainActivity, isNot(contains('setResult(')));
   });
 }

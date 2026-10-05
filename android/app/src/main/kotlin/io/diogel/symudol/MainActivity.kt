@@ -1,6 +1,5 @@
 package io.diogel.symudol
 
-import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -49,7 +48,6 @@ class MainActivity : FlutterActivity() {
     private val activeRequestTokens = LinkedHashSet<String>()
     private val activeBridgeRequestTokens = LinkedHashSet<String>()
     private var lastDeliveredToken: String? = null
-    private var nextRequestNumber = 0L
     private var pendingCompletionRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
@@ -213,57 +211,28 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
+    /**
+     * The NIP-55 request this intent hands over, or null if it hands over none.
+     *
+     * A request only ever arrives from [Nip55BridgeActivity], which registers it in
+     * [Nip55Handoff] with the caller as Android reports it, and sends just the token. This
+     * activity is exported (it is the launcher), so any app can send it any extras: none of
+     * them is read. An intent whose token isn't registered, including one with forged
+     * `callingPackage`/`callerCertificateSha256` extras or a `nostrsigner:` VIEW addressed here
+     * directly, is not a NIP-55 request (diogel-io/symudol#7).
+     */
     private fun parseNip55Intent(intent: Intent?): Map<String, Any?>? {
         if (intent == null) return null
-        val data = intent.data
-        
-        // If it's a handoff from Nip55BridgeActivity, it might not have the VIEW action or data set on the intent itself,
-        // but it will have the requestToken and either parsed extras or dataUri.
-        val hasNip55Extras = intent.hasExtra("requestToken") && intent.hasExtra("type")
-        
-        if (intent.action != Intent.ACTION_VIEW || data?.scheme != "nostrsigner") {
-            if (!hasNip55Extras) return null
-        }
-
         val token = intent.getStringExtra("requestToken")
-            ?: if (data != null && data.scheme == "nostrsigner") {
-                 "nip55-${System.currentTimeMillis()}-${nextRequestNumber++}"
-               } else {
-                 return null
-               }
-        
-        val callerPackage = intent.getStringExtra("callingPackage") ?: callingPackage ?: intent.`package`
-        
-        val parsedTypeExtra = intent.getStringExtra("type")
-        val parsedType = parsedTypeExtra
-            ?: (data?.let { Nip55UriParser.queryParameter(it, "type") })
-        if (parsedType == null) return null
-
-        val shouldUseControlQueryForContent = parsedTypeExtra == null || parsedType == "nip04_decrypt"
-        val parsedContent = intent.getStringExtra("content")
-            ?: (data?.let { Nip55UriParser.content(it, parsedType, shouldUseControlQueryForContent) })
-
-        return mapOf(
-            "requestToken" to token,
-            "type" to parsedType,
-            "content" to parsedContent,
-            "id" to (intent.getStringExtra("id") ?: (data?.let { Nip55UriParser.queryParameter(it, "id") })),
-            "currentUser" to (intent.getStringExtra("currentUser") ?: intent.getStringExtra("current_user") ?: (data?.let { Nip55UriParser.queryParameter(it, "current_user") })),
-            "pubkey" to (intent.getStringExtra("pubkey") ?: intent.getStringExtra("pubKey") ?: (data?.let { Nip55UriParser.queryParameter(it, "pubkey") })),
-            "permissions" to (intent.getStringExtra("permissions") ?: (data?.let { Nip55UriParser.queryParameter(it, "permissions") })),
-            "callbackUrl" to (intent.getStringExtra("callbackUrl") ?: (data?.let { Nip55UriParser.queryParameter(it, "callbackUrl") })),
-            "returnType" to (intent.getStringExtra("returnType") ?: (data?.let { Nip55UriParser.queryParameter(it, "returnType") })),
-            "compressionType" to (intent.getStringExtra("compressionType") ?: (data?.let { Nip55UriParser.queryParameter(it, "compressionType") })),
-            "isBrowserFlow" to intent.getBooleanExtra("isBrowserFlow", false),
-            "callingPackage" to callerPackage,
-            "callerAppLabel" to intent.getStringExtra("callerAppLabel"),
-            "callerCertificateSha256" to intent.getStringExtra("callerCertificateSha256"),
-            "referrer" to (intent.getStringExtra("referrer") ?: referrer?.toString()),
-            "intentPackage" to (intent.getStringExtra("intentPackage") ?: intent.`package`),
-            "sourceHint" to (intent.getStringExtra("sourceHint") ?: callerPackage ?: referrer?.host),
-            "bridgeToken" to intent.getStringExtra("requestToken"),
-            "dataUri" to (intent.getStringExtra("dataUri") ?: data?.toString())
-        )
+        val request = Nip55Handoff.resolve(token)
+        if (request == null) {
+            if (token != null || intent.hasExtra("type") || intent.data?.scheme == "nostrsigner") {
+                // Never log the extras: they may carry event content or plaintext.
+                Log.w(TAG, "parseNip55Intent: ignored a NIP-55 intent that was not handed over by the bridge")
+            }
+            return null
+        }
+        return request
     }
 
     private fun resolveMetadataAsync(payload: Map<String, Any?>, callback: (Map<String, Any?>) -> Unit) {
@@ -374,15 +343,11 @@ class MainActivity : FlutterActivity() {
         if (bridgeToken != null && Nip55BridgeRegistry.complete(bridgeToken, extras)) {
             return CompletionAction.BACKGROUND
         }
-        if (isBridgeRequest) return CompletionAction.BACKGROUND
-        val resultIntent = Intent()
-        extras.forEach { (key, value) ->
-            if (key is String && value != null) {
-                resultIntent.putExtra(key, value.toString())
-            }
-        }
-        setResult(Activity.RESULT_OK, resultIntent)
-        return CompletionAction.FINISH
+        // Every request came through the bridge, which owns the caller's result. If it has gone,
+        // there is nobody to answer: the result is never handed to whoever started this
+        // activity (#7).
+        if (!isBridgeRequest) Log.w(TAG, "completeNip55Intent: no bridge for the request; result dropped")
+        return CompletionAction.BACKGROUND
     }
 
     private fun maybeLaunchCallback(extras: Map<*, *>) {
@@ -427,13 +392,9 @@ class MainActivity : FlutterActivity() {
         if (bridgeToken != null && Nip55BridgeRegistry.reject(bridgeToken, error)) {
             return CompletionAction.BACKGROUND
         }
-        if (isBridgeRequest) return CompletionAction.BACKGROUND
-        val resultIntent = Intent()
-        if (!error.isNullOrBlank()) {
-            resultIntent.putExtra("error", error)
-        }
-        setResult(Activity.RESULT_CANCELED, resultIntent)
-        return CompletionAction.FINISH
+        // As in completeNip55Intent: only the bridge answers the caller (#7).
+        if (!isBridgeRequest) Log.w(TAG, "rejectNip55Intent: no bridge for the request; rejection dropped")
+        return CompletionAction.BACKGROUND
     }
 
     private fun runAfterMethodResponse(action: CompletionAction) {

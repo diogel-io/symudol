@@ -85,6 +85,10 @@ class Nip55IntentParser {
       appLabel: appLabel,
       certificateSha256: certificateSha256,
       referrer: referrer,
+      // These come only from Nip55BridgeActivity, which reads the package from
+      // Android's callingPackage and the certificate from the package manager.
+      // MainActivity no longer takes them from intent extras, which any app
+      // could set (diogel-io/symudol#7), so "verified" means attested by Android.
       provenanceVerified: packageName != null && certificateSha256 != null,
     );
   }

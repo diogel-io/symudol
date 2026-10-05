@@ -3,29 +3,34 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('MainActivity uses shared parser for browser NIP-55 URL params', () {
-    final mainActivity = File(
-      'android/app/src/main/kotlin/io/diogel/symudol/MainActivity.kt',
+  // The bridge parses the request, URL params included, and hands it to
+  // MainActivity through Nip55Handoff; MainActivity reads no extras (#7).
+  test('Bridge uses the shared parser for browser NIP-55 URL params', () {
+    final bridgeActivity = File(
+      'android/app/src/main/kotlin/io/diogel/symudol/Nip55BridgeActivity.kt',
     ).readAsStringSync();
     final uriParser = File(
       'android/app/src/main/kotlin/io/diogel/symudol/Nip55UriParser.kt',
     ).readAsStringSync();
 
+    for (final key in [
+      'key_callback_url',
+      'key_return_type',
+      'key_compression_type',
+      'key_id',
+    ]) {
+      expect(
+        bridgeActivity,
+        contains(
+          'Nip55UriParser.queryParameter(originalData, getString(R.string.$key))',
+        ),
+      );
+    }
     expect(
-      mainActivity,
-      contains('Nip55UriParser.queryParameter(it, "callbackUrl")'),
+      bridgeActivity,
+      contains('Nip55UriParser.queryParameter(originalData, getString(R.string.key_type))'),
     );
-    expect(
-      mainActivity,
-      contains('Nip55UriParser.queryParameter(it, "returnType")'),
-    );
-    expect(
-      mainActivity,
-      contains('Nip55UriParser.queryParameter(it, "compressionType")'),
-    );
-    expect(mainActivity, contains('Nip55UriParser.queryParameter(it, "type")'));
-    expect(mainActivity, contains('Nip55UriParser.content(it'));
-    expect(mainActivity, contains('"isBrowserFlow" to intent.getBooleanExtra'));
+    expect(bridgeActivity, contains('Nip55UriParser.content(originalData'));
     expect(uriParser, contains('if (uri.isHierarchical)'));
     expect(uriParser, contains('uri.schemeSpecificPart'));
     expect(uriParser, contains('controlQueryStart(raw)'));
@@ -39,7 +44,7 @@ void main() {
     expect(
       bridgeActivity,
       contains(
-        'putExtra(getString(R.string.key_is_browser_flow), original.hasCategory(Intent.CATEGORY_BROWSABLE))',
+        '"isBrowserFlow" to original.hasCategory(Intent.CATEGORY_BROWSABLE)',
       ),
     );
   });

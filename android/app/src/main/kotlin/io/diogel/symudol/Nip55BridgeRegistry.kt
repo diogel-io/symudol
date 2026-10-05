@@ -13,9 +13,11 @@ object Nip55BridgeRegistry {
 
     fun unregister(token: String) {
         pending.remove(token)
+        Nip55Handoff.remove(token)
     }
 
     fun complete(token: String, extras: Map<*, *>): Boolean {
+        Nip55Handoff.remove(token)
         val activity = pending.remove(token)?.get() ?: return false
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
@@ -28,6 +30,7 @@ object Nip55BridgeRegistry {
     }
 
     fun reject(token: String, error: String?): Boolean {
+        Nip55Handoff.remove(token)
         val activity = pending.remove(token)?.get() ?: return false
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
