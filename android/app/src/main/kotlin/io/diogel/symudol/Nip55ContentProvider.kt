@@ -56,6 +56,21 @@ class Nip55ContentProvider : ContentProvider() {
         val activePubkey = Nip55CryptoBridge.activePublicKey
             ?: permissionMirror.getActiveIdentityPubkey()
 
+        // A request for another account (or an unreadable current_user) is never answered
+        // here: the client falls back to the intent, where Diogel shows it (#10).
+        if (activePubkey != null && !Nip55RequestCodec.currentUserMatches(projection, method, activePubkey)) {
+            Log.d(TAG, "query: current_user is not the active identity; not answering in the background")
+            return null
+        }
+
+        // A sign_event without an integer kind matches no grant: never read as kind 0 (#10).
+        if (method == "sign_event" &&
+            Nip55RequestCodec.integerKind(Nip55RequestCodec.eventJsonFromProjection(projection)) == null
+        ) {
+            Log.d(TAG, "query: sign_event has no integer kind; not answering in the background")
+            return null
+        }
+
         // Decrypt operations (nip04_decrypt, nip44_decrypt) now require a remembered
         // allow grant — they fall through to the standard permission path below.
         // This prevents background plaintext exposure without explicit user approval.
@@ -69,9 +84,7 @@ class Nip55ContentProvider : ContentProvider() {
                 Nip55RequestCodec.eventJsonFromProjection(projection)
             } else null
 
-            val eventKind = eventJson?.let { json ->
-                try { org.json.JSONObject(json).optInt("kind") } catch (_: Exception) { null }
-            }
+            val eventKind = Nip55RequestCodec.integerKind(eventJson)
 
             // Extract relay URL for kind 22242 (NIP-42 relay auth) — needed for
             // relay-specific grant matching. Normalized to match the Dart side.

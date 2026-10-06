@@ -204,4 +204,15 @@ class Nip55NativeCryptoTest {
     fun signMessage_signsAnOrdinaryMessage() {
         assertEquals(128, Nip55NativeCrypto.signMessage(testPrivKey, "hello").length)
     }
+
+    @Test
+    fun signEvent_withoutAnIntegerKind_returnsNull() {
+        // #10: never signed as kind 0.
+        for (eventJson in listOf(
+            """{"content":"hello","tags":[],"created_at":1700000000}""",
+            """{"kind":"1","content":"hello","tags":[],"created_at":1700000000}""",
+        )) {
+            assertNull(eventJson, Nip55NativeCrypto.signEvent(testPrivKey, eventJson, testPubKey))
+        }
+    }
 }

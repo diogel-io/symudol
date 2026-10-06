@@ -6,6 +6,8 @@ import 'package:android_diogel/features/nip55/application/nip55_controller.dart'
 import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_approval_timeframe.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_incoming_request.dart';
+import 'package:android_diogel/features/nip55/domain/nip55_intent_parser.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
@@ -902,7 +904,7 @@ void main() {
       }
 
       test(
-        'a signing request with no kind is signed once, not remembered',
+        'a signing request with no kind is rejected before review (#10)',
         () async {
           final store = FakeNip55PermissionStore();
           final controller = withStore(store);
@@ -911,16 +913,81 @@ void main() {
             'content': '{"content":"hello","tags":[]}',
             'callingPackage': 'com.example.app',
           });
-          final pending = requestController.state.requests;
-          if (pending.isEmpty) return; // refused outright: nothing to remember
-          await controller.approveSigningRequest(
-            pending.single.id,
-            timeframe: Nip55ApprovalTimeframe.always,
-          );
 
-          expect(store.grants.where((grant) => grant.scope.isBroad), isEmpty);
+          expect(requestController.state.requests, isEmpty);
+          expect(controller.state.pendingSigningRequestId, isNull);
+          expect(gateway.rejectedToken, 'token-external-id');
+          expect(gateway.rejectedError, 'NIP-55 event kind is invalid');
+          expect(store.grants, isEmpty);
         },
       );
+
+      test('no timeframe is offered for a pending event with no kind (#10)', () {
+        final controller = withStore(FakeNip55PermissionStore());
+        Nip55IncomingRequest pending(String content) =>
+            const Nip55IntentParser().parse({
+              ...signEventRaw(),
+              'content': content,
+              'callingPackage': 'com.example.app',
+            });
+
+        controller.state = controller.state.copyWith(
+          pendingIncoming: pending('{"kind":1,"content":"hello","tags":[]}'),
+          pendingSigningRequestId: 'request-1',
+        );
+        expect(
+          controller.canSelectTimeframeForPendingSigningRequest('request-1'),
+          isTrue,
+        );
+
+        for (final content in [
+          '{"content":"hello","tags":[]}',
+          '{"kind":"1","content":"hello","tags":[]}',
+          '{"kind":1.5,"content":"hello","tags":[]}',
+        ]) {
+          controller.state = controller.state.copyWith(
+            pendingIncoming: pending(content),
+            pendingSigningRequestId: 'request-1',
+          );
+          expect(
+            controller.canSelectTimeframeForPendingSigningRequest('request-1'),
+            isFalse,
+            reason: content,
+          );
+        }
+      });
+
+      test('a provider query for another account is not answered (#10)', () async {
+        final store = FakeNip55PermissionStore();
+        final controller = withStore(store);
+        final identity = vaultController.state.activeIdentity!;
+        await store.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-kind-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        final query = {
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        };
+
+        final other = await controller.handleProviderQuery({
+          ...query,
+          'currentUser':
+              'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
+        });
+
+        expect(other, isNull);
+        final same = await controller.handleProviderQuery(query);
+        expect(same?['result'], isNotNull, reason: 'the active account is answered');
+      });
 
       test('a broad rejection is still remembered', () async {
         final grant = Nip55PermissionGrant(

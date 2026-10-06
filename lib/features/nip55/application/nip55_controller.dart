@@ -1120,7 +1120,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   bool canSelectTimeframeForPendingSigningRequest(String requestId) {
+    // Only a single kind can be remembered: a request without an integer kind
+    // offers no timeframe (#10). Such a request is rejected before review.
     return state.pendingSigningRequestId == requestId &&
+        state.pendingIncoming?.eventJson?['kind'] is int &&
         state.pendingIncoming?.clientIdentity.packageName != null &&
         state.pendingIncoming?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;

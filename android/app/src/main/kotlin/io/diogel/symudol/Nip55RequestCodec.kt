@@ -162,6 +162,41 @@ object Nip55RequestCodec {
         }
     }
 
+    /**
+     * Whether the request's current_user, if it sent one, is [activePubkey] (#10).
+     * Reads the same slot as [currentUserFromProjection]. An absent current_user is
+     * allowed (NIP-55 makes it optional); one that doesn't parse as hex or npub is not.
+     */
+    fun currentUserMatches(projection: Array<out String>?, method: String, activePubkey: String): Boolean {
+        val raw = when (method) {
+            "get_public_key" -> null
+            "sign_event", "sign_message", "decrypt_zap_event" ->
+                projection?.getOrNull(2)?.takeIf { it.isNotBlank() }
+                    ?: projection?.getOrNull(1)?.takeIf { it.isNotBlank() }
+            else -> projection?.getOrNull(2)?.takeIf { it.isNotBlank() }
+        } ?: return true
+        val currentUser = normalizeHexOrNpub(raw) ?: return false
+        return currentUser == activePubkey.lowercase()
+    }
+
+    /**
+     * The event's kind when it is a JSON integer, else null: a missing kind, a string
+     * ("1") or a float (1.0) is not a kind (#10). Dart's `kind is int` is the same rule.
+     */
+    fun integerKind(eventJson: String?): Int? {
+        if (eventJson == null) return null
+        val kind = try {
+            org.json.JSONObject(eventJson).opt("kind")
+        } catch (_: Exception) {
+            return null
+        }
+        return when (kind) {
+            is Int -> kind
+            is Long -> if (kind in Int.MIN_VALUE..Int.MAX_VALUE) kind.toInt() else null
+            else -> null
+        }
+    }
+
     fun zapCurrentUserFromProjection(projection: Array<out String>?): String? {
         return currentUserFromProjection(projection, "decrypt_zap_event")
     }

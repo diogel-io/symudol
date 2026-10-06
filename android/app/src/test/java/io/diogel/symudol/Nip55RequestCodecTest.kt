@@ -232,4 +232,45 @@ class Nip55RequestCodecTest {
         val cursor = Nip55RequestCodec.rejectedCursor("rejected")
         assertNotNull(cursor)
     }
+
+    // ── current_user and kind (#10) ────────────────────────────────────────
+
+    private val active = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+    private val other = "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+
+    @Test
+    fun currentUserMatches_readsTheSameSlotAsCurrentUserFromProjection() {
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("{}", "", active), "sign_event", active))
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("{}", active), "sign_event", active))
+        assertFalse(Nip55RequestCodec.currentUserMatches(arrayOf("{}", "", other), "sign_event", active))
+        assertFalse(Nip55RequestCodec.currentUserMatches(arrayOf("{}", other), "sign_message", active))
+        // Encrypt and decrypt: index 1 is the peer, never the current user.
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("x", other), "nip44_encrypt", active))
+        assertFalse(Nip55RequestCodec.currentUserMatches(arrayOf("x", other, other), "nip04_decrypt", active))
+        // get_public_key's projection (Amethyst sends ["login"]) has no current user.
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("login"), "get_public_key", active))
+    }
+
+    @Test
+    fun currentUserMatches_allowsNoneButNotAnUnreadableOne() {
+        assertTrue(Nip55RequestCodec.currentUserMatches(null, "sign_event", active))
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("{}"), "sign_event", active))
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("{}", " ", ""), "sign_event", active))
+        assertFalse(Nip55RequestCodec.currentUserMatches(arrayOf("{}", "", "nope"), "sign_event", active))
+        assertTrue(Nip55RequestCodec.currentUserMatches(arrayOf("{}", "", active.uppercase()), "sign_event", active))
+    }
+
+    @Test
+    fun integerKind_isOnlyAJsonInteger() {
+        assertEquals(1, Nip55RequestCodec.integerKind("""{"kind":1}"""))
+        assertEquals(0, Nip55RequestCodec.integerKind("""{"kind":0}"""))
+        assertEquals(30023, Nip55RequestCodec.integerKind("""{"kind":30023}"""))
+        assertNull(Nip55RequestCodec.integerKind("""{"content":"hi"}"""))
+        assertNull(Nip55RequestCodec.integerKind("""{"kind":"1"}"""))
+        assertNull(Nip55RequestCodec.integerKind("""{"kind":1.5}"""))
+        assertNull(Nip55RequestCodec.integerKind("""{"kind":null}"""))
+        assertNull(Nip55RequestCodec.integerKind("""{"kind":99999999999}"""))
+        assertNull(Nip55RequestCodec.integerKind("not json"))
+        assertNull(Nip55RequestCodec.integerKind(null))
+    }
 }

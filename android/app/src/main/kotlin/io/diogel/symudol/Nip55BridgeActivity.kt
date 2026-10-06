@@ -100,7 +100,7 @@ class Nip55BridgeActivity : Activity() {
             try {
                 val contentRaw = original.getStringExtra(getString(R.string.key_content))
                     ?: Nip55UriParser.content(originalData, method, true)
-                if (!contentRaw.isNullOrBlank()) org.json.JSONObject(contentRaw).optInt("kind").let { if (it == 0 && !contentRaw.contains('"' + "kind" + '"')) null else it } else null
+                Nip55RequestCodec.integerKind(contentRaw)
             } catch (_: Exception) { null }
         } else null
 
