@@ -1,9 +1,9 @@
 import 'dart:developer' as dev;
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
-import 'package:android_diogel/features/vault/domain/vault_failure.dart';
-import 'package:android_diogel/features/vault/domain/vault_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_failure.dart';
+import 'package:symudol/features/vault/domain/vault_service.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 class VaultControllerState {

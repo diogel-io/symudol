@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:android_diogel/app/app.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/app/app.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'fakes/fake_vault_store.dart';
 
 void main() {

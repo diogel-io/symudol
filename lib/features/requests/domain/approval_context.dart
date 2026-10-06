@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/nip55/domain/nip55_incoming_request.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_parser.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
-import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
+import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
+import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
 
 sealed class ApprovalContext {
   String get requestKey;

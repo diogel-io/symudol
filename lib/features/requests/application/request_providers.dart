@@ -1,13 +1,13 @@
-import 'package:android_diogel/features/requests/application/request_controller.dart';
-import 'package:android_diogel/features/requests/data/real_signer_service.dart';
-import 'package:android_diogel/features/requests/domain/request_state.dart';
-import 'package:android_diogel/features/requests/domain/signer_service.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/requests/application/request_controller.dart';
+import 'package:symudol/features/requests/data/real_signer_service.dart';
+import 'package:symudol/features/requests/domain/request_state.dart';
+import 'package:symudol/features/requests/domain/signer_service.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'package:android_diogel/features/requests/domain/request_failure.dart';
+import 'package:symudol/features/requests/domain/request_failure.dart';
 
 /// Provider for the [SignerService].
 final signerServiceProvider = Provider<SignerService>((ref) {

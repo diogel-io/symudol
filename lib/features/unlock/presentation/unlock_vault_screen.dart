@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
+import 'package:symudol/features/nip55/application/nip55_providers.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
 import 'widgets/pin_button.dart';
 

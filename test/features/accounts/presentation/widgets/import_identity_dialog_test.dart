@@ -1,7 +1,7 @@
-import 'package:android_diogel/features/accounts/presentation/widgets/import_identity_dialog.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/accounts/presentation/widgets/import_identity_dialog.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

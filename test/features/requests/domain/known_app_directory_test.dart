@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/requests/domain/known_app_directory.dart';
+import 'package:symudol/features/requests/domain/known_app_directory.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

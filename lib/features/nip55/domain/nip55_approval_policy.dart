@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 
 import 'nip55_client.dart';
 import 'nip55_client_permission.dart';

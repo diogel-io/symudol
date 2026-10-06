@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/vault/data/secure_storage_vault_store.dart';
-import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/data/secure_storage_vault_store.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';

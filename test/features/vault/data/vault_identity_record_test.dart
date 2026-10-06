@@ -1,5 +1,5 @@
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

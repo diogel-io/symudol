@@ -39,7 +39,7 @@ When adding new features, follow the existing pattern of creating a correspondin
 A simple unit test for `VaultIdentity`:
 ```dart
 import 'package:flutter_test/flutter_test.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
 
 void main() {
   test('VaultIdentity equality is based on publicKey', () {

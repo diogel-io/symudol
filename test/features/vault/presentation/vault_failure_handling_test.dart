@@ -1,9 +1,9 @@
-import 'package:android_diogel/app/app.dart';
-import 'package:android_diogel/features/profile/application/profile_providers.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/presentation/setup_vault_screen.dart';
-import 'package:android_diogel/features/unlock/presentation/unlock_vault_screen.dart';
-import 'package:android_diogel/features/accounts/presentation/widgets/import_identity_dialog.dart';
+import 'package:symudol/app/app.dart';
+import 'package:symudol/features/profile/application/profile_providers.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/presentation/setup_vault_screen.dart';
+import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
+import 'package:symudol/features/accounts/presentation/widgets/import_identity_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

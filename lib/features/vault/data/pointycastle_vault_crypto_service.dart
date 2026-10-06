@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:pointycastle/export.dart';
 
 /// [VaultCryptoService] implementation backed by `pointycastle`.

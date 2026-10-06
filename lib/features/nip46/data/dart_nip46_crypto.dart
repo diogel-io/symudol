@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
-import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
-import 'package:android_diogel/features/signing/domain/nostr_crypto_service.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
+import 'package:symudol/features/signing/domain/nostr_crypto_service.dart';
 
 import '../domain/nip46_request.dart';
 import '../domain/nip46_response.dart';

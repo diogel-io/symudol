@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/nip55/data/nip55_native_mirror_sync.dart';
+import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

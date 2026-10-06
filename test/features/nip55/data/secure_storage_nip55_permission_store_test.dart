@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:android_diogel/features/nip55/data/secure_storage_nip55_permission_store.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:symudol/features/nip55/data/secure_storage_nip55_permission_store.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 

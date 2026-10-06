@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

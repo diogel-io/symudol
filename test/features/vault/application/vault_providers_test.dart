@@ -1,6 +1,6 @@
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../../test/fakes/fake_vault_store.dart';

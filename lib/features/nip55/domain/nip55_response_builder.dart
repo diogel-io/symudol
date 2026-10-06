@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 
 import 'nip55_incoming_request.dart';
 import 'nip55_web_return_options.dart';

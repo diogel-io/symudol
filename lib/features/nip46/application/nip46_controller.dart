@@ -3,10 +3,10 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:android_diogel/features/nip55/domain/nip55_permission_parser.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/domain/vault_service.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/domain/vault_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:state_notifier/state_notifier.dart';
 

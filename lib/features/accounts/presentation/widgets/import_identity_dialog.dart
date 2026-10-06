@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
-import 'package:android_diogel/theme/tokens.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
+import 'package:symudol/theme/tokens.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 
 class ImportIdentityDialog extends ConsumerStatefulWidget {
   const ImportIdentityDialog({super.key});

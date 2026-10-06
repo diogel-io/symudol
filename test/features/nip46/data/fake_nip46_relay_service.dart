@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:android_diogel/features/nip46/data/dart_nip46_relay_service.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_relay_event.dart';
+import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
+import 'package:symudol/features/nip46/domain/nip46_relay_event.dart';
 
 class FakeNip46RelayService implements Nip46RelayService {
   final _eventController =
