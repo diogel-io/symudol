@@ -100,8 +100,8 @@ cd android && ./gradlew testDebugUnitTest
 - `Nip55RequestRouterTest`: MainActivity takes a request only from the bridge handoff, and
   answers only that bridge.
 - `Nip55ContentProviderTest`: what the provider signs in the background, for which caller and
-  which remembered decision. It verifies signatures, and pins the cases still to fix (a missing
-  `kind`) so the fix flips them.
+  which remembered decision, including a request for another account (`current_user`) and an
+  event without an integer `kind`. It verifies signatures.
 
 A NIP-55 security change adds its attack case here, and checks it fails on the code before the
 fix. The fake caller is a package installed with `shadowOf(packageManager).installPackage(...)`
