@@ -259,17 +259,64 @@ class Nip55ContentProviderTest {
         assertNotNull(signEvent(event(1)))
     }
 
-    // ── Current behaviour that other tickets change ────────────────────────
-    // These record what the provider does today. The tickets named flip them.
+    // ── The request's account and kind (#10) ───────────────────────────────
+
+    private val otherPubKey = "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+    private val npub = "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"
+    private val otherNpub = "npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd"
+
+    private fun query(authority: String, vararg projection: String): Cursor? = provider.query(
+        Uri.parse("content://$appId.$authority"), arrayOf(*projection), null, null, null,
+    )
 
     @Test
-    fun currentBehaviour_anEventWithNoKindIsSignedAsKind0_seeIssue10() {
-        // #10: a missing kind should not match a kind-0 grant; it should go to the app.
-        grants(grant("sign_event", kind = 0))
+    fun aRequestForAnotherAccountIsNotAnswered() {
+        grants(grant("sign_event", kind = 1))
 
-        val cursor = signEvent("""{"content":"hi","tags":[],"created_at":1700000000}""")
+        assertNull("current_user at index 2", query("SIGN_EVENT", event(1), "", otherPubKey))
+        assertNull("legacy current_user at index 1", query("SIGN_EVENT", event(1), otherPubKey))
+        assertNull("as an npub", query("SIGN_EVENT", event(1), "", otherNpub))
+    }
 
-        assertNotNull("#10 should make this null", cursor)
+    @Test
+    fun anUnreadableCurrentUserIsNotAnswered() {
+        grants(grant("sign_event", kind = 1))
+
+        assertNull(query("SIGN_EVENT", event(1), "", "not-a-pubkey"))
+        assertNull(query("SIGN_EVENT", event(1), "", "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8g"))
+    }
+
+    @Test
+    fun theActiveAccountOrNoneIsAnswered() {
+        grants(grant("sign_event", kind = 1))
+
+        assertNotNull("hex", query("SIGN_EVENT", event(1), "", pubKey))
+        assertNotNull("upper-case hex", query("SIGN_EVENT", event(1), "", pubKey.uppercase()))
+        assertNotNull("npub", query("SIGN_EVENT", event(1), "", npub))
+        assertNotNull("no current_user", query("SIGN_EVENT", event(1)))
+        assertNotNull("blank current_user", query("SIGN_EVENT", event(1), "", ""))
+    }
+
+    @Test
+    fun otherMethodsCheckTheAccountToo() {
+        grants(grant("sign_message"), grant("nip44_encrypt"))
+
+        assertNull(query("SIGN_MESSAGE", "hello", "", otherPubKey))
+        assertNull(query("NIP44_ENCRYPT", "hello", otherPubKey, otherPubKey))
+        assertNotNull(query("SIGN_MESSAGE", "hello", "", pubKey))
+        assertNotNull(query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey))
+    }
+
+    @Test
+    fun anEventWithoutAnIntegerKindIsNotSigned() {
+        // A remembered kind-0 grant must not sign an event with no kind as kind 0.
+        grants(grant("sign_event", kind = 0), grant("sign_event", kind = 1))
+
+        assertNull("no kind", signEvent("""{"content":"hi","tags":[],"created_at":1700000000}"""))
+        assertNull("string kind", signEvent("""{"kind":"1","content":"hi","tags":[],"created_at":1700000000}"""))
+        assertNull("float kind", signEvent("""{"kind":1.5,"content":"hi","tags":[],"created_at":1700000000}"""))
+        assertNull("null kind", signEvent("""{"kind":null,"content":"hi","tags":[],"created_at":1700000000}"""))
+        assertNotNull("kind 0 itself still signs", signEvent(event(0)))
     }
 
     private fun eventId(event: JSONObject): String {

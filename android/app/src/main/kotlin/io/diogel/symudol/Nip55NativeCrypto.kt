@@ -101,7 +101,8 @@ object Nip55NativeCrypto {
             }
 
             val createdAt = if (event.has("created_at")) event.getLong("created_at") else (System.currentTimeMillis() / 1000L)
-            val kind = event.optInt("kind", 0)
+            // No integer kind, no signature: never defaulted to kind 0 (#10).
+            val kind = Nip55RequestCodec.integerKind(eventJson) ?: return null
             val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
             val content = event.optString("content", "")
             // Use the (possibly injected) pubkey from the event object
