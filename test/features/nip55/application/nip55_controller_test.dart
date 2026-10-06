@@ -1782,6 +1782,23 @@ void main() {
       },
     );
 
+    test('a request held for unlock asks to unlock Symudol (#38)', () async {
+      final activePubkey = vaultController.state.activeIdentity!.publicKey;
+      await vaultController.lock();
+
+      await controller.handleRawIntent({
+        'requestToken': 'token-unlock-wording',
+        'type': 'sign_message',
+        'content': 'hello',
+        'currentUser': activePubkey,
+      });
+
+      // The wording and the check that recognises it share one prefix.
+      expect(controller.state.failure?.message, startsWith('Unlock Symudol'));
+      expect(controller.state.isWaitingForUnlock, isTrue);
+      expect(gateway.rejectedError, isNull);
+    });
+
     test('locked vault keeps request pending until unlock', () async {
       final activePubkey = vaultController.state.activeIdentity!.publicKey;
       await vaultController.lock();

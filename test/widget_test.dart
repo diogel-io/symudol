@@ -5,7 +5,7 @@ import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'fakes/fake_vault_store.dart';
 
 void main() {
-  testWidgets('app smoke test renders Android Diogel setup screen', (
+  testWidgets('app smoke test renders the Symudol setup screen', (
     WidgetTester tester,
   ) async {
     final fakeStore = FakeVaultStore();
@@ -24,7 +24,7 @@ void main() {
     // we need to wait for the microtasks to complete.
     await tester.pumpAndSettle();
 
-    expect(find.text('Diogel'), findsOneWidget);
+    expect(find.text('Symudol'), findsOneWidget);
     expect(find.text('Local Access PIN'), findsOneWidget);
     expect(find.text('Create a security PIN'), findsOneWidget);
   });

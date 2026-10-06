@@ -96,13 +96,13 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
               children: [
                 const SizedBox(height: DiogelSpacing.space12),
                 Image.asset(
-                  'assets/images/diogel.png',
+                  'assets/images/symudol.png',
                   width: 64,
                   height: 64,
                 ),
                 const SizedBox(height: DiogelSpacing.space6),
                 Text(
-                  'Diogel',
+                  'Symudol',
                   style: Theme.of(context).textTheme.headlineLarge,
                 ),
 
@@ -148,7 +148,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
           _buildInfoItem(
             Icons.lock_outline,
             'Local Access PIN',
-            'Create a local access PIN for Diogel.',
+            'Create a local access PIN for Symudol.',
           ),
         ],
       ),

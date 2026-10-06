@@ -62,13 +62,13 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
         title: Row(
           children: [
             Image.asset(
-              'assets/images/diogel.png',
+              'assets/images/symudol.png',
               width: 28,
               height: 28,
             ),
             const SizedBox(width: DiogelSpacing.space3),
             Text(
-              'Diogel',
+              'Symudol',
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ],
@@ -106,7 +106,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(DiogelSpacing.space6),
                       child: Image.asset(
-                        'assets/images/diogel.png',
+                        'assets/images/symudol.png',
                       ),
                     ),
                   ),

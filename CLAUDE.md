@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Android Diogel is a privacy-first Nostr signer and identity-security companion app, built with Flutter (Android as primary target). It implements NIP-55 (Android Signer Application) so other Nostr clients can request key operations (get_public_key, sign_event, NIP-04/NIP-44 encrypt/decrypt) without ever seeing the private key.
+Symudol is a privacy-first Nostr signer and identity-security companion app, built with Flutter (Android as primary target). It implements NIP-55 (Android Signer Application) so other Nostr clients can request key operations (get_public_key, sign_event, NIP-04/NIP-44 encrypt/decrypt) without ever seeing the private key.
 
 The core trust model: keep signing material on-device, make every approval explicit, support multiple identities, and avoid scope creep beyond a serious signer. Prefer small bounded changes over large rewrites — see `README.md` for full product framing.
 

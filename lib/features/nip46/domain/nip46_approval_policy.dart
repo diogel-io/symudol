@@ -40,7 +40,7 @@ class Nip46ApprovalPolicy {
   }) {
     if (vaultState is! VaultUnlocked || activeIdentityPubkey == null) {
       return const Nip46RequireUnlock(
-        'Unlock Diogel and select an identity before handling this NIP-46 request.',
+        'Unlock Symudol and select an identity before handling this NIP-46 request.',
       );
     }
 

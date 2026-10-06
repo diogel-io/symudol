@@ -91,7 +91,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     final nativeSync = ref.read(nip55NativeSyncProvider);
 
     // A NIP-55 approval flow intentionally bounces between another app,
-    // Diogel's bridge Activity, and Flutter. Treat that as active work, not
+    // Symudol's bridge Activity, and Flutter. Treat that as active work, not
     // ordinary backgrounding, otherwise an "immediate" background-lock setting
     // can lock the vault halfway through a signing request. The deferral is
     // bounded: a review times out, and once the request settles the lock is
@@ -235,7 +235,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       onPointerDown: (_) => _resetInactivityTimer(),
       onPointerMove: (_) => _resetInactivityTimer(),
       child: MaterialApp(
-        title: 'Diogel',
+        title: 'Symudol',
         theme: DiogelTheme.darkTheme,
         home: isLoading && vaultState is NoVault
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))

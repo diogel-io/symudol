@@ -59,12 +59,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         title: Row(
           children: [
             Image.asset(
-              'assets/images/diogel.png',
+              'assets/images/symudol.png',
               width: 28,
               height: 28,
             ),
             const SizedBox(width: DiogelSpacing.space3),
-            Text('Diogel', style: Theme.of(context).textTheme.titleLarge),
+            Text('Symudol', style: Theme.of(context).textTheme.titleLarge),
           ],
         ),
         actions: [

@@ -140,7 +140,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    expect(find.text('Diogel'), findsOneWidget);
+    expect(find.text('Symudol'), findsOneWidget);
 
     for (var i = 1; i <= 6; i++) {
       await tester.tap(find.text('$i'));

@@ -2,6 +2,7 @@ import 'package:symudol/features/vault/domain/vault_state.dart';
 
 import 'nip55_client.dart';
 import 'nip55_client_permission.dart';
+import 'nip55_failure.dart';
 import 'nip55_incoming_request.dart';
 import 'nip55_method.dart';
 import 'nip55_permission_decision.dart';
@@ -48,14 +49,14 @@ class Nip55ApprovalPolicy {
   }) {
     if (vaultState is! VaultUnlocked || activeIdentityPubkey == null) {
       return const RequireUnlock(
-        'Unlock Diogel and select an identity before handling this NIP-55 request.',
+        '$nip55UnlockMessagePrefix and select an identity before handling this NIP-55 request.',
       );
     }
 
     final requestedUser = request.currentUser;
     if (requestedUser != null && requestedUser != activeIdentityPubkey) {
       return const RequireReview(
-        'Requested current_user does not match the active Diogel identity.',
+        'Requested current_user does not match the active Symudol identity.',
         canRemember: false,
       );
     }
@@ -64,7 +65,7 @@ class Nip55ApprovalPolicy {
       final eventPubkey = request.eventJson?['pubkey'];
       if (eventPubkey != null && eventPubkey != activeIdentityPubkey) {
         return const RequireReview(
-          'Requested event pubkey does not match the active Diogel identity.',
+          'Requested event pubkey does not match the active Symudol identity.',
           canRemember: false,
         );
       }

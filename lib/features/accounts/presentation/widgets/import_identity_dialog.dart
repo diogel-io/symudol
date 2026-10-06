@@ -136,7 +136,7 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
             ),
             const SizedBox(height: DiogelSpacing.space4),
             const Text(
-              'Your key will be stored locally using the device platform secure-storage backend. Diogel never syncs or uploads it.',
+              'Your key will be stored locally using the device platform secure-storage backend. Symudol never syncs or uploads it.',
               textAlign: TextAlign.center,
             ),
           ],

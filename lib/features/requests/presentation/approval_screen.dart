@@ -683,7 +683,7 @@ class _SignedEventBanner extends StatelessWidget {
                 const SizedBox(height: DiogelSpacing.space1),
                 const Text(
                   'The event was signed locally with your selected identity. '
-                  'It has not been published by Diogel.',
+                  'It has not been published by Symudol.',
                   style: TextStyle(fontSize: 12),
                 ),
                 const SizedBox(height: DiogelSpacing.space2),

@@ -74,7 +74,7 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.timer_outlined,
             title: 'In-app inactivity timeout',
             subtitle:
-                'Locks when you stop using Diogel while it is open: '
+                'Locks when you stop using Symudol while it is open: '
                 '${formatInactivityTimeout(timeoutMinutes)}',
             onTap: () async {
               final newValue = await showDialog<int>(
@@ -103,7 +103,7 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.phonelink_lock_outlined,
             title: 'Background lock delay',
             subtitle:
-                'Locks after Diogel is sent to the background: '
+                'Locks after Symudol is sent to the background: '
                 '${formatBackgroundLockDelay(backgroundLockDelayMinutes)}',
             onTap: () async {
               final newValue = await showDialog<int>(
