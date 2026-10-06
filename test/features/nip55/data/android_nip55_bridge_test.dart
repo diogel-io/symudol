@@ -75,7 +75,7 @@ void main() {
     expect(app, contains('hasPendingExternalRequest'));
     expect(
       app,
-      contains('Skipping background lock while NIP-55 request is active'),
+      contains('Deferring background lock while NIP-55 request is active'),
     );
   });
 

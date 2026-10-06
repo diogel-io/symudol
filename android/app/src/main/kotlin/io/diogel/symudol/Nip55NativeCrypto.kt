@@ -36,28 +36,28 @@ object Nip55NativeCrypto {
 
     // ── NIP-44 v2 ────────────────────────────────────────────────────────
 
-    fun nip44Encrypt(privateKeyHex: String, peerPubkeyHex: String, plaintext: String): String {
-        val conversationKey = nip44ConversationKey(privateKeyHex, peerPubkeyHex)
+    fun nip44Encrypt(privateKey: ByteArray, peerPubkeyHex: String, plaintext: String): String {
+        val conversationKey = nip44ConversationKey(privateKey, peerPubkeyHex)
         return nip44EncryptWithConversationKey(conversationKey, plaintext)
     }
 
-    fun nip44Decrypt(privateKeyHex: String, peerPubkeyHex: String, ciphertext: String): String {
-        val conversationKey = nip44ConversationKey(privateKeyHex, peerPubkeyHex)
+    fun nip44Decrypt(privateKey: ByteArray, peerPubkeyHex: String, ciphertext: String): String {
+        val conversationKey = nip44ConversationKey(privateKey, peerPubkeyHex)
         return nip44DecryptWithConversationKey(conversationKey, ciphertext)
     }
 
     // ── NIP-04 ────────────────────────────────────────────────────────────
 
-    fun nip04Encrypt(privateKeyHex: String, peerPubkeyHex: String, plaintext: String): String {
-        val sharedX = ecdhSharedSecretX(privateKeyHex, peerPubkeyHex)
+    fun nip04Encrypt(privateKey: ByteArray, peerPubkeyHex: String, plaintext: String): String {
+        val sharedX = ecdhSharedSecretX(privateKey, peerPubkeyHex)
         val iv = ByteArray(16).also { secureRandom.nextBytes(it) }
         val encrypted = aes256CbcEncrypt(sharedX, iv, plaintext.toByteArray(Charsets.UTF_8))
         return android.util.Base64.encodeToString(encrypted, android.util.Base64.NO_WRAP) +
             "?iv=" + android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP)
     }
 
-    fun nip04Decrypt(privateKeyHex: String, peerPubkeyHex: String, ciphertext: String): String {
-        val sharedX = ecdhSharedSecretX(privateKeyHex, peerPubkeyHex)
+    fun nip04Decrypt(privateKey: ByteArray, peerPubkeyHex: String, ciphertext: String): String {
+        val sharedX = ecdhSharedSecretX(privateKey, peerPubkeyHex)
         val parts = ciphertext.split("?iv=", limit = 2)
         if (parts.size != 2) throw IllegalArgumentException("Malformed NIP-04 ciphertext: missing ?iv=")
         val encrypted = android.util.Base64.decode(parts[0], android.util.Base64.NO_WRAP)
@@ -74,14 +74,14 @@ object Nip55NativeCrypto {
      * to prevent signing events with a mismatched pubkey (which would produce
      * an invalid event: ID for one pubkey, signature from another key).
      *
-     * @param privateKeyHex The active identity's private key
+     * @param privateKey The active identity's 32-byte private key
      * @param eventJson The event JSON (must have pubkey matching the private key)
      * @param activeIdentityPubkey The expected active identity pubkey (hex, 64 chars)
      * @return SignEventResult or null if pubkey mismatch / error
      */
     data class SignEventResult(val signature: String, val eventJson: String)
 
-    fun signEvent(privateKeyHex: String, eventJson: String, activeIdentityPubkey: String): SignEventResult? {
+    fun signEvent(privateKey: ByteArray, eventJson: String, activeIdentityPubkey: String): SignEventResult? {
         return try {
             val event = JSONObject(eventJson)
             val eventPubkey = event.optString("pubkey", "")
@@ -110,7 +110,7 @@ object Nip55NativeCrypto {
             val serialized = serializeEvent(finalPubkey, createdAt, kind, tags, content)
             val id = sha256Hex(serialized.toByteArray(Charsets.UTF_8))
 
-            val sig = schnorrSign(privateKeyHex, id)
+            val sig = schnorrSign(privateKey, id)
 
             // Build signed event strictly from the canonical components used for id
             // computation. Re-using the original eventJson would risk including extra
@@ -152,10 +152,10 @@ object Nip55NativeCrypto {
     }
 
     /** Signs sha256([message]); refuses an event serialisation (#8). */
-    fun signMessage(privateKeyHex: String, message: String): String {
+    fun signMessage(privateKey: ByteArray, message: String): String {
         require(!isNostrEventSerialisation(message)) { "Refused: the message is a Nostr event serialisation" }
         val messageHash = sha256Hex(message.toByteArray(Charsets.UTF_8))
-        return schnorrSign(privateKeyHex, messageHash)
+        return schnorrSign(privateKey, messageHash)
     }
 
     // ── Decrypt zap event (NIP-57) ────────────────────────────────────────
@@ -169,7 +169,7 @@ object Nip55NativeCrypto {
      *
      * Returns the decrypted content string, or null on failure.
      */
-    fun decryptZapEvent(privateKeyHex: String, eventJson: String): String? {
+    fun decryptZapEvent(privateKey: ByteArray, eventJson: String): String? {
         return try {
             val event = JSONObject(eventJson)
             val content = event.optString("content", "")
@@ -191,7 +191,7 @@ object Nip55NativeCrypto {
             }
             if (peerPubkey == null) return null
 
-            nip04Decrypt(privateKeyHex, peerPubkey, content)
+            nip04Decrypt(privateKey, peerPubkey, content)
         } catch (e: Exception) {
             Log.e(TAG, "decryptZapEvent failed", e)
             null
@@ -200,8 +200,7 @@ object Nip55NativeCrypto {
 
     // ── ECDH shared secret ───────────────────────────────────────────────
 
-    private fun ecdhSharedSecretX(privateKeyHex: String, peerPubkeyHex: String): ByteArray {
-        val privateKey = hexToBytes(privateKeyHex)
+    private fun ecdhSharedSecretX(privateKey: ByteArray, peerPubkeyHex: String): ByteArray {
         val peerPubkey = Secp256k1.pointFromHex(peerPubkeyHex)
             ?: throw IllegalArgumentException("Invalid peer pubkey")
         val sharedPoint = Secp256k1.multiply(peerPubkey, privateKey)
@@ -211,8 +210,8 @@ object Nip55NativeCrypto {
 
     // ── NIP-44 v2 internals (matches nostr-tools / Dart implementation) ──
 
-    private fun nip44ConversationKey(privateKeyHex: String, peerPubkeyHex: String): ByteArray {
-        val sharedX = ecdhSharedSecretX(privateKeyHex, peerPubkeyHex)
+    private fun nip44ConversationKey(privateKey: ByteArray, peerPubkeyHex: String): ByteArray {
+        val sharedX = ecdhSharedSecretX(privateKey, peerPubkeyHex)
         // conversation_key = HKDF-Extract(salt="nip44-v2", ikm=sharedX)
         return hkdfExtract("nip44-v2".toByteArray(Charsets.UTF_8), sharedX)
     }
@@ -356,8 +355,9 @@ object Nip55NativeCrypto {
 
     // ── Schnorr signing (BIP-340 with tagged hashes) ──────────────────────
 
-    private fun schnorrSign(privateKeyHex: String, messageHashHex: String): String {
-        val d = BigInteger(1, hexToBytes(privateKeyHex))
+    private fun schnorrSign(privateKey: ByteArray, messageHashHex: String): String {
+        // BigIntegers are immutable: d and its derivatives can't be wiped, only dropped.
+        val d = BigInteger(1, privateKey)
         val msgHash = hexToBytes(messageHashHex)
 
         // BIP-340: P = d·G, determine if we need to negate d
@@ -384,6 +384,9 @@ object Nip55NativeCrypto {
         // rand = tagged_hash("BIP340/nonce", xored || P.x || m)
         val randInput = xored + bigIntTo32Bytes(px) + msgHash
         val rand = taggedHash("BIP0340/nonce", randInput)
+        dPrime.fill(0)
+        xored.fill(0)
+        randInput.fill(0)
 
         // k = rand mod n, fail if k is zero
         val k = BigInteger(1, rand).mod(Secp256k1.n)

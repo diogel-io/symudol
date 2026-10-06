@@ -7,6 +7,8 @@ import android.content.pm.SigningInfo
 import android.database.Cursor
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -18,6 +20,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import java.math.BigInteger
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /**
@@ -27,7 +30,7 @@ import java.security.MessageDigest
 @RunWith(RobolectricTestRunner::class)
 class Nip55ContentProviderTest {
     // The well-known secp256k1 test keypair (also used by Nip55NativeCryptoTest).
-    private val privKey = "0000000000000000000000000000000000000000000000000000000000000001"
+    private val privKey = ByteArray(32).also { it[31] = 1 }
     private val pubKey = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
     private val client = "com.example.client"
     private val clientSignature = Signature("cafebabe")
@@ -51,13 +54,18 @@ class Nip55ContentProviderTest {
         provider = Robolectric.setupContentProvider(Nip55ContentProvider::class.java, "$appId.SIGN_EVENT")
         shadowOf(provider).setCallingPackage(client)
         Nip55PermissionMirror(context).setActiveIdentityPubkey(pubKey)
+        Nip55CryptoBridge.clock = { now }
         Nip55CryptoBridge.setActiveKey(privKey, pubKey, "local-1")
         grants()
     }
 
+    private var now = 1_000_000L
+
     @After
     fun tearDown() {
+        Nip55ProviderBridge.detach(flutterChannel)
         Nip55CryptoBridge.clearActiveKey()
+        Nip55CryptoBridge.clock = { android.os.SystemClock.elapsedRealtime() }
         Nip55PermissionMirror(context).clearAll()
     }
 
@@ -190,6 +198,65 @@ class Nip55ContentProviderTest {
         val signature = signMessage("hello")!!.only("result")!!
 
         assertTrue("the signature verifies", Schnorr.verify(signature, sha256Hex("hello"), pubKey))
+    }
+
+    // ── How long the key lives (#9) ────────────────────────────────────────
+
+    /** Records what is sent to Flutter, standing in for the engine's channel. */
+    private val sentToFlutter = mutableListOf<String>()
+    private val flutterChannel = MethodChannel(object : BinaryMessenger {
+        override fun send(channel: String, message: ByteBuffer?) { sentToFlutter += channel }
+        override fun send(channel: String, message: ByteBuffer?, callback: BinaryMessenger.BinaryReply?) {
+            sentToFlutter += channel
+        }
+        override fun setMessageHandler(channel: String, handler: BinaryMessenger.BinaryMessageHandler?) {}
+    }, "io.diogel.symudol/nip55")
+
+    @Test
+    fun aRememberedKindIsNotSignedOnceTheKeyIsCleared() {
+        grants(grant("sign_event", kind = 1))
+        Nip55ProviderBridge.attach(flutterChannel)
+        Nip55CryptoBridge.clearActiveKey()
+
+        assertNull(signEvent(event(1)))
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue("nothing is passed on to Flutter to sign", sentToFlutter.isEmpty())
+    }
+
+    @Test
+    fun aRememberedKindIsSignedBeforeTheLockDeadline() {
+        grants(grant("sign_event", kind = 1))
+        Nip55CryptoBridge.setLockDeadline(60_000)
+
+        now += 59_999
+
+        assertNotNull(signEvent(event(1))!!.only("signature"))
+    }
+
+    @Test
+    fun nothingIsSignedOnceTheLockDeadlineHasPassed() {
+        grants(grant("sign_event", kind = 1), grant("sign_message"))
+        Nip55ProviderBridge.attach(flutterChannel)
+        Nip55CryptoBridge.setLockDeadline(60_000)
+
+        now += 60_000
+
+        assertNull(signEvent(event(1)))
+        assertNull(signMessage("hello"))
+        assertFalse("the key is gone", Nip55CryptoBridge.hasActiveKey)
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue("nothing is passed on to Flutter to sign", sentToFlutter.isEmpty())
+    }
+
+    @Test
+    fun returningToTheForegroundRemovesTheDeadline() {
+        grants(grant("sign_event", kind = 1))
+        Nip55CryptoBridge.setLockDeadline(60_000)
+        Nip55CryptoBridge.clearLockDeadline()
+
+        now += 120_000
+
+        assertNotNull(signEvent(event(1)))
     }
 
     // ── Current behaviour that other tickets change ────────────────────────

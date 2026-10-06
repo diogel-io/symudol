@@ -42,14 +42,41 @@ class Nip55NativeMirrorSync {
     required String publicKey,
     required String localId,
   }) async {
+    // Sent as raw bytes, which arrive as a byte[] the native side can zero,
+    // never as a JVM String (#9).
+    final keyBytes = hexToKeyBytes(privateKey);
     try {
       await _channel.invokeMethod<void>('setNip55ActiveKey', {
-        'privateKey': privateKey,
+        'privateKey': keyBytes,
         'publicKey': publicKey,
         'localId': localId,
       });
     } catch (e) {
       dev.log('Nip55NativeMirrorSync: failed to set active key: $e', name: 'Diogel');
+    } finally {
+      keyBytes.fillRange(0, keyBytes.length, 0);
+    }
+  }
+
+  /// Have the native side clear the key after [delay], unless
+  /// [clearLockDeadline] is called first. Holds without the Flutter engine.
+  Future<void> setLockDeadline(Duration delay) async {
+    try {
+      await _channel.invokeMethod<void>(
+        'setNip55LockDeadline',
+        delay.inMilliseconds,
+      );
+    } catch (e) {
+      dev.log('Nip55NativeMirrorSync: failed to set lock deadline: $e', name: 'Diogel');
+    }
+  }
+
+  /// The app is in the foreground again: the native key has no deadline.
+  Future<void> clearLockDeadline() async {
+    try {
+      await _channel.invokeMethod<void>('clearNip55LockDeadline');
+    } catch (e) {
+      dev.log('Nip55NativeMirrorSync: failed to clear lock deadline: $e', name: 'Diogel');
     }
   }
 
@@ -62,4 +89,17 @@ class Nip55NativeMirrorSync {
       dev.log('Nip55NativeMirrorSync: failed to clear active key: $e', name: 'Diogel');
     }
   }
+}
+
+/// The 32 bytes of a 64-character hex private key.
+@visibleForTesting
+Uint8List hexToKeyBytes(String hex) {
+  if (hex.length != 64) {
+    throw ArgumentError('A private key is 64 hex characters');
+  }
+  final bytes = Uint8List(32);
+  for (var i = 0; i < 32; i++) {
+    bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+  }
+  return bytes;
 }

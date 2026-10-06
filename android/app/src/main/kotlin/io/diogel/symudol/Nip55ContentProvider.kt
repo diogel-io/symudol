@@ -128,6 +128,12 @@ class Nip55ContentProvider : ContentProvider() {
                 Log.d(TAG, "query: remembered allow for $callerPackage/$method — performing native crypto")
                 val nativeResult = performNativeCrypto(method, projection, activePubkey)
                 if (nativeResult != null) return nativeResult
+                // No key (locked, cleared or past the lock deadline): no signature, and not
+                // via the Flutter bridge either (#9). The client falls back to the intent.
+                if (method != "get_public_key" && !Nip55CryptoBridge.hasActiveKey) {
+                    Log.d(TAG, "query: no active key for $method; not answering in the background")
+                    return null
+                }
                 // Native crypto not available for this method — fall through to bridge
                 nativeCryptoFellThrough = true
                 Log.d(TAG, "query: native crypto unavailable for $method, falling through to Flutter bridge")
@@ -203,12 +209,21 @@ class Nip55ContentProvider : ContentProvider() {
         projection: Array<out String>?,
         activePubkey: String,
     ): Cursor? {
-        val privateKey = Nip55CryptoBridge.activePrivateKey
-        if (privateKey == null) {
-            Log.w(TAG, "performNativeCrypto: no active private key, falling back to bridge")
-            return null
+        val cursor = Nip55CryptoBridge.withActiveKey { privateKey ->
+            nativeCryptoWithKey(method, projection, activePubkey, privateKey)
         }
+        if (cursor == null && !Nip55CryptoBridge.hasActiveKey) {
+            Log.w(TAG, "performNativeCrypto: no active private key")
+        }
+        return cursor
+    }
 
+    private fun nativeCryptoWithKey(
+        method: String,
+        projection: Array<out String>?,
+        activePubkey: String,
+        privateKey: ByteArray,
+    ): Cursor? {
         return try {
             when (method) {
                 "get_public_key" -> {

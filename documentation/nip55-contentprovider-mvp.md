@@ -40,6 +40,28 @@ There is no separate code path for ContentProvider crypto. The only difference
 from the foreground path is that the ContentProvider skips the approval UI — it
 only auto-executes requests already covered by a remembered allow grant.
 
+## How Long the Native Key Lives
+
+The ContentProvider can only answer while `Nip55CryptoBridge` holds the key
+(diogel-io/symudol#9):
+
+- The key is sent from Dart as raw bytes and held as a `ByteArray`, which is
+  zeroed when cleared. It is never a JVM `String`.
+- It is cleared when the vault locks, when `MainActivity` is destroyed (the
+  Flutter engine, and its lock timers, go with it), and when the app detaches.
+- When the app goes to the background, Dart gives the native side a lock
+  deadline: the background-lock delay, or, while a NIP-55 review is pending,
+  the review's remaining time plus that delay. A main-looper timer clears the
+  key at the deadline, and every read checks it, so it holds without the
+  Flutter engine. Returning to the foreground removes the deadline.
+- A pending review is rejected after 5 minutes. The background lock is
+  deferred while a request is pending and applies once it settles.
+- With no key, a remembered request gets `null` (the client falls back to the
+  intent). It is not passed on to the Flutter bridge.
+
+The Dart vault's own copy of the key, and the `BigInteger`s used during
+signing, can't be zeroed; this bounds the native copy only.
+
 ## Projection Shape Validation
 
 **Projection shape validation** is enforced before bridging to Flutter. The
