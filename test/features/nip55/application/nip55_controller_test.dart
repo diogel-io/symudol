@@ -2,25 +2,25 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/nip55/application/nip55_controller.dart';
-import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_approval_timeframe.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_incoming_request.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_intent_parser.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
-import 'package:android_diogel/features/requests/application/request_controller.dart';
-import 'package:android_diogel/features/requests/application/request_providers.dart';
-import 'package:android_diogel/features/requests/data/real_signer_service.dart';
-import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
-import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/nip55/application/nip55_controller.dart';
+import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
+import 'package:symudol/features/nip55/domain/nip55_intent_parser.dart';
+import 'package:symudol/features/nip55/domain/nip55_method.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
+import 'package:symudol/features/requests/application/request_controller.dart';
+import 'package:symudol/features/requests/application/request_providers.dart';
+import 'package:symudol/features/requests/data/real_signer_service.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:symudol/features/signing/domain/nostr_event_serialisation.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1781,6 +1781,23 @@ void main() {
         expect(result, {'rejected': refusedEventSerialisationMessage});
       },
     );
+
+    test('a request held for unlock asks to unlock Symudol (#38)', () async {
+      final activePubkey = vaultController.state.activeIdentity!.publicKey;
+      await vaultController.lock();
+
+      await controller.handleRawIntent({
+        'requestToken': 'token-unlock-wording',
+        'type': 'sign_message',
+        'content': 'hello',
+        'currentUser': activePubkey,
+      });
+
+      // The wording and the check that recognises it share one prefix.
+      expect(controller.state.failure?.message, startsWith('Unlock Symudol'));
+      expect(controller.state.isWaitingForUnlock, isTrue);
+      expect(gateway.rejectedError, isNull);
+    });
 
     test('locked vault keeps request pending until unlock', () async {
       final activePubkey = vaultController.state.activeIdentity!.publicKey;

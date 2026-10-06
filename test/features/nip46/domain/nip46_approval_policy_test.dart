@@ -1,8 +1,8 @@
-import 'package:android_diogel/features/nip46/domain/nip46_approval_policy.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_method.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_permission_scope.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_session.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/nip46/domain/nip46_approval_policy.dart';
+import 'package:symudol/features/nip46/domain/nip46_method.dart';
+import 'package:symudol/features/nip46/domain/nip46_permission_scope.dart';
+import 'package:symudol/features/nip46/domain/nip46_session.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

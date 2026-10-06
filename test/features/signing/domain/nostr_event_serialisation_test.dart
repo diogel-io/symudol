@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
+import 'package:symudol/features/signing/domain/nostr_event_serialisation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

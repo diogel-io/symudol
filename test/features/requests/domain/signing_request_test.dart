@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/request_provenance.dart';
-import 'package:android_diogel/features/requests/domain/request_trust_status.dart';
-import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/request_provenance.dart';
+import 'package:symudol/features/requests/domain/request_trust_status.dart';
+import 'package:symudol/features/requests/domain/signing_action_type.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
 
 void main() {
   group('SigningRequest', () {

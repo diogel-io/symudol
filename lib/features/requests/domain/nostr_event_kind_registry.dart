@@ -1,4 +1,4 @@
-// Source-controlled event-kind registry for Diogel.
+// Source-controlled event-kind registry for Symudol.
 //
 // Curated entries carry hand-reviewed security copy. Neutral entries carry a
 // protocol label and a generic risk note so valid Nostr kinds never display
@@ -67,7 +67,7 @@ String fallbackRiskNote(int kind) {
   if (kind >= 30000 && kind < 40000) {
     return 'This is an addressable event identified by kind, pubkey, and d tag. Signing it can create or replace stored state. Review the d tag and requesting app before signing.';
   }
-  return "This kind is not yet in Diogel's event-kind registry. Review the requesting app, content, and tags before signing.";
+  return "This kind is not yet in Symudol's event-kind registry. Review the requesting app, content, and tags before signing.";
 }
 
 const _registry = <int, EventKindEntry>{

@@ -1,16 +1,16 @@
 import 'dart:async';
 import 'dart:developer' as dev;
-import 'package:android_diogel/app/utils/concurrency_utils.dart';
-import 'package:android_diogel/features/requests/application/request_controller.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/signing/domain/nostr_event_serialisation.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
-import 'package:android_diogel/features/vault/domain/vault_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/requests/application/request_controller.dart';
+import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/signing/domain/nostr_event_serialisation.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_service.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 import '../data/nip55_native_mirror_sync.dart';
@@ -290,7 +290,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       }
       await _gateway.rejectNip55Intent(
         requestToken: busyRequest.requestToken,
-        error: 'Diogel is already reviewing another NIP-55 request',
+        error: 'Symudol is already reviewing another NIP-55 request',
       );
       return;
     }
@@ -484,12 +484,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         isLoading: false,
         pendingIncoming: incoming,
         failure: const Nip55Failure(
-          'Unlock Diogel and select an identity before sharing a public key.',
+          '$nip55UnlockMessagePrefix and select an identity before sharing a public key.',
         ),
       );
       _startPendingUnlockTimer(incoming);
       throw const Nip55Failure(
-        'Unlock Diogel and select an identity before sharing a public key.',
+        '$nip55UnlockMessagePrefix and select an identity before sharing a public key.',
       );
     }
     if (activeIdentity == null) {
@@ -552,12 +552,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         isLoading: false,
         pendingIncoming: incoming,
         failure: const Nip55Failure(
-          'Unlock Diogel and select an identity before signing.',
+          '$nip55UnlockMessagePrefix and select an identity before signing.',
         ),
       );
       _startPendingUnlockTimer(incoming);
       throw const Nip55Failure(
-        'Unlock Diogel and select an identity before signing.',
+        '$nip55UnlockMessagePrefix and select an identity before signing.',
       );
     }
     if (activeIdentity == null) {
@@ -614,12 +614,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         isLoading: false,
         pendingIncoming: incoming,
         failure: Nip55Failure(
-          'Unlock Diogel and select an identity before ${incoming.method.wireName}.',
+          '$nip55UnlockMessagePrefix and select an identity before ${incoming.method.wireName}.',
         ),
       );
       _startPendingUnlockTimer(incoming);
       throw Nip55Failure(
-        'Unlock Diogel and select an identity before ${incoming.method.wireName}.',
+        '$nip55UnlockMessagePrefix and select an identity before ${incoming.method.wireName}.',
       );
     }
     if (activeIdentity == null) {
@@ -1279,7 +1279,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }
 
   bool _isWaitingForUnlockFailure(Nip55Failure error) {
-    return error.message.startsWith('Unlock Diogel');
+    return error.message.startsWith(nip55UnlockMessagePrefix);
   }
 
   String _completionMessageFor(Nip55IncomingRequest incoming) {

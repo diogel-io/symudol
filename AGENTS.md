@@ -1,6 +1,6 @@
-# Development Guidelines - Android Diogel
+# Development Guidelines - Symudol
 
-This document provides project-specific information for advanced developers working on the Android Diogel project.
+This document provides project-specific information for advanced developers working on the Symudol project.
 
 ## Build and Configuration
 
@@ -39,7 +39,7 @@ When adding new features, follow the existing pattern of creating a correspondin
 A simple unit test for `VaultIdentity`:
 ```dart
 import 'package:flutter_test/flutter_test.dart';
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
 
 void main() {
   test('VaultIdentity equality is based on publicKey', () {
@@ -99,49 +99,49 @@ The list of relevant NIPs:
 1.  Intents and intent filters
    - https://developer.android.com/guide/components/intents-filters
    - Key point: Android Intent is the normal message object for asking another app/component to do something.
-   - Relevant to Diogel:
+   - Relevant to Symudol:
    - `nostrsigner`: is a custom URI scheme handled through an `ACTION_VIEW` intent.
-   - Client App launches Diogel by intent.
-   - Diogel returns data via activity result / result extras.
+   - Client App launches Symudol by intent.
+   - Symudol returns data via activity result / result extras.
 2. Get a result from an activity
    - https://developer.android.com/training/basics/intents/result
    - Key point: modern Android result flow uses registerForActivityResult / ActivityResultContracts.StartActivityForResult.
-   - Relevant to Diogel:
+   - Relevant to Symudol:
    - This is the proper client-side model for “launch signer UI, wait for result”.
 3. Deep links / custom URI schemes
    - https://developer.android.com/training/app-links/create-deeplinks
    - Key point: custom URI handling requires an intent filter with ACTION_VIEW, DEFAULT, usually BROWSABLE, and <data android:scheme="...">.
-   - Relevant to Diogel:
-   - Diogel’s nostrsigner intent filter is exactly this kind of deep-link/custom-scheme entry point.
+   - Relevant to Symudol:
+   - Symudol’s nostrsigner intent filter is exactly this kind of deep-link/custom-scheme entry point.
 4. Content provider basics
    - https://developer.android.com/guide/topics/providers/content-provider-basics
    - Key point: clients call ContentResolver.query(...); Android dispatches that IPC call to the matching app’s ContentProvider.query(...).
-   - Relevant to Diogel:
+   - Relevant to Symudol:
    - NIP-55 uses this for background/warm-session signing/encryption/decryption when permission is already remembered.
    - This avoids launching UI for every operation.
 5. ContentProvider API reference
    - https://developer.android.com/reference/android/content/ContentProvider
    - Key point: ContentProvider.getCallingPackage() identifies the package making the current provider call.
-   - Relevant to Diogel:
-   - Diogel should use caller package/certificate for permission decisions.
+   - Relevant to Symudol:
+   - Symudol should use caller package/certificate for permission decisions.
    - Provider calls are IPC; Android forwards calls across processes.
 6. <provider> manifest element
    - https://developer.android.com/guide/topics/manifest/provider-element
    - Key point: provider authorities are declared in the manifest.
-   - Relevant to Diogel:
+   - Relevant to Symudol:
    - io.diogel.symudol.SIGN_EVENT, ...GET_PUBLIC_KEY, ...PING, etc. are provider authorities.
-   - If an authority is missing or mismatched, ContentResolver.query(content://...) won’t reach Diogel.
+   - If an authority is missing or mismatched, ContentResolver.query(content://...) won’t reach Symudol.
 7. Package visibility filtering
    - https://developer.android.com/training/package-visibility
    - Key point: Android 11+ limits which other apps/packages a client can discover unless declared in <queries>.
-   - Relevant to Diogel/clients:
+   - Relevant to Symudol/clients:
    - NIP-55 clients need <queries> for nostrsigner if they want to detect installed signers with queryIntentActivities.
 8. Background activity launch restrictions
    - https://developer.android.com/guide/components/activities/background-starts
    - Key point: Android 10+ restricts apps starting activities from the background; Android 14/15 tightened this further.
    - Relevant to our logcat:
    - The Background activity launch blocked / `BAL_BLOCK` entries are explained by this.
-   - If Client App or Diogel tries to launch signer UI from an invalid background context, Android may block it, causing signer timeouts.
+   - If Client App or Symudol tries to launch signer UI from an invalid background context, Android may block it, causing signer timeouts.
 
 #### NIP-55-specific docs
 
@@ -160,7 +160,7 @@ The list of relevant NIPs:
    - Other crypto methods return result.
    - nostrsigner: intent = manual UI approval path.
    - `content://io.diogel.symudol.GET_PUBLIC_KEY` etc. = provider/warm-session path.
-   - ContentProvider.getCallingPackage() = how Diogel identifies the calling app.
+   - ContentProvider.getCallingPackage() = how Symudol identifies the calling app.
    - AndroidManifest.xml authorities = what clients can query.
    - BAL_BLOCK logs = Android refusing background UI launch.
    - Passing Flutter tests alone means little unless tests cover these exact IPC contracts.

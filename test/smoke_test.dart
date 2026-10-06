@@ -1,12 +1,12 @@
-import 'package:android_diogel/features/accounts/presentation/accounts_screen.dart';
-import 'package:android_diogel/features/accounts/presentation/widgets/identity_tile.dart';
-import 'package:android_diogel/features/accounts/presentation/widgets/import_identity_dialog.dart';
-import 'package:android_diogel/features/profile/application/profile_providers.dart';
-import 'package:android_diogel/features/unlock/presentation/unlock_vault_screen.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
-import 'package:android_diogel/features/vault/presentation/setup_vault_screen.dart';
+import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
+import 'package:symudol/features/accounts/presentation/widgets/identity_tile.dart';
+import 'package:symudol/features/accounts/presentation/widgets/import_identity_dialog.dart';
+import 'package:symudol/features/profile/application/profile_providers.dart';
+import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/presentation/setup_vault_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -39,7 +39,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(child: const SetupVaultScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Diogel'), findsOneWidget);
+      expect(find.text('Symudol'), findsOneWidget);
       expect(find.text('Local Access PIN'), findsOneWidget);
       expect(find.text('Create a security PIN'), findsOneWidget);
     });

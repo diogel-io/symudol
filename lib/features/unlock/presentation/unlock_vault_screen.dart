@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
+import 'package:symudol/features/nip55/application/nip55_providers.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
 import 'widgets/pin_button.dart';
 
@@ -62,13 +62,13 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
         title: Row(
           children: [
             Image.asset(
-              'assets/images/diogel.png',
+              'assets/images/symudol.png',
               width: 28,
               height: 28,
             ),
             const SizedBox(width: DiogelSpacing.space3),
             Text(
-              'Diogel',
+              'Symudol',
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ],
@@ -106,7 +106,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(DiogelSpacing.space6),
                       child: Image.asset(
-                        'assets/images/diogel.png',
+                        'assets/images/symudol.png',
                       ),
                     ),
                   ),

@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/nip55/application/nip55_request_mapper.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_failure.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_incoming_request.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
-import 'package:android_diogel/features/requests/domain/request_trust_status.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/nip55/application/nip55_request_mapper.dart';
+import 'package:symudol/features/nip55/domain/nip55_failure.dart';
+import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
+import 'package:symudol/features/nip55/domain/nip55_method.dart';
+import 'package:symudol/features/requests/domain/request_trust_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
-import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:bech32/bech32.dart' as bech32;
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">diogel</string>
+    <string name="app_name">Symudol</string>
     <string name="scheme_nostrsigner">nostrsigner</string>
 
     <!-- NIP-55 Intent Keys -->

@@ -1,12 +1,12 @@
-import 'package:android_diogel/features/requests/data/real_signer_service.dart';
-import 'package:android_diogel/features/requests/domain/request_failure.dart';
-import 'package:android_diogel/features/requests/domain/request_provenance.dart';
-import 'package:android_diogel/features/requests/domain/request_trust_status.dart';
-import 'package:android_diogel/features/requests/domain/signed_request_result.dart';
-import 'package:android_diogel/features/requests/domain/signing_action_type.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/requests/data/real_signer_service.dart';
+import 'package:symudol/features/requests/domain/request_failure.dart';
+import 'package:symudol/features/requests/domain/request_provenance.dart';
+import 'package:symudol/features/requests/domain/request_trust_status.dart';
+import 'package:symudol/features/requests/domain/signed_request_result.dart';
+import 'package:symudol/features/requests/domain/signing_action_type.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';

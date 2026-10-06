@@ -1,11 +1,11 @@
-import 'package:android_diogel/features/requests/domain/request_failure.dart';
-import 'package:android_diogel/features/requests/domain/request_state.dart';
-import 'package:android_diogel/features/requests/domain/signed_request_result.dart';
-import 'package:android_diogel/features/requests/domain/signer_service.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/requests/domain/signing_request_status.dart';
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/requests/domain/request_failure.dart';
+import 'package:symudol/features/requests/domain/request_state.dart';
+import 'package:symudol/features/requests/domain/signed_request_result.dart';
+import 'package:symudol/features/requests/domain/signer_service.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/signing_request_status.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 class RequestController extends StateNotifier<RequestState> {

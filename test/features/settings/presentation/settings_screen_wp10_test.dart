@@ -1,5 +1,5 @@
-import 'package:android_diogel/features/settings/presentation/settings_screen.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/settings/presentation/settings_screen.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

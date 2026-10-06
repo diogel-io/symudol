@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/nip46/data/dart_nip46_crypto.dart';
-import 'package:android_diogel/features/nip46/data/dart_nip46_relay_service.dart';
-import 'package:android_diogel/features/nip46/data/secure_storage_nip46_session_store.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_session_store.dart';
-import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
+import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
+import 'package:symudol/features/nip46/data/secure_storage_nip46_session_store.dart';
+import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 

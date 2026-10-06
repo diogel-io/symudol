@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/vault/application/vault_controller.dart';
-import 'package:android_diogel/features/vault/data/secure_storage_vault_store.dart';
-import 'package:android_diogel/features/vault/domain/vault_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import 'package:android_diogel/features/vault/domain/vault_store.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/data/secure_storage_vault_store.dart';
+import 'package:symudol/features/vault/domain/vault_service.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/domain/vault_store.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 

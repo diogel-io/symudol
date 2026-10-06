@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/nip46/data/nip46_token_codec.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_connection_token.dart';
+import 'package:symudol/features/nip46/data/nip46_token_codec.dart';
+import 'package:symudol/features/nip46/domain/nip46_connection_token.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

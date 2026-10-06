@@ -1,11 +1,11 @@
-import 'package:android_diogel/app/utils/concurrency_utils.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
-import 'package:android_diogel/features/requests/domain/request_failure.dart';
-import 'package:android_diogel/features/requests/domain/signed_request_result.dart';
-import 'package:android_diogel/features/requests/domain/signer_service.dart';
-import 'package:android_diogel/features/requests/domain/signing_request.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
-import 'package:android_diogel/features/vault/domain/vault_service.dart';
+import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
+import 'package:symudol/features/requests/domain/request_failure.dart';
+import 'package:symudol/features/requests/domain/signed_request_result.dart';
+import 'package:symudol/features/requests/domain/signer_service.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_service.dart';
 
 class RealSignerService implements SignerService {
   final VaultService _vaultService;

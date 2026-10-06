@@ -1,12 +1,12 @@
-# Android Diogel
+# Symudol
 
-Android Diogel is a privacy-first Android signer and identity-security companion for Nostr.
+Symudol is a privacy-first Android signer and identity-security companion for Nostr, part of the Diogel suite.
 
 Its purpose is simple: keep private keys on the phone, make signing requests understandable, and let users approve or reject actions with confidence.
 
 ## Application intent
 
-Android Diogel exists to reduce private-key exposure.
+Symudol exists to reduce private-key exposure.
 
 The application is built around a strict trust model:
 
@@ -16,7 +16,7 @@ The application is built around a strict trust model:
 - client trust and request provenance should be explicit, not guessed;
 - convenience must not silently weaken key safety.
 
-Android Diogel is not intended to be a full Nostr social client, a generic crypto wallet, or a bloated all-purpose app. It is intended to be a focused mobile signer that does a small number of security-critical jobs well.
+Symudol is not intended to be a full Nostr social client, a generic crypto wallet, or a bloated all-purpose app. It is intended to be a focused mobile signer that does a small number of security-critical jobs well.
 
 ## Requirements
 

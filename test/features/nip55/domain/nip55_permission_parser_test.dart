@@ -1,5 +1,5 @@
-import 'package:android_diogel/features/nip55/domain/nip55_permission_parser.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

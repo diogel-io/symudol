@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'fake_vault_store.dart';
 

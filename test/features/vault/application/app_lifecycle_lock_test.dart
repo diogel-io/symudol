@@ -1,17 +1,17 @@
 import 'dart:typed_data';
 
-import 'package:android_diogel/app/app.dart';
-import 'package:android_diogel/app/utils/concurrency_utils.dart';
-import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
-import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
-import 'package:android_diogel/features/nip55/data/nip55_native_mirror_sync.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
-import 'package:android_diogel/features/profile/application/profile_providers.dart';
-import 'package:android_diogel/features/profile/data/relay_profile_service.dart';
-import 'package:android_diogel/features/profile/domain/nostr_profile.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/app/app.dart';
+import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/nip55/application/nip55_providers.dart';
+import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
+import 'package:symudol/features/profile/application/profile_providers.dart';
+import 'package:symudol/features/profile/data/relay_profile_service.dart';
+import 'package:symudol/features/profile/domain/nostr_profile.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,7 +140,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    expect(find.text('Diogel'), findsOneWidget);
+    expect(find.text('Symudol'), findsOneWidget);
 
     for (var i = 1; i <= 6; i++) {
       await tester.tap(find.text('$i'));

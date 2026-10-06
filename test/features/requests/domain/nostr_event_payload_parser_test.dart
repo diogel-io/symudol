@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/requests/domain/nostr_event_payload_parser.dart';
+import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

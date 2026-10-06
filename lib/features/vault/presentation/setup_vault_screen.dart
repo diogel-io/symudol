@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
-import 'package:android_diogel/theme/tokens.dart';
-import 'package:android_diogel/features/vault/presentation/vault_failure_messages.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/theme/tokens.dart';
+import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../unlock/presentation/widgets/pin_button.dart';
 
 class SetupVaultScreen extends ConsumerStatefulWidget {
@@ -96,13 +96,13 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
               children: [
                 const SizedBox(height: DiogelSpacing.space12),
                 Image.asset(
-                  'assets/images/diogel.png',
+                  'assets/images/symudol.png',
                   width: 64,
                   height: 64,
                 ),
                 const SizedBox(height: DiogelSpacing.space6),
                 Text(
-                  'Diogel',
+                  'Symudol',
                   style: Theme.of(context).textTheme.headlineLarge,
                 ),
 
@@ -148,7 +148,7 @@ class _SetupVaultScreenState extends ConsumerState<SetupVaultScreen> {
           _buildInfoItem(
             Icons.lock_outline,
             'Local Access PIN',
-            'Create a local access PIN for Diogel.',
+            'Create a local access PIN for Symudol.',
           ),
         ],
       ),

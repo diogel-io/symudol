@@ -1,5 +1,5 @@
-import 'package:android_diogel/features/nip46/domain/nip46_method.dart';
-import 'package:android_diogel/features/nip46/domain/nip46_request.dart';
+import 'package:symudol/features/nip46/domain/nip46_method.dart';
+import 'package:symudol/features/nip46/domain/nip46_request.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

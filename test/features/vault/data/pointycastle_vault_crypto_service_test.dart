@@ -1,5 +1,5 @@
-import 'package:android_diogel/features/vault/data/pointycastle_vault_crypto_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

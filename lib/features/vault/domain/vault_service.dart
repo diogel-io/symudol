@@ -1,8 +1,8 @@
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
-import 'package:android_diogel/features/requests/domain/signed_nostr_event.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 
 /// Interface for the Vault service.
 ///

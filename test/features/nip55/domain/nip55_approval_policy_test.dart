@@ -1,11 +1,11 @@
-import 'package:android_diogel/features/nip55/domain/nip55_approval_policy.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_incoming_request.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/nip55/domain/nip55_approval_policy.dart';
+import 'package:symudol/features/nip55/domain/nip55_client.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
+import 'package:symudol/features/nip55/domain/nip55_method.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,5 +1,5 @@
-import 'package:android_diogel/app/app.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/app/app.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +29,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 1. Should be on SetupVaultScreen initially (because controller starts with NoVault from service.state)
-    expect(find.text('Diogel'), findsOneWidget);
+    expect(find.text('Symudol'), findsOneWidget);
 
     // 2. Setup (any 6 digits)
     for (var i = 1; i <= 6; i++) {

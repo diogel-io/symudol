@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/identity/domain/vault_identity.dart';
-import 'package:android_diogel/features/requests/domain/nostr_event_draft.dart';
-import 'package:android_diogel/features/signing/data/dart_nostr_crypto_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
-import 'package:android_diogel/features/vault/domain/vault_service_impl.dart';
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../fakes/fake_vault_store.dart';

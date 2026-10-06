@@ -1,9 +1,9 @@
-import 'package:android_diogel/features/nip55/application/nip55_providers.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_client_permission.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_decision.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_scope.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
-import 'package:android_diogel/features/settings/presentation/trusted_apps_screen.dart';
+import 'package:symudol/features/nip55/application/nip55_providers.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
+import 'package:symudol/features/settings/presentation/trusted_apps_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

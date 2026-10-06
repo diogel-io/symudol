@@ -1,4 +1,4 @@
-import 'package:android_diogel/features/vault/domain/vault_state.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 
 import 'nip46_method.dart';
 import 'nip46_permission_scope.dart';
@@ -40,7 +40,7 @@ class Nip46ApprovalPolicy {
   }) {
     if (vaultState is! VaultUnlocked || activeIdentityPubkey == null) {
       return const Nip46RequireUnlock(
-        'Unlock Diogel and select an identity before handling this NIP-46 request.',
+        'Unlock Symudol and select an identity before handling this NIP-46 request.',
       );
     }
 

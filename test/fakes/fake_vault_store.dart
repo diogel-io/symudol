@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/vault/data/vault_identity_record.dart';
-import 'package:android_diogel/features/vault/domain/vault_crypto_service.dart';
-import 'package:android_diogel/features/vault/domain/vault_exceptions.dart';
-import 'package:android_diogel/features/vault/domain/vault_store.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_store.dart';
 
 class FakeVaultStore implements VaultStore {
   String? _version;

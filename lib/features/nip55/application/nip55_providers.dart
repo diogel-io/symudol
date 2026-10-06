@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
-import 'package:android_diogel/features/nip55/data/nip55_method_channel_gateway.dart';
-import 'package:android_diogel/features/nip55/data/nip55_native_mirror_sync.dart';
-import 'package:android_diogel/features/nip55/data/secure_storage_nip55_permission_store.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_permission_store.dart';
-import 'package:android_diogel/features/requests/application/request_providers.dart';
-import 'package:android_diogel/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
+import 'package:symudol/features/nip55/data/secure_storage_nip55_permission_store.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
+import 'package:symudol/features/requests/application/request_providers.dart';
+import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 

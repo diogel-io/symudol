@@ -1,8 +1,8 @@
-import 'package:android_diogel/features/nip55/domain/nip55_failure.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_intent_parser.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_method.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_payload.dart';
-import 'package:android_diogel/features/nip55/domain/nip55_web_return_options.dart';
+import 'package:symudol/features/nip55/domain/nip55_failure.dart';
+import 'package:symudol/features/nip55/domain/nip55_intent_parser.dart';
+import 'package:symudol/features/nip55/domain/nip55_method.dart';
+import 'package:symudol/features/nip55/domain/nip55_payload.dart';
+import 'package:symudol/features/nip55/domain/nip55_web_return_options.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../fixtures/amethyst_sign_event.dart';
