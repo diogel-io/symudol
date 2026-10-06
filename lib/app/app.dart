@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/unlock/presentation/unlock_vault_screen.dart';
 import '../features/vault/presentation/setup_vault_screen.dart';
 import '../features/navigation/presentation/main_navigation_screen.dart';
+import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
@@ -24,6 +25,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     with WidgetsBindingObserver {
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
+  bool _inBackground = false;
 
   @override
   void initState() {
@@ -85,18 +87,36 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
+    final nativeSync = ref.read(nip55NativeSyncProvider);
+
     // A NIP-55 approval flow intentionally bounces between another app,
     // Diogel's bridge Activity, and Flutter. Treat that as active work, not
     // ordinary backgrounding, otherwise an "immediate" background-lock setting
-    // can lock the vault halfway through a signing request.
+    // can lock the vault halfway through a signing request. The deferral is
+    // bounded: a review times out, and once the request settles the lock is
+    // scheduled again (_handleNip55Changed). The native key gets a deadline
+    // covering both, in case the engine goes before then (#9).
     if (ref.read(nip55ControllerProvider).hasPendingExternalRequest) {
       if (kDebugMode) {
-        dev.log('Skipping background lock while NIP-55 request is active');
+        dev.log('Deferring background lock while NIP-55 request is active');
+      }
+      if (delayMinutes >= 0) {
+        final nip55 = ref.read(nip55ControllerProvider.notifier);
+        final expiresAt = nip55.pendingReviewExpiresAt;
+        final reviewLeft = expiresAt == null
+            ? nip55.reviewTimeout
+            : expiresAt.difference(DateTime.now());
+        unawaited(
+          nativeSync.setLockDeadline(
+            (reviewLeft.isNegative ? Duration.zero : reviewLeft) +
+                Duration(minutes: delayMinutes),
+          ),
+        );
       }
       return;
     }
 
-    final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
     if (kDebugMode) {
       dev.log('Scheduling background lock: $delayMinutes minutes');
     }
@@ -112,6 +132,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    unawaited(nativeSync.setLockDeadline(Duration(minutes: delayMinutes)));
     _backgroundLockTimer = Timer(Duration(minutes: delayMinutes), () {
       if (!mounted) return;
       if (kDebugMode) {
@@ -156,6 +177,16 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     }
   }
 
+  /// A NIP-55 request settled (or its review timed out) while in the
+  /// background: the deferred background lock applies now.
+  void _handleNip55Changed(Nip55State? previous, Nip55State next) {
+    if (_inBackground &&
+        previous?.hasPendingExternalRequest == true &&
+        !next.hasPendingExternalRequest) {
+      _scheduleBackgroundLock();
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (kDebugMode) {
@@ -164,18 +195,26 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
     if (state == AppLifecycleState.detached) {
       if (kDebugMode) {
-        dev.log('App is detaching, cleaning up timers');
+        dev.log('App is detaching: locking the vault');
       }
       _cancelLockTimers();
+      // Without the engine nothing would lock later; locking also clears the
+      // native key. MainActivity.onDestroy clears it too, as the guarantee (#9).
+      if (ref.read(vaultControllerProvider).vaultState is VaultUnlocked) {
+        ref.read(vaultControllerProvider.notifier).lock();
+      }
       return;
     }
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
+      _inBackground = true;
       _scheduleBackgroundLock();
     } else if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive) {
+      _inBackground = false;
       _backgroundLockTimer?.cancel();
+      unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
       // Force reset on resume regardless of throttle
       _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
       _resetInactivityTimer();
@@ -186,6 +225,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   Widget build(BuildContext context) {
     dev.log('DiogelApp build', name: 'Diogel');
     ref.listen(vaultControllerProvider, _handleVaultControllerChanged);
+    ref.listen(nip55ControllerProvider, _handleNip55Changed);
 
     final controllerState = ref.watch(vaultControllerProvider);
     final vaultState = controllerState.vaultState;

@@ -18,7 +18,7 @@ class Nip55NativeCryptoTest {
     // Well-known secp256k1 test keypair
     // Private key: 0000000000000000000000000000000000000000000000000000000000000001
     // Public key:  79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-    private val testPrivKey = "0000000000000000000000000000000000000000000000000000000000000001"
+    private val testPrivKey = ByteArray(32).also { it[31] = 1 }
     private val testPubKey = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
 
     // ════════════════════════════════════════════════════════════════════

@@ -1157,6 +1157,75 @@ void main() {
       },
     );
 
+    group('review timeout (#9)', () {
+      Nip55Controller timedController() => Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        reviewTimeout: const Duration(milliseconds: 50),
+      );
+
+      Future<void> openReview(Nip55Controller controller) =>
+          controller.handleRawIntent({
+            'requestToken': 'review-token',
+            'type': 'sign_message',
+            'content': 'hello message',
+            'currentUser': vaultController.state.activeIdentity!.publicKey,
+          });
+
+      test('an abandoned review is rejected when it times out', () async {
+        final controller = timedController();
+        await openReview(controller);
+        expect(controller.state.pendingCryptoRequest, isNotNull);
+        expect(controller.pendingReviewExpiresAt, isNotNull);
+
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(gateway.rejectedToken, 'review-token');
+        expect(
+          gateway.rejectedError,
+          'NIP-55 request timed out waiting for review',
+        );
+        expect(controller.state.hasPendingExternalRequest, isFalse);
+        expect(controller.pendingReviewExpiresAt, isNull);
+      });
+
+      test('a settled review is not timed out', () async {
+        final controller = timedController();
+        await openReview(controller);
+
+        await controller.approveCryptoRequest();
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(gateway.completedToken, 'review-token');
+        expect(gateway.rejectedToken, isNull);
+        expect(controller.pendingReviewExpiresAt, isNull);
+      });
+
+      test('a signing review that times out is dismissed', () async {
+        final controller = timedController();
+        await controller.handleRawIntent({
+          'requestToken': 'sign-review-token',
+          'type': 'sign_event',
+          'content': '{"kind":1,"content":"hello","tags":[]}',
+          'currentUser': vaultController.state.activeIdentity!.publicKey,
+        });
+        final requestId = controller.state.pendingSigningRequestId;
+        expect(requestId, isNotNull);
+
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+
+        expect(gateway.rejectedToken, 'sign-review-token');
+        expect(
+          requestController.state.requests
+              .singleWhere((r) => r.id == requestId)
+              .status,
+          SigningRequestStatus.rejected,
+        );
+      });
+    });
+
     test('peer-scoped decrypt requests can be remembered', () async {
       final bob = NostrKeyPairs(
         private:

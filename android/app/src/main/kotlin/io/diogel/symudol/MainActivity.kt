@@ -100,20 +100,36 @@ class MainActivity : FlutterActivity() {
                 }
                 "setNip55ActiveKey" -> {
                     val args = call.arguments as? Map<*, *>
-                    val privateKey = args?.get("privateKey")?.toString()
+                    // Raw bytes (a Dart Uint8List), never a String, so the key can be zeroed (#9).
+                    val privateKey = args?.get("privateKey") as? ByteArray
                     val publicKey = args?.get("publicKey")?.toString()
                     val localId = args?.get("localId")?.toString()
                     Log.d(TAG, "onMethodCall: setNip55ActiveKey pubkey=${publicKey?.take(8)}... localId=$localId")
-                    if (privateKey != null && publicKey != null) {
+                    if (privateKey != null && privateKey.size == 32 && publicKey != null) {
                         Nip55CryptoBridge.setActiveKey(privateKey, publicKey, localId ?: "")
+                        privateKey.fill(0)
                         result.success(null)
                     } else {
-                        result.error("INVALID_ARGS", "privateKey and publicKey required", null)
+                        privateKey?.fill(0)
+                        result.error("INVALID_ARGS", "a 32-byte privateKey and publicKey required", null)
                     }
                 }
                 "clearNip55ActiveKey" -> {
                     Log.d(TAG, "onMethodCall: clearNip55ActiveKey")
                     Nip55CryptoBridge.clearActiveKey()
+                    result.success(null)
+                }
+                "setNip55LockDeadline" -> {
+                    val delayMs = (call.arguments as? Number)?.toLong()
+                    if (delayMs == null) {
+                        result.error("INVALID_ARGS", "delay in milliseconds required", null)
+                    } else {
+                        Nip55CryptoBridge.setLockDeadline(delayMs)
+                        result.success(null)
+                    }
+                }
+                "clearNip55LockDeadline" -> {
+                    Nip55CryptoBridge.clearLockDeadline()
                     result.success(null)
                 }
                 "getAppIcon" -> {
@@ -147,6 +163,9 @@ class MainActivity : FlutterActivity() {
             currentActivity = null
         }
         Nip55ProviderBridge.detach(channel)
+        // The engine goes with the activity (configuration changes are handled in place), and
+        // with it the Dart lock timers: the ContentProvider must not keep signing (#9).
+        Nip55CryptoBridge.clearActiveKey()
         super.onDestroy()
     }
 

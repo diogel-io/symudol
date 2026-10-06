@@ -119,8 +119,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final RequestController _requestController;
   final Nip55NativeMirrorSync? _nativeSync;
   final Duration _pendingUnlockTimeout;
+  final Duration _reviewTimeout;
   final DateTime Function() _now;
   Timer? _pendingUnlockTimer;
+  Timer? _reviewTimer;
+  String? _reviewKey;
+  DateTime? _reviewExpiresAt;
   StreamSubscription<VaultControllerState>? _vaultStateSubscription;
 
   // Track concurrency synchronously to avoid races in async flows
@@ -139,6 +143,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55ApprovalPolicy approvalPolicy = const Nip55ApprovalPolicy(),
     Nip55NativeMirrorSync? nativeSync,
     Duration pendingUnlockTimeout = const Duration(minutes: 5),
+    Duration reviewTimeout = const Duration(minutes: 5),
     DateTime Function()? now,
   }) : _gateway = gateway,
        _vaultController = vaultController,
@@ -151,6 +156,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
        _approvalPolicy = approvalPolicy,
        _nativeSync = nativeSync,
        _pendingUnlockTimeout = pendingUnlockTimeout,
+       _reviewTimeout = reviewTimeout,
        _now = now ?? DateTime.now,
        super(const Nip55State()) {
     _gateway.setIncomingIntentHandler((raw) => handleRawIntent(raw));
@@ -162,11 +168,50 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     _onVaultStateChanged(_vaultController.state);
     // Eagerly sync permission grants to native mirror on startup
     _syncGrantsToNative();
+    addListener(_syncReviewTimer);
+  }
+
+  /// When the review on screen is rejected for timing out, or null when there
+  /// is none. An abandoned review must not hold off the background lock (#9).
+  DateTime? get pendingReviewExpiresAt => _reviewExpiresAt;
+
+  /// The longest a review waits for the user.
+  Duration get reviewTimeout => _reviewTimeout;
+
+  void _syncReviewTimer(Nip55State state) {
+    final key =
+        state.pendingSigningRequestId ??
+        state.pendingCryptoRequest?.requestToken ??
+        state.pendingPublicKeyRequest?.requestToken;
+    if (key == _reviewKey) return;
+    _reviewTimer?.cancel();
+    _reviewKey = key;
+    if (key == null) {
+      _reviewTimer = null;
+      _reviewExpiresAt = null;
+      return;
+    }
+    _reviewExpiresAt = _now().add(_reviewTimeout);
+    _reviewTimer = Timer(_reviewTimeout, () {
+      if (!mounted || _reviewKey != key) return;
+      unawaited(_expireReview());
+    });
+  }
+
+  Future<void> _expireReview() async {
+    final signingRequestId = state.pendingSigningRequestId;
+    await cancelPendingExternalRequest(
+      error: 'NIP-55 request timed out waiting for review',
+    );
+    if (signingRequestId != null) {
+      await _requestController.dismissRequest(signingRequestId);
+    }
   }
 
   @override
   void dispose() {
     _pendingUnlockTimer?.cancel();
+    _reviewTimer?.cancel();
     _vaultStateSubscription?.cancel();
     super.dispose();
   }

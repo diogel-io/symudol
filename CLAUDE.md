@@ -40,7 +40,7 @@ The vault holds identities and is the gate for everything else. `VaultState` is 
 - **inactivity timeout** — locks after no user interaction while foregrounded
 - **background lock delay** — locks after the app is backgrounded for N minutes (0 = immediate, -1 = never while running)
 
-Both are skipped/deferred while a NIP-55 request is in flight (`nip55ControllerProvider.hasPendingExternalRequest`), since approval flows bounce the user out to another app and back.
+Both are skipped/deferred while a NIP-55 request is in flight (`nip55ControllerProvider.hasPendingExternalRequest`), since approval flows bounce the user out to another app and back. The deferral is bounded: a pending review times out after 5 minutes, the lock is scheduled once the request settles, and the native key gets its own lock deadline (see `documentation/nip55-contentprovider-mvp.md`, "How Long the Native Key Lives").
 
 ### Identities & signing (lib/features/identity/, lib/features/signing/)
 
