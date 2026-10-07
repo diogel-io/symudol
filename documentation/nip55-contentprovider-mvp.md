@@ -34,9 +34,12 @@ the foreground NIP-55 path:
 - `Nip55RequestCodec` handles projection parsing.
 - `Nip55PermissionMirror` mirrors remembered grants from the Dart permission store.
 - `Nip55CryptoBridge` provides access to the active identity's in-memory private key.
-- `Nip55NativeCrypto` performs crypto operations (Schnorr signing, NIP-04/NIP-44).
+- `Nip55NativeCrypto` performs NIP-04/NIP-44 encrypt/decrypt, gated on its self-test.
+- Signing never happens natively: `sign_event` and `sign_message` go through
+  `Nip55ProviderBridge` to the Dart vault service, which verifies every signature
+  (`nip55-native-crypto-decision.md`).
 
-There is no separate code path for ContentProvider crypto. The only difference
+There is no separate signing path for the ContentProvider. The only difference
 from the foreground path is that the ContentProvider skips the approval UI — it
 only auto-executes requests already covered by a remembered allow grant.
 
@@ -60,7 +63,7 @@ The ContentProvider can only answer while `Nip55CryptoBridge` holds the key
   intent). It is not passed on to the Flutter bridge.
 
 The Dart vault's own copy of the key, and the `BigInteger`s used during
-signing, can't be zeroed; this bounds the native copy only.
+native ECDH, can't be zeroed; this bounds the native copy only.
 
 ## Projection Shape Validation
 
