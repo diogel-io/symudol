@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'nip55_native_mirror_sync.dart';
 import '../domain/nip55_client_permission.dart';
 import '../domain/nip55_permission_store.dart';
+import '../domain/symudol_package.dart';
 
 class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
   static const _key = 'nip55_permission_grants_v1';
@@ -44,14 +45,15 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
                   .whereType<Map>()
                   .map((item) => Nip55PermissionGrant.fromJson(item.cast()))
                   .toList();
-          // Broad allows saved before #5 are dropped, and the stored list is
-          // rewritten without them, so Trusted apps and the native mirror
-          // agree with what can actually be remembered.
-          _cache = loaded.where((grant) => grant.isRememberable).toList();
+          // Broad allows saved before #5, and grants for Symudol itself
+          // (#11), are dropped, and the stored list is rewritten without
+          // them, so Trusted apps and the native mirror agree with what can
+          // actually be remembered.
+          _cache = loaded.where(_isStorable).toList();
           if (_cache!.length != loaded.length) {
             debugPrint(
               'SecureStorageNip55PermissionStore: dropped '
-              '${loaded.length - _cache!.length} broad allow grant(s)',
+              '${loaded.length - _cache!.length} grant(s) that cannot be kept',
             );
             await _storage.write(
               key: _key,
@@ -84,8 +86,8 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
 
   @override
   Future<void> saveGrant(Nip55PermissionGrant grant) async {
-    // Never stored, whichever caller asks (#5).
-    if (!grant.isRememberable) return;
+    // Never stored, whichever caller asks (#5, #11).
+    if (!_isStorable(grant)) return;
     await _ensureInitialized();
     final next = [
       for (final item in _cache!)
@@ -119,6 +121,11 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
     await _storage.delete(key: _key);
     await _nativeSync?.syncGrants([]);
   }
+
+  /// A broad allow (#5) or a grant for Symudol itself (#11) is never kept:
+  /// either would serve requests nobody reviewed.
+  static bool _isStorable(Nip55PermissionGrant grant) =>
+      grant.isRememberable && grant.packageName != symudolPackageName;
 
   Future<void> _write(List<Nip55PermissionGrant> grants) async {
     final payload = jsonEncode(grants.map((grant) => grant.toJson()).toList());

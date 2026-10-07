@@ -7,6 +7,7 @@ import 'nip55_incoming_request.dart';
 import 'nip55_method.dart';
 import 'nip55_permission_decision.dart';
 import 'nip55_permission_scope.dart';
+import 'symudol_package.dart';
 
 sealed class Nip55ApprovalDecision {
   const Nip55ApprovalDecision();
@@ -158,6 +159,7 @@ class Nip55ApprovalPolicy {
     Nip55ClientIdentity clientIdentity,
   ) {
     if (grant.packageName == null ||
+        grant.packageName == symudolPackageName ||
         grant.packageName != clientIdentity.packageName) {
       return false;
     }

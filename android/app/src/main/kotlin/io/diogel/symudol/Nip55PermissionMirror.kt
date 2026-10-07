@@ -179,9 +179,10 @@ class Nip55PermissionMirror(private val context: Context) {
 
     // ── Read grants ──────────────────────────────────────────────────────
 
+    /** Grants for this app itself are never kept or matched: they would serve any caller (#11). */
     fun listGrants(): List<Grant> {
         val raw = prefs.getString(KEY_GRANTS, null) ?: return emptyList()
-        return parseGrants(raw)
+        return parseGrants(raw).filter { it.packageName != context.packageName }
     }
 
     /**
@@ -204,6 +205,7 @@ class Nip55PermissionMirror(private val context: Context) {
         relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
+        if (callerPackage == context.packageName) return false
         return matches(
             listGrants(), "allow", callerPackage, method, identityPubkey,
             eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
@@ -223,6 +225,7 @@ class Nip55PermissionMirror(private val context: Context) {
         relayUrl: String? = null,
         callerCertSha256: String? = null,
     ): Boolean {
+        if (callerPackage == context.packageName) return false
         return matches(
             listGrants(), "reject", callerPackage, method, identityPubkey,
             eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
@@ -251,14 +254,17 @@ class Nip55PermissionMirror(private val context: Context) {
      */
     fun syncGrants(grantsJson: String) {
         // Validate by parsing — if it fails, don't write garbage.
-        try {
+        val grants = try {
             parseGrants(grantsJson)
         } catch (e: Exception) {
             Log.e(TAG, "syncGrants: invalid JSON, refusing to write", e)
             return
         }
-        prefs.edit().putString(KEY_GRANTS, grantsJson).apply()
-        Log.d(TAG, "syncGrants: synced ${parseGrants(grantsJson).size} grants")
+        // Never keep a grant for this app itself (#11).
+        val kept = grants.filter { it.packageName != context.packageName }
+        val json = if (kept.size == grants.size) grantsJson else serializeGrants(kept)
+        prefs.edit().putString(KEY_GRANTS, json).apply()
+        Log.d(TAG, "syncGrants: synced ${kept.size} grants")
     }
 
     /**

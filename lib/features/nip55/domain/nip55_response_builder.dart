@@ -6,11 +6,12 @@ import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 
 import 'nip55_incoming_request.dart';
 import 'nip55_web_return_options.dart';
+import 'symudol_package.dart';
 
 class Nip55ResponseBuilder {
   final String signerPackage;
 
-  const Nip55ResponseBuilder({this.signerPackage = 'io.diogel.symudol'});
+  const Nip55ResponseBuilder({this.signerPackage = symudolPackageName});
 
   Map<String, Object?> signEventExtras({
     required Nip55IncomingRequest incoming,

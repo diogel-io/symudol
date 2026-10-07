@@ -143,6 +143,37 @@ class Nip55BridgeActivityTest {
     }
 
     @Test
+    fun withNoCallingPackageTheCallerIsUnknownNotSymudol() {
+        // startActivity (not for result) with setPackage: Android reports no caller (#11).
+        val appId = BuildConfig.APPLICATION_ID
+        val intent = nostrsigner("get_public_key").setPackage(appId)
+
+        val (_, request) = handedOver(launch(intent, caller = null))
+
+        assertNull(request["callingPackage"])
+        assertNull(request["callerCertificateSha256"])
+        assertNull(request["callerAppLabel"])
+        assertEquals("the target is kept only as data", appId, request["intentPackage"])
+    }
+
+    @Test
+    fun symudolAsItsOwnCallerIsUnknown() {
+        val (_, request) = handedOver(launch(nostrsigner("get_public_key"), caller = BuildConfig.APPLICATION_ID))
+
+        assertNull(request["callingPackage"])
+        assertNull(request["callerCertificateSha256"])
+    }
+
+    @Test
+    fun anUnknownCallerIsStillRateLimited() {
+        repeat(3) { handedOver(launch(nostrsigner("sign_message"), caller = null)) }
+
+        val fourth = launch(nostrsigner("sign_message"), caller = null)
+
+        assertEquals("rate_limited", shadowOf(fourth).resultIntent.getStringExtra("rejected"))
+    }
+
+    @Test
     fun rateLimitsBurstsFromOneClient() {
         repeat(3) { handedOver(launch(nostrsigner("sign_message"))) }
 

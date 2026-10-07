@@ -6,6 +6,7 @@ import 'nip55_incoming_request.dart';
 import 'nip55_method.dart';
 import 'nip55_payload.dart';
 import 'nip55_web_return_options.dart';
+import 'symudol_package.dart';
 
 class Nip55IntentParser {
   const Nip55IntentParser({DateTime Function()? now}) : _now = now;
@@ -72,13 +73,18 @@ class Nip55IntentParser {
   }
 
   Nip55ClientIdentity _parseClientIdentity(Map<String, Object?> raw) {
-    final packageName =
-        _trimToNull(raw['callingPackage'] as String?) ??
-        _trimToNull(raw['intentPackage'] as String?);
-    final appLabel = _trimToNull(raw['callerAppLabel'] as String?);
-    final certificateSha256 = _trimToNull(
-      raw['callerCertificateSha256'] as String?,
-    );
+    // The caller is only what Android attested (callingPackage). Never the
+    // intent's target (intentPackage), which is Symudol itself, and never
+    // Symudol: such a request is from an unknown app (#11).
+    final callingPackage = _trimToNull(raw['callingPackage'] as String?);
+    final isKnown = callingPackage != null && callingPackage != symudolPackageName;
+    final packageName = isKnown ? callingPackage : null;
+    final appLabel = isKnown
+        ? _trimToNull(raw['callerAppLabel'] as String?)
+        : null;
+    final certificateSha256 = isKnown
+        ? _trimToNull(raw['callerCertificateSha256'] as String?)
+        : null;
     final referrer = _trimToNull(raw['referrer'] as String?);
     return Nip55ClientIdentity(
       packageName: packageName,

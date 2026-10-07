@@ -29,6 +29,7 @@ import '../domain/nip55_permission_scope.dart';
 import '../domain/nip55_permission_store.dart';
 import '../domain/nip55_permission_parser.dart';
 import '../domain/nip55_response_builder.dart';
+import '../domain/symudol_package.dart';
 import 'nip55_request_mapper.dart';
 
 class Nip55State {
@@ -1179,7 +1180,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }) async {
     final store = _permissionStore;
     final packageName = incoming.clientIdentity.packageName;
-    if (store == null || packageName == null) return;
+    // Never for Symudol itself: such a grant would serve any caller (#11).
+    if (store == null ||
+        packageName == null ||
+        packageName == symudolPackageName) {
+      return;
+    }
     final grant = Nip55PermissionGrant(
       id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
       identityPubkey: identityPubkey,
