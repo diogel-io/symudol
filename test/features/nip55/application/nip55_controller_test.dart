@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:symudol/features/nip55/application/nip55_controller.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
+import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
 import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
 import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
@@ -2388,6 +2389,124 @@ void main() {
       timeoutController.dispose();
     });
   });
+
+  group('native key sync (#13)', () {
+    late _GatedVaultService gatedService;
+    late VaultController gatedVaultController;
+    late _MirrorNativeSync mirror;
+    late Nip55Controller syncController;
+
+    setUp(() async {
+      gatedService = _GatedVaultService(FakeVaultStore());
+      gatedVaultController = VaultController(gatedService);
+      await gatedVaultController.createVault('1234');
+      await gatedVaultController.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+      mirror = _MirrorNativeSync();
+      syncController = Nip55Controller(
+        gateway: FakeNip55Gateway(),
+        vaultController: gatedVaultController,
+        vaultService: gatedService,
+        requestController: RequestController(
+          gatedVaultController,
+          RealSignerService(gatedService),
+        ),
+        nativeSync: mirror,
+      );
+      await pumpEventQueue();
+    });
+
+    tearDown(() => syncController.dispose());
+
+    test('an unlocked vault puts its key in the native mirror', () {
+      expect(
+        mirror.publicKey,
+        gatedVaultController.state.activeIdentity!.publicKey,
+      );
+    });
+
+    test('locking clears the native mirror', () async {
+      await gatedVaultController.lock();
+      await pumpEventQueue();
+
+      expect(mirror.publicKey, isNull);
+    });
+
+    test(
+      'a lock that follows unlock immediately leaves no key in the mirror',
+      () async {
+        await gatedVaultController.lock();
+        await pumpEventQueue();
+
+        // The unlock's key has been decrypted (an isolate holds its own copy
+        // of the DEK) but not yet handed back when the lock lands.
+        final decrypting = Completer<void>();
+        gatedService.gate = decrypting;
+        await gatedVaultController.unlock('1234');
+        await pumpEventQueue();
+        await gatedVaultController.lock();
+        await pumpEventQueue();
+        final keysSetBeforeRelease = mirror.keysSet;
+        decrypting.complete();
+        await pumpEventQueue();
+
+        expect(mirror.publicKey, isNull);
+        // Not even briefly: the stale key is never handed to native.
+        expect(mirror.keysSet, keysSetBeforeRelease);
+      },
+    );
+
+    test('an unlock after a lock puts the key back', () async {
+      await gatedVaultController.lock();
+      await gatedVaultController.unlock('1234');
+      await pumpEventQueue();
+
+      expect(
+        mirror.publicKey,
+        gatedVaultController.state.activeIdentity!.publicKey,
+      );
+    });
+  });
+}
+
+/// Holds [getActivePrivateKey] until [gate] completes, as a slow decrypt would.
+class _GatedVaultService extends VaultServiceImpl {
+  _GatedVaultService(super.store);
+
+  Completer<void>? gate;
+
+  @override
+  Future<String?> getActivePrivateKey() async {
+    final key = await super.getActivePrivateKey();
+    await gate?.future;
+    return key;
+  }
+}
+
+/// Mirrors the native key bridge: what it would hold after each call.
+class _MirrorNativeSync extends Nip55NativeMirrorSync {
+  String? publicKey;
+  int keysSet = 0;
+
+  @override
+  Future<void> setActiveKey({
+    required String privateKey,
+    required String publicKey,
+    required String localId,
+  }) async {
+    keysSet++;
+    this.publicKey = publicKey;
+  }
+
+  @override
+  Future<void> clearActiveKey() async => publicKey = null;
+
+  @override
+  Future<void> setActiveIdentityPubkey(String? pubkey) async {}
+
+  @override
+  Future<void> syncGrants(List<Nip55PermissionGrant> grants) async {}
 }
 
 /// Signs, then corrupts the signature, as broken curve code would (#12).
