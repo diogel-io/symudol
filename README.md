@@ -99,9 +99,10 @@ cd android && ./gradlew testDebugUnitTest
   say; MainActivity receives only a token; URL-parameter (browser) requests; rate limiting.
 - `Nip55RequestRouterTest`: MainActivity takes a request only from the bridge handoff, and
   answers only that bridge.
-- `Nip55ContentProviderTest`: what the provider signs in the background, for which caller and
+- `Nip55ContentProviderTest`: what the provider answers in the background, for which caller and
   which remembered decision, including a request for another account (`current_user`) and an
-  event without an integer `kind`. It verifies signatures.
+  event without an integer `kind`. Signing is never native: it is passed to Dart, which verifies
+  every signature (`documentation/nip55-native-crypto-decision.md`).
 
 A NIP-55 security change adds its attack case here, and checks it fails on the code before the
 fix. The fake caller is a package installed with `shadowOf(packageManager).installPackage(...)`

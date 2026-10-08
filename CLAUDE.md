@@ -58,14 +58,14 @@ This feature bridges Android-native IPC (intents + ContentProvider) to the Flutt
   - `MainActivity.kt` receives `nostrsigner:` intents (`singleTop`)
   - `Nip55ContentProvider.kt` exposes content authorities (`io.diogel.symudol.GET_PUBLIC_KEY`, `SIGN_EVENT`, etc.) for warm/background calls when permission is already remembered
   - `Nip55BridgeActivity.kt`, `Nip55ProviderBridge.kt`, `Nip55BridgeRegistry.kt`, `Nip55RequestCodec.kt`, `Nip55UriParser.kt` handle request token assignment, result ownership, and parsing — see `documentation/nip55-bridge-activity-design.md` for the concurrency model (strict single-flight; a second concurrent caller must be rejected by its own bridge instance without touching the active request)
-  - `Nip55PermissionMirror.kt` / `Nip55CryptoBridge.kt` / `Nip55NativeCrypto.kt` mirror permission/crypto state to native so the ContentProvider can answer without waking the Flutter engine
+  - `Nip55PermissionMirror.kt` / `Nip55CryptoBridge.kt` / `Nip55NativeCrypto.kt` mirror permission/crypto state to native so the ContentProvider can answer NIP-04/NIP-44 encrypt/decrypt without waking the Flutter engine
 
 - **Dart side**: `Nip55Controller` (application) consumes pending native intents on app start (`consumePendingNativeIntent`, called from `DiogelApp.initState`), maps incoming requests via `Nip55RequestMapper`, and resumes pending requests after vault unlock (`isWaitingForUnlock` / `resumePendingAfterUnlock`).
   - `Nip55PermissionController` + `Nip55PermissionStore` (`SecureStorageNip55PermissionStore`) manage per-app, per-scope "remembered" permission decisions, kept in sync with native via `Nip55NativeMirrorSync` (cross-scope grant matching — see commit history for `decrypt_zap_event` rememberable behavior).
   - `Nip55ApprovalPolicy` decides whether a request can be auto-approved (remembered permission) or needs manual review.
   - `Nip55ResponseBuilder` formats results back to the native layer; `Nip55IntentParser` / `Nip55PermissionParser` parse incoming intent extras and permission requests.
 
-Native code must NOT perform signing or private-key access — that stays in Dart/`VaultService`. Native handles transport metadata, request tokens, result ownership, and safe cancellation only. Background-launch restrictions (`BAL_BLOCK`) on Android 10+ are a known source of NIP-55 timeout issues; see `AGENTS.md` for the relevant Android IPC docs (intents, ContentProvider, package visibility, background activity launches).
+Native code must NOT sign — `sign_event` and `sign_message` go through `Nip55ProviderBridge` to Dart/`VaultService`, which verifies every signature (decision record: `documentation/nip55-native-crypto-decision.md`, diogel-io/symudol#12). Native handles transport metadata, request tokens, result ownership, and safe cancellation, plus NIP-04/NIP-44 ECDH for remembered encrypt/decrypt, which runs only while `Nip55NativeCrypto.selfTestPassed`. Background-launch restrictions (`BAL_BLOCK`) on Android 10+ are a known source of NIP-55 timeout issues; see `AGENTS.md` for the relevant Android IPC docs (intents, ContentProvider, package visibility, background activity launches).
 
 Relevant NIPs: NIP-01 (basic protocol), NIP-04/NIP-44 (encryption), NIP-46 (remote signing, not used here), NIP-49 (key encryption), NIP-55 (Android signer — primary spec for this feature).
 

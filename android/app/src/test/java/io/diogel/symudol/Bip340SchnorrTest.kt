@@ -5,15 +5,10 @@ import org.junit.Test
 import java.math.BigInteger
 
 /**
- * BIP-340 Schnorr signature test vectors.
- *
- * Tests the core Schnorr signing implementation (Secp256k1 + tagged hashes)
- * against the official BIP-340 test vectors from:
+ * BIP-340 Schnorr signature test vectors, as a check on the [Secp256k1] curve arithmetic that
+ * native NIP-04/NIP-44 ECDH relies on. The app never signs natively (#12); the signing here is a
+ * test-side BIP-340 implementation over that arithmetic, compared against the official vectors:
  * https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
- *
- * The production schnorrSign() uses SecureRandom for aux_rand, so we can't
- * test it deterministically. Instead we replicate the full BIP-340 signing
- * algorithm here with fixed aux_rand and verify each intermediate step.
  */
 class Bip340SchnorrTest {
 

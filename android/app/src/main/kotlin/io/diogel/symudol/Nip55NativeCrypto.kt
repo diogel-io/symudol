@@ -4,7 +4,6 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
-import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.Mac
@@ -14,16 +13,17 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * Native crypto operations for NIP-55 ContentProvider auto-approve.
  *
- * Performs NIP-04 and NIP-44 v2 encrypt/decrypt and Schnorr signing
- * entirely in Kotlin, without going through the Flutter engine.
+ * Performs NIP-04 and NIP-44 v2 encrypt/decrypt entirely in Kotlin, without going through the
+ * Flutter engine, so the ContentProvider answers remembered permissions in microseconds rather
+ * than waiting on the Flutter bridge.
  *
- * This enables the ContentProvider to return results for remembered
- * permissions in microseconds rather than the 3-second Flutter bridge timeout.
+ * It never signs: sign_event and sign_message go to the Dart vault service, which verifies every
+ * signature before returning it (diogel-io/symudol#12, documentation/nip55-native-crypto-decision.md).
+ * The ContentProvider uses its ECDH operations only while [selfTestPassed].
  *
  * Algorithms:
  * - NIP-04: ECDH (secp256k1) shared secret → AES-256-CBC
  * - NIP-44 v2: ECDH (secp256k1) → HKDF-Extract("nip44-v2") → HKDF-Expand → ChaCha20 + HMAC-SHA256
- * - Schnorr signing: BIP-340 Schnorr signature (tagged hashes)
  *
  * Security note: Private keys are held in [Nip55CryptoBridge] (in-process memory only)
  * and are NEVER written to persistent storage by this class.
@@ -33,6 +33,34 @@ object Nip55NativeCrypto {
     private const val TAG = "Diogel-NativeCrypto"
 
     private val secureRandom = SecureRandom()
+
+    // ── Self-test ────────────────────────────────────────────────────────
+
+    /**
+     * Whether the hand-written curve arithmetic and NIP-44 key derivation give known answers,
+     * computed once. False disables every native operation that uses the curve (#12).
+     */
+    val selfTestPassed: Boolean by lazy { selfTest() }
+
+    // NIP-44 v2 conversation-key vector 0 (paulmillr/nip44 nip44.vectors.json).
+    private const val KAT_SECRET = "315e59ff51cb9209768cf7da80791ddcaae56ac9775eb25b6dee1234bc5d2268"
+    private const val KAT_PEER = "c2f9d9948dc8c7c38321e4b85c8558872eafa0641cd269db76848a6073e69133"
+    private const val KAT_CONVERSATION_KEY = "3dfef0ce2a4d80a25e7a328accf73448ef67096f65f79588e358d9a0eb9013f1"
+
+    internal fun selfTest(): Boolean {
+        if (!Secp256k1.selfTest()) return false
+        val conversationKey = try {
+            nip44ConversationKey(hexToBytes(KAT_SECRET), KAT_PEER)
+        } catch (e: Exception) {
+            Log.e(TAG, "selfTest FAIL: NIP-44 conversation key threw", e)
+            return false
+        }
+        if (bytesToHex(conversationKey) != KAT_CONVERSATION_KEY) {
+            Log.e(TAG, "selfTest FAIL: NIP-44 conversation key mismatch")
+            return false
+        }
+        return true
+    }
 
     // ── NIP-44 v2 ────────────────────────────────────────────────────────
 
@@ -67,72 +95,6 @@ object Nip55NativeCrypto {
         return String(decrypted, Charsets.UTF_8)
     }
 
-    // ── Schnorr signing (BIP-340) ─────────────────────────────────────────
-
-    /**
-     * Sign an event. Enforces that the event's pubkey matches the active identity
-     * to prevent signing events with a mismatched pubkey (which would produce
-     * an invalid event: ID for one pubkey, signature from another key).
-     *
-     * @param privateKey The active identity's 32-byte private key
-     * @param eventJson The event JSON (must have pubkey matching the private key)
-     * @param activeIdentityPubkey The expected active identity pubkey (hex, 64 chars)
-     * @return SignEventResult or null if pubkey mismatch / error
-     */
-    data class SignEventResult(val signature: String, val eventJson: String)
-
-    fun signEvent(privateKey: ByteArray, eventJson: String, activeIdentityPubkey: String): SignEventResult? {
-        return try {
-            val event = JSONObject(eventJson)
-            val eventPubkey = event.optString("pubkey", "")
-
-            when {
-                eventPubkey.isBlank() -> {
-                    // Missing pubkey: inject the active identity pubkey before signing.
-                    // Primal and some clients omit pubkey from unsigned event templates.
-                    event.put("pubkey", activeIdentityPubkey)
-                }
-                eventPubkey != activeIdentityPubkey -> {
-                    // Mismatched pubkey: fail closed — signing would produce an event
-                    // whose ID was computed for a different pubkey than the signature key.
-                    Log.w(TAG, "signEvent: pubkey mismatch — event has $eventPubkey but active identity is $activeIdentityPubkey")
-                    return null
-                }
-            }
-
-            val createdAt = if (event.has("created_at")) event.getLong("created_at") else (System.currentTimeMillis() / 1000L)
-            // No integer kind, no signature: never defaulted to kind 0 (#10).
-            val kind = Nip55RequestCodec.integerKind(eventJson) ?: return null
-            val tags = event.optJSONArray("tags") ?: org.json.JSONArray()
-            val content = event.optString("content", "")
-            // Use the (possibly injected) pubkey from the event object
-            val finalPubkey = event.getString("pubkey")
-
-            val serialized = serializeEvent(finalPubkey, createdAt, kind, tags, content)
-            val id = sha256Hex(serialized.toByteArray(Charsets.UTF_8))
-
-            val sig = schnorrSign(privateKey, id)
-
-            // Build signed event strictly from the canonical components used for id
-            // computation. Re-using the original eventJson would risk including extra
-            // fields (or different encoding) that clients cannot reproduce when
-            // verifying id == sha256(canonical_serialize(event)).
-            val signedEvent = JSONObject()
-            signedEvent.put("id", id)
-            signedEvent.put("pubkey", finalPubkey)
-            signedEvent.put("created_at", createdAt)
-            signedEvent.put("kind", kind)
-            signedEvent.put("tags", tags)
-            signedEvent.put("content", content)
-            signedEvent.put("sig", sig)
-
-            SignEventResult(sig, signedEvent.toString())
-        } catch (e: Exception) {
-            Log.e(TAG, "signEvent failed", e)
-            null
-        }
-    }
-
     /**
      * Whether [message] has the shape of a Nostr event's id serialisation,
      * `[0,pubkey,created_at,kind,tags,content]` (NIP-01).
@@ -150,13 +112,6 @@ object Nip55NativeCrypto {
         }
         val first = array.opt(0)
         return array.length() == 6 && first is Number && first.toDouble() == 0.0
-    }
-
-    /** Signs sha256([message]); refuses an event serialisation (#8). */
-    fun signMessage(privateKey: ByteArray, message: String): String {
-        require(!isNostrEventSerialisation(message)) { "Refused: the message is a Nostr event serialisation" }
-        val messageHash = sha256Hex(message.toByteArray(Charsets.UTF_8))
-        return schnorrSign(privateKey, messageHash)
     }
 
     // ── Decrypt zap event (NIP-57) ────────────────────────────────────────
@@ -354,84 +309,7 @@ object Nip55NativeCrypto {
         return cipher.doFinal(ciphertext)
     }
 
-    // ── Schnorr signing (BIP-340 with tagged hashes) ──────────────────────
-
-    private fun schnorrSign(privateKey: ByteArray, messageHashHex: String): String {
-        // BigIntegers are immutable: d and its derivatives can't be wiped, only dropped.
-        val d = BigInteger(1, privateKey)
-        val msgHash = hexToBytes(messageHashHex)
-
-        // BIP-340: P = d·G, determine if we need to negate d
-        val P = Secp256k1.multiply(Secp256k1.G, d)
-            ?: throw IllegalArgumentException("Invalid private key")
-        val px = P.x
-
-        // If P.y is odd, negate the secret key: d = n - d
-        val dFinal = if (P.y.mod(Secp256k1.TWO) != BigInteger.ZERO) {
-            Secp256k1.n.subtract(d)
-        } else {
-            d
-        }
-
-        // Fix #5: BIP-340 tagged nonce hash
-        // t = tagged_hash("BIP340/aux", aux) — we use random aux as per BIP-340
-        val aux = ByteArray(32).also { secureRandom.nextBytes(it) }
-        val t = taggedHash("BIP0340/aux", aux)
-        // XOR d' with t (both 32 bytes)
-        val dPrime = bigIntTo32Bytes(dFinal)
-        val xored = ByteArray(32)
-        for (i in 0 until 32) xored[i] = (dPrime[i].toInt() xor t[i].toInt()).toByte()
-
-        // rand = tagged_hash("BIP340/nonce", xored || P.x || m)
-        val randInput = xored + bigIntTo32Bytes(px) + msgHash
-        val rand = taggedHash("BIP0340/nonce", randInput)
-        dPrime.fill(0)
-        xored.fill(0)
-        randInput.fill(0)
-
-        // k = rand mod n, fail if k is zero
-        val k = BigInteger(1, rand).mod(Secp256k1.n)
-        if (k == BigInteger.ZERO) throw IllegalArgumentException("Schnorr nonce is zero")
-
-        // R = k·G
-        val R = Secp256k1.multiply(Secp256k1.G, k)
-            ?: throw IllegalArgumentException("Schnorr nonce point is invalid")
-
-        // If R.y is odd, negate k
-        val kFinal = if (R.y.mod(Secp256k1.TWO) != BigInteger.ZERO) {
-            Secp256k1.n.subtract(k)
-        } else {
-            k
-        }
-
-        // e = tagged_hash("BIP340/challenge", R.x || P.x || m) mod n
-        val challengeInput = bigIntTo32Bytes(R.x) + bigIntTo32Bytes(px) + msgHash
-        val e = BigInteger(1, taggedHash("BIP0340/challenge", challengeInput)).mod(Secp256k1.n)
-
-        // sig = (k_final + e * d') mod n
-        val sig = kFinal.add(e.multiply(dFinal)).mod(Secp256k1.n)
-
-        // Signature is R.x (32 bytes) || sig (32 bytes)
-        return bytesToHex(bigIntTo32Bytes(R.x) + bigIntTo32Bytes(sig))
-    }
-
     // ── Crypto utilities ─────────────────────────────────────────────────
-
-    private fun sha256(data: ByteArray): ByteArray {
-        return MessageDigest.getInstance("SHA-256").digest(data)
-    }
-
-    private fun sha256Hex(data: ByteArray): String {
-        return bytesToHex(sha256(data))
-    }
-
-    /**
-     * BIP-340 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || message)
-     */
-    private fun taggedHash(tag: String, message: ByteArray): ByteArray {
-        val tagHash = sha256(tag.toByteArray(Charsets.UTF_8))
-        return sha256(tagHash + tagHash + message)
-    }
 
     private fun hmacSha256(key: ByteArray, message: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
@@ -444,21 +322,6 @@ object Nip55NativeCrypto {
         var diff = 0
         for (i in a.indices) diff = diff or (a[i].toInt() xor b[i].toInt())
         return diff == 0
-    }
-
-    private fun serializeEvent(pubkey: String, createdAt: Long, kind: Int, tags: org.json.JSONArray, content: String): String {
-        val arr = org.json.JSONArray()
-        arr.put(0)
-        arr.put(pubkey)
-        arr.put(createdAt)
-        arr.put(kind)
-        arr.put(tags)
-        arr.put(content)
-        // Android's org.json JSONArray.toString() escapes '/' as '\/'
-        // but NIP-01 requires unescaped '/' in the serialized event.
-        // Without this fix, the computed event ID doesn't match what clients expect,
-        // causing signature verification failures.
-        return arr.toString().replace("\\/", "/")
     }
 
     private fun hexToBytes(hex: String): ByteArray {
@@ -486,10 +349,8 @@ object Nip55NativeCrypto {
 }
 
 /**
- * Minimal secp256k1 curve operations for ECDH and Schnorr signing.
- *
- * For production, consider using BouncyCastle's secp256k1 implementation
- * for better performance and full BIP-340 compliance.
+ * Minimal secp256k1 curve operations for ECDH. Not constant-time ([BigInteger]); the NIP-04 and
+ * NIP-44 follow-up to #12 is to route those through Dart or a vetted library too.
  */
 object Secp256k1 {
     val n = BigInteger(
@@ -566,7 +427,10 @@ object Secp256k1 {
         return ECPoint(x, evenY)
     }
 
-    /** Self-test: verify multiply(G, 1) == G and multiply(G, 2) == 2G */
+    /**
+     * Known answers: 1·G, 2·G, and a full-width scalar (BIP-340 test vector 1's key), which
+     * exercises every doubling and addition the 256-step ladder makes.
+     */
     fun selfTest(): Boolean {
         val g1 = multiply(G, BigInteger.ONE)
         if (g1 != G) {
@@ -577,6 +441,12 @@ object Secp256k1 {
         val expected2Gx = BigInteger("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5", 16)
         if (g2?.x != expected2Gx) {
             android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 2*G x mismatch")
+            return false
+        }
+        val full = multiply(G, BigInteger("B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF", 16))
+        val expectedFullX = BigInteger("DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659", 16)
+        if (full?.x != expectedFullX) {
+            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: full-width scalar x mismatch")
             return false
         }
         android.util.Log.d("Diogel-Secp256k1", "selfTest PASS: secp256k1 point arithmetic is correct")
