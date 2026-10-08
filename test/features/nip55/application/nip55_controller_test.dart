@@ -20,6 +20,9 @@ import 'package:symudol/features/signing/domain/nostr_event_serialisation.dart';
 import 'package:symudol/features/requests/domain/signing_request_status.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
+import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
@@ -1692,6 +1695,82 @@ void main() {
         expect(result?['result'], isA<String>());
         expect(result?['event'], isA<String>());
         expect(requestController.state.requests, isEmpty);
+        // The ContentProvider passes background signing here (#12): the signature verifies.
+        final event = jsonDecode(result!['event']! as String) as Map<String, Object?>;
+        expect(event['sig'], result['result']);
+        expect(
+          const DartNostrCryptoService().verifySignedEvent(
+            SignedNostrEvent(
+              id: event['id']! as String,
+              pubkey: event['pubkey']! as String,
+              createdAt: event['created_at']! as int,
+              kind: event['kind']! as int,
+              tags: [
+                for (final tag in event['tags']! as List<Object?>)
+                  [for (final value in tag! as List<Object?>) value! as String],
+              ],
+              content: event['content']! as String,
+              sig: event['sig']! as String,
+            ),
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'provider sign_event never returns a signature that fails verification (#12)',
+      () async {
+        final forgingVaultService = VaultServiceImpl(
+          FakeVaultStore(),
+          cryptoService: const _ForgingCryptoService(),
+        );
+        final forgingVaultController = VaultController(forgingVaultService);
+        await forgingVaultController.createVault('1234');
+        await forgingVaultController.importIdentity(
+          '0000000000000000000000000000000000000000000000000000000000000001',
+          displayName: 'User',
+        );
+        final permissionStore = FakeNip55PermissionStore();
+        final providerController = Nip55Controller(
+          gateway: gateway,
+          vaultController: forgingVaultController,
+          vaultService: forgingVaultService,
+          requestController: RequestController(
+            forgingVaultController,
+            RealSignerService(forgingVaultService),
+          ),
+          permissionStore: permissionStore,
+        );
+        final identity = forgingVaultController.state.activeIdentity!;
+        await permissionStore.saveGrant(
+          Nip55PermissionGrant(
+            id: 'allow-sign-1',
+            identityPubkey: identity.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime.utc(2026, 5, 1),
+          ),
+        );
+        providerController.state = providerController.state.copyWith(
+          approvalSessionExpiresAt: DateTime.now().add(
+            const Duration(minutes: 1),
+          ),
+        );
+
+        // An error reaches the ContentProvider as no answer: the client falls back to the
+        // intent, and no signature is returned.
+        await expectLater(
+          providerController.handleProviderQuery({
+            ...signEventRaw(),
+            'currentUser': identity.publicKey,
+            'callingPackage': 'com.example.app',
+            'callerCertificateSha256': 'AA:BB',
+          }),
+          throwsA(isA<VaultSigningException>()),
+        );
       },
     );
 
@@ -2309,4 +2388,27 @@ void main() {
       timeoutController.dispose();
     });
   });
+}
+
+/// Signs, then corrupts the signature, as broken curve code would (#12).
+class _ForgingCryptoService extends DartNostrCryptoService {
+  const _ForgingCryptoService();
+
+  @override
+  SignedNostrEvent signEvent({
+    required String privateKeyHex,
+    required NostrEventDraft draft,
+  }) {
+    final signed = super.signEvent(privateKeyHex: privateKeyHex, draft: draft);
+    final flipped = signed.sig.endsWith('0') ? '1' : '0';
+    return SignedNostrEvent(
+      id: signed.id,
+      pubkey: signed.pubkey,
+      createdAt: signed.createdAt,
+      kind: signed.kind,
+      tags: signed.tags,
+      content: signed.content,
+      sig: signed.sig.substring(0, signed.sig.length - 1) + flipped,
+    );
+  }
 }

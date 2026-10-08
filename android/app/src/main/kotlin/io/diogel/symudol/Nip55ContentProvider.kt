@@ -13,10 +13,17 @@ class Nip55ContentProvider : ContentProvider() {
     companion object {
         private val certificateCache = ConcurrentHashMap<String, String>()
         private const val TAG = "Diogel-ContentProvider"
+
+        /** The methods answered natively with secp256k1 ECDH, gated on the self-test. */
+        private val NATIVE_ECDH_METHODS = setOf(
+            "nip04_encrypt", "nip04_decrypt", "nip44_encrypt", "nip44_decrypt", "decrypt_zap_event",
+        )
+
+        /** Whether native ECDH may be used; replaced in tests to force a failed self-test (#12). */
+        @Volatile internal var nativeCryptoSound: () -> Boolean = { Nip55NativeCrypto.selfTestPassed }
     }
 
     private lateinit var permissionMirror: Nip55PermissionMirror
-    private var _secp256k1Tested = false
 
     override fun onCreate(): Boolean {
         permissionMirror = Nip55PermissionMirror(context ?: return false)
@@ -37,12 +44,6 @@ class Nip55ContentProvider : ContentProvider() {
         val callerPackage = callingPackage()?.takeIf { it != context?.packageName }
         val callerCertSha256 = resolveSigningCertificateSha256(callerPackage)
         Log.d(TAG, "query: method=$method caller=$callerPackage authority=${uri.authority}")
-
-        // Run secp256k1 self-test once (lazy)
-        if (!_secp256k1Tested) {
-            _secp256k1Tested = true
-            Secp256k1.selfTest()
-        }
 
         // PING is treated as a stateless capability probe — always returns pong
         if (method == "ping") {
@@ -128,8 +129,8 @@ class Nip55ContentProvider : ContentProvider() {
             }
 
             // Check remembered ALLOW — if found, try native crypto first.
-            // If native crypto returns null (method not yet supported natively),
-            // fall through to the Flutter bridge path rather than returning null
+            // If native crypto returns null (signing, which is never native, or a failed
+            // self-test), fall through to the Flutter bridge path rather than returning null
             // (which causes the client to send an Intent).
             if (permissionMirror.hasRememberedAllow(
                     callerPackage, method, activePubkey,
@@ -164,7 +165,7 @@ class Nip55ContentProvider : ContentProvider() {
         // ── Decide: bridge to Flutter or return null ──────────────────────
         //
         // We reach here when:
-        // 1. Native crypto returned null (method not yet supported natively)
+        // 1. Native crypto returned null (signing, or native crypto disabled)
         // 2. No remembered permission at all
         //
         // Returning null causes the client to fall back to Intent prompts.
@@ -174,7 +175,7 @@ class Nip55ContentProvider : ContentProvider() {
         if (!hasRequiredProjection(method, projection)) return null
 
         val shouldBridge = when {
-            // Native crypto fell through (remembered allow but method not native yet)
+            // Native crypto fell through (remembered allow, but signing or native crypto disabled)
             nativeCryptoFellThrough -> true
             // No remembered grant, vault locked — can't bridge
             activePubkey == null -> false
@@ -205,18 +206,18 @@ class Nip55ContentProvider : ContentProvider() {
      * [Nip55CryptoBridge]. This avoids the Flutter MethodChannel bridge
      * entirely and runs in microseconds.
      *
-     * Currently supported native operations:
+     * Native operations:
      * - get_public_key: returns the active pubkey
-     * - nip44_decrypt/nip44_encrypt: native ECDH + ChaCha20-Poly1305
+     * - nip44_decrypt/nip44_encrypt: native ECDH + ChaCha20 + HMAC-SHA256
      * - nip04_decrypt/nip04_encrypt: native ECDH + AES-256-CBC
+     * - decrypt_zap_event: NIP-57 private zap, NIP-04 decrypt
      *
-     * Operations that fall back to the Flutter bridge:
-     * - sign_event: requires exact NIP-01 JSON serialization + BIP-340 Schnorr
-     * - sign_message: requires Schnorr signing
-     * - decrypt_zap_event: complex NIP-57 logic
+     * The ECDH operations run only while [Nip55NativeCrypto.selfTestPassed]; otherwise they
+     * fall through to the Flutter bridge.
      *
-     * These will be migrated to native once the Schnorr implementation
-     * is validated against the test vectors.
+     * sign_event and sign_message are never signed here: they fall through to the Flutter
+     * bridge, where the vault service verifies each signature before it is returned
+     * (diogel-io/symudol#12, documentation/nip55-native-crypto-decision.md).
      */
     private fun performNativeCrypto(
         method: String,
@@ -238,6 +239,10 @@ class Nip55ContentProvider : ContentProvider() {
         activePubkey: String,
         privateKey: ByteArray,
     ): Cursor? {
+        if (method in NATIVE_ECDH_METHODS && !nativeCryptoSound()) {
+            Log.w(TAG, "performNativeCrypto: self-test failed, not using native crypto for $method")
+            return null
+        }
         return try {
             when (method) {
                 "get_public_key" -> {
@@ -267,26 +272,14 @@ class Nip55ContentProvider : ContentProvider() {
                     val ciphertext = Nip55NativeCrypto.nip04Encrypt(privateKey, peerPubkey, plaintext)
                     Nip55RequestCodec.operationResultCursor(ciphertext)
                 }
-                // sign_event and sign_message: native Schnorr signing.
-                // Previously disabled due to invalid signatures caused by a bug
-                // in the secp256k1 point doubling formula (divided by y instead of 2y).
-                // That bug has been fixed — re-enabling native signing.
+                // Never signed natively (#12): null passes the request to the Dart vault service,
+                // which verifies the signature. An event serialisation is still refused here (#8).
+                "sign_event" -> null
                 "sign_message" -> {
                     val message = Nip55RequestCodec.payloadFromProjection(projection) ?: return null
-                    // Its hash would be an event id: refused, never sent on to be signed (#8).
                     if (Nip55NativeCrypto.isNostrEventSerialisation(message)) {
-                        return Nip55RequestCodec.rejectedCursor("refused")
-                    }
-                    val signature = Nip55NativeCrypto.signMessage(privateKey, message)
-                    Nip55RequestCodec.operationResultCursor(signature)
-                }
-                "sign_event" -> {
-                    val eventJson = Nip55RequestCodec.eventJsonFromProjection(projection) ?: return null
-                    val result = Nip55NativeCrypto.signEvent(privateKey, eventJson, activePubkey)
-                    if (result != null) {
-                        Nip55RequestCodec.signEventCursor(result.signature, result.eventJson)
+                        Nip55RequestCodec.rejectedCursor("refused")
                     } else {
-                        Log.w(TAG, "performNativeCrypto: signEvent returned null (pubkey mismatch?), falling back")
                         null
                     }
                 }

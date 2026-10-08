@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -19,7 +20,6 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
@@ -64,6 +64,8 @@ class Nip55ContentProviderTest {
     @After
     fun tearDown() {
         Nip55ProviderBridge.detach(flutterChannel)
+        Nip55ProviderBridge.detach(answeringFlutter)
+        Nip55ContentProvider.nativeCryptoSound = { Nip55NativeCrypto.selfTestPassed }
         Nip55CryptoBridge.clearActiveKey()
         Nip55CryptoBridge.clock = { android.os.SystemClock.elapsedRealtime() }
         Nip55PermissionMirror(context).clearAll()
@@ -107,9 +109,6 @@ class Nip55ContentProviderTest {
         Uri.parse("content://$appId.SIGN_MESSAGE"), arrayOf(message, "", pubKey), null, null, null,
     )
 
-    private fun sha256Hex(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray())
-        .joinToString("") { "%02x".format(it) }
-
     private fun Cursor.only(column: String): String? {
         assertTrue(moveToFirst())
         return getString(getColumnIndexOrThrow(column))
@@ -127,19 +126,97 @@ class Nip55ContentProviderTest {
         assertNull(signEvent(event(1)))
     }
 
+    // ── Signing goes to Dart, never native (#12) ───────────────────────────
+
+    /** What the Flutter side was asked, by request type. */
+    private val askedFlutter = mutableListOf<String>()
+
+    /** Stands in for the engine: answers each provider query as the Dart vault service would. */
+    private val answeringFlutter = MethodChannel(object : BinaryMessenger {
+        override fun send(channel: String, message: ByteBuffer?) {}
+        override fun send(channel: String, message: ByteBuffer?, callback: BinaryMessenger.BinaryReply?) {
+            // The codec leaves an encoded buffer positioned at its end; the engine reads from 0.
+            val call = StandardMethodCodec.INSTANCE.decodeMethodCall(message!!.rewind() as ByteBuffer)
+            val type = call.argument<String>("type")!!
+            askedFlutter += type
+            val answer = when (type) {
+                "sign_event" -> mapOf("result" to DART_SIGNATURE, "signature" to DART_SIGNATURE, "event" to DART_EVENT)
+                else -> mapOf("result" to "dart-$type")
+            }
+            callback?.reply(StandardMethodCodec.INSTANCE.encodeSuccessEnvelope(answer).rewind() as ByteBuffer)
+        }
+        override fun setMessageHandler(channel: String, handler: BinaryMessenger.BinaryMessageHandler?) {}
+    }, "io.diogel.symudol/nip55")
+
+    /**
+     * Runs [query] as a client's Binder thread would, off the main thread, while the main looper
+     * delivers the bridge's call to Flutter; the bridge blocks until Flutter answers.
+     */
+    private fun <T> viaFlutter(query: () -> T): T {
+        Nip55ProviderBridge.attach(answeringFlutter)
+        var result: Result<T>? = null
+        val worker = Thread { result = runCatching(query) }
+        worker.start()
+        val mainLooper = shadowOf(android.os.Looper.getMainLooper())
+        while (worker.isAlive) {
+            mainLooper.idle()
+            worker.join(5)
+        }
+        return result!!.getOrThrow()
+    }
+
     @Test
-    fun aRememberedKindIsSignedAndOnlyThatKind() {
+    fun aRememberedKindIsSignedByDartAndOnlyThatKind() {
         grants(grant("sign_event", kind = 1))
 
-        val cursor = signEvent(event(1))!!
-        val signed = JSONObject(cursor.only("event")!!)
-        val signature = cursor.getString(cursor.getColumnIndexOrThrow("signature"))
-        assertEquals(1, signed.getInt("kind"))
-        assertEquals(pubKey, signed.getString("pubkey"))
-        assertTrue("the signature verifies", Schnorr.verify(signature, signed.getString("id"), pubKey))
-        assertEquals(eventId(signed), signed.getString("id"))
+        val cursor = viaFlutter { signEvent(event(1)) }!!
 
-        assertNull("kind 0 was not remembered", signEvent(event(0)))
+        assertEquals(DART_SIGNATURE, cursor.only("signature"))
+        assertEquals(DART_EVENT, cursor.getString(cursor.getColumnIndexOrThrow("event")))
+        assertEquals(listOf("sign_event"), askedFlutter)
+
+        assertNull("kind 0 was not remembered", viaFlutter { signEvent(event(0)) })
+        assertEquals("nothing more was asked", listOf("sign_event"), askedFlutter)
+    }
+
+    @Test
+    fun nothingIsSignedNativelyWhenFlutterCannotAnswer() {
+        // The key is held and the grants match, but with no engine to verify a signature there is
+        // no signature: the client falls back to the intent.
+        grants(grant("sign_event", kind = 1), grant("sign_message"))
+        assertTrue(Nip55CryptoBridge.hasActiveKey)
+
+        assertNull(signEvent(event(1)))
+        assertNull(signMessage("hello"))
+    }
+
+    @Test
+    fun theSelfTestPassesOnThisCurveCode() {
+        assertTrue(Nip55NativeCrypto.selfTest())
+    }
+
+    @Test
+    fun aFailedSelfTestStopsNativeEncryption() {
+        grants(grant("nip44_encrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { false }
+
+        assertNull("no native answer", query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey))
+        assertEquals(
+            "Dart answers instead",
+            "dart-nip44_encrypt",
+            viaFlutter { query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey) }!!.only("result"),
+        )
+    }
+
+    @Test
+    fun aPassingSelfTestKeepsNativeEncryption() {
+        grants(grant("nip44_encrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val ciphertext = query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey)!!.only("result")!!
+
+        assertTrue(ciphertext.isNotBlank())
+        assertTrue("answered natively", askedFlutter.isEmpty())
     }
 
     @Test
@@ -193,12 +270,11 @@ class Nip55ContentProviderTest {
     }
 
     @Test
-    fun aRememberedSignMessageStillSignsAnOrdinaryMessage() {
+    fun aRememberedSignMessageOfAnOrdinaryMessageIsSignedByDart() {
         grants(grant("sign_message"))
 
-        val signature = signMessage("hello")!!.only("result")!!
-
-        assertTrue("the signature verifies", Schnorr.verify(signature, sha256Hex("hello"), pubKey))
+        assertEquals("dart-sign_message", viaFlutter { signMessage("hello") }!!.only("result"))
+        assertEquals(listOf("sign_message"), askedFlutter)
     }
 
     // ── Never Symudol itself (#11) ─────────────────────────────────────────
@@ -250,7 +326,7 @@ class Nip55ContentProviderTest {
 
         now += 59_999
 
-        assertNotNull(signEvent(event(1))!!.only("signature"))
+        assertEquals(DART_SIGNATURE, viaFlutter { signEvent(event(1)) }!!.only("signature"))
     }
 
     @Test
@@ -276,7 +352,7 @@ class Nip55ContentProviderTest {
 
         now += 120_000
 
-        assertNotNull(signEvent(event(1)))
+        assertNotNull(viaFlutter { signEvent(event(1)) })
     }
 
     // ── The request's account and kind (#10) ───────────────────────────────
@@ -310,11 +386,11 @@ class Nip55ContentProviderTest {
     fun theActiveAccountOrNoneIsAnswered() {
         grants(grant("sign_event", kind = 1))
 
-        assertNotNull("hex", query("SIGN_EVENT", event(1), "", pubKey))
-        assertNotNull("upper-case hex", query("SIGN_EVENT", event(1), "", pubKey.uppercase()))
-        assertNotNull("npub", query("SIGN_EVENT", event(1), "", npub))
-        assertNotNull("no current_user", query("SIGN_EVENT", event(1)))
-        assertNotNull("blank current_user", query("SIGN_EVENT", event(1), "", ""))
+        assertNotNull("hex", viaFlutter { query("SIGN_EVENT", event(1), "", pubKey) })
+        assertNotNull("upper-case hex", viaFlutter { query("SIGN_EVENT", event(1), "", pubKey.uppercase()) })
+        assertNotNull("npub", viaFlutter { query("SIGN_EVENT", event(1), "", npub) })
+        assertNotNull("no current_user", viaFlutter { query("SIGN_EVENT", event(1)) })
+        assertNotNull("blank current_user", viaFlutter { query("SIGN_EVENT", event(1), "", "") })
     }
 
     @Test
@@ -323,7 +399,7 @@ class Nip55ContentProviderTest {
 
         assertNull(query("SIGN_MESSAGE", "hello", "", otherPubKey))
         assertNull(query("NIP44_ENCRYPT", "hello", otherPubKey, otherPubKey))
-        assertNotNull(query("SIGN_MESSAGE", "hello", "", pubKey))
+        assertNotNull(viaFlutter { query("SIGN_MESSAGE", "hello", "", pubKey) })
         assertNotNull(query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey))
     }
 
@@ -336,42 +412,11 @@ class Nip55ContentProviderTest {
         assertNull("string kind", signEvent("""{"kind":"1","content":"hi","tags":[],"created_at":1700000000}"""))
         assertNull("float kind", signEvent("""{"kind":1.5,"content":"hi","tags":[],"created_at":1700000000}"""))
         assertNull("null kind", signEvent("""{"kind":null,"content":"hi","tags":[],"created_at":1700000000}"""))
-        assertNotNull("kind 0 itself still signs", signEvent(event(0)))
+        assertNotNull("kind 0 itself still signs", viaFlutter { signEvent(event(0)) })
     }
 
-    private fun eventId(event: JSONObject): String {
-        val serialised = JSONArray().apply {
-            put(0); put(event.getString("pubkey")); put(event.getLong("created_at"))
-            put(event.getInt("kind")); put(event.getJSONArray("tags")); put(event.getString("content"))
-        }.toString().replace("\\/", "/")
-        return MessageDigest.getInstance("SHA-256").digest(serialised.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
-
-    /** BIP-340 verification, from the curve operations the app ships. */
-    private object Schnorr {
-        fun verify(signatureHex: String, messageHex: String, pubkeyHex: String): Boolean {
-            if (signatureHex.length != 128) return false
-            val p = Secp256k1.pointFromHex(pubkeyHex) ?: return false
-            val r = BigInteger(signatureHex.substring(0, 64), 16)
-            val s = BigInteger(signatureHex.substring(64), 16)
-            if (r >= Secp256k1.p || s >= Secp256k1.n) return false
-            val e = BigInteger(1, taggedHash(
-                "BIP0340/challenge",
-                hex(signatureHex.substring(0, 64)) + hex(pubkeyHex) + hex(messageHex),
-            )).mod(Secp256k1.n)
-            val sG = Secp256k1.multiply(Secp256k1.G, s) ?: return false
-            val eP = Secp256k1.multiply(p, Secp256k1.n.subtract(e)) ?: return false
-            val point = Secp256k1.add(sG, eP) ?: return false
-            return point.y.mod(Secp256k1.TWO) == BigInteger.ZERO && point.x == r
-        }
-
-        private fun taggedHash(tag: String, message: ByteArray): ByteArray {
-            val sha = MessageDigest.getInstance("SHA-256")
-            val tagHash = sha.digest(tag.toByteArray())
-            return MessageDigest.getInstance("SHA-256").digest(tagHash + tagHash + message)
-        }
-
-        private fun hex(value: String) = value.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    private companion object {
+        const val DART_SIGNATURE = "dart-signature"
+        const val DART_EVENT = """{"kind":1,"sig":"dart-signature"}"""
     }
 }
