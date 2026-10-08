@@ -127,6 +127,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   String? _reviewKey;
   DateTime? _reviewExpiresAt;
   StreamSubscription<VaultControllerState>? _vaultStateSubscription;
+  Future<void> _keySync = Future<void>.value();
+  (bool, String?, String?)? _lastKeySyncTarget;
 
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
@@ -225,9 +227,40 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
   }
 
-  /// Syncs the active key to the native ContentProvider bridge when
-  /// the vault state changes.
-  Future<void> _onVaultStateChanged(VaultControllerState state) async {
+  /// Syncs the active key to the native ContentProvider bridge when the vault
+  /// is locked or unlocked, or its active identity changes.
+  ///
+  /// Syncs run one at a time, in the order the vault changed, so a lock
+  /// always lands after the unlock before it and the native key can't be put
+  /// back once cleared (#13).
+  void _onVaultStateChanged(VaultControllerState state) {
+    final target = (
+      state.vaultState is VaultUnlocked,
+      state.activeIdentity?.localId,
+      state.activeIdentity?.publicKey,
+    );
+    // Loading and failure changes don't move the key.
+    if (target == _lastKeySyncTarget) return;
+    _lastKeySyncTarget = target;
+    _keySync = _keySync
+        .then((_) => _syncNativeKey(state))
+        .catchError(
+          (Object e) => dev.log(
+            'Nip55Controller: native key sync failed: $e',
+            name: 'Diogel',
+          ),
+        );
+  }
+
+  /// Whether the vault is still unlocked as [identity].
+  bool _isUnlockedAs(VaultIdentity identity) {
+    final current = _vaultController.state;
+    return mounted &&
+        current.vaultState is VaultUnlocked &&
+        current.activeIdentity?.localId == identity.localId;
+  }
+
+  Future<void> _syncNativeKey(VaultControllerState state) async {
     final vaultUnlocked = state.vaultState is VaultUnlocked;
     final pubkey = state.activeIdentity?.publicKey;
     // Use android logging via MethodChannel for visibility in logcat
@@ -239,7 +272,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       try {
         final privateKey = await _vaultService.getActivePrivateKey();
         dev.log('Nip55Controller: got privateKey=${privateKey != null ? "yes(${privateKey.length}chars)" : "null"}', name: 'Diogel');
-        if (privateKey != null) {
+        if (privateKey != null && !_isUnlockedAs(state.activeIdentity!)) {
+          // Locked or switched while the key was decrypting: the sync queued
+          // behind this one holds the vault's current state (#13).
+          dev.log('Nip55Controller: vault changed during key sync, not syncing stale key', name: 'Diogel');
+        } else if (privateKey != null) {
           await _nativeSync?.setActiveKey(
             privateKey: privateKey,
             publicKey: pubkey,
