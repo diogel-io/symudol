@@ -85,10 +85,11 @@ class Nip55ContentProviderTest {
         kind: Int? = null,
         decision: String = "allow",
         certificate: String? = cert(),
+        packageName: String = client,
     ) = JSONObject().apply {
-        put("id", "g-$type-$kind-$decision")
+        put("id", "g-$type-$kind-$decision-$packageName")
         put("identityPubkey", pubKey)
-        put("packageName", client)
+        put("packageName", packageName)
         put("certificateSha256", certificate ?: JSONObject.NULL)
         put("scope", JSONObject().apply {
             put("type", type)
@@ -274,6 +275,25 @@ class Nip55ContentProviderTest {
 
         assertEquals("dart-sign_message", viaFlutter { signMessage("hello") }!!.only("result"))
         assertEquals(listOf("sign_message"), askedFlutter)
+    }
+
+    // ── Never Symudol itself (#11) ─────────────────────────────────────────
+
+    @Test
+    fun aGrantForSymudolItselfIsNeverKeptOrMatched() {
+        grants(grant("sign_event", kind = 1, packageName = appId), grant("sign_event", kind = 1))
+        val mirror = Nip55PermissionMirror(context)
+
+        assertEquals(listOf(client), mirror.listGrants().map { it.packageName })
+        assertFalse(mirror.hasRememberedAllow(appId, "sign_event", pubKey, eventKind = 1, callerCertSha256 = cert()))
+    }
+
+    @Test
+    fun symudolAsItsOwnCallerIsNotAnsweredFromGrants() {
+        grants(grant("sign_event", kind = 1, packageName = appId, certificate = null))
+        shadowOf(provider).setCallingPackage(appId)
+
+        assertNull(signEvent(event(1)))
     }
 
     // ── How long the key lives (#9) ────────────────────────────────────────

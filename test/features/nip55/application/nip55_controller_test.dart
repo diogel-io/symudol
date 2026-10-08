@@ -1016,6 +1016,66 @@ void main() {
       });
     });
 
+    group('a request from an unknown caller is never remembered (#11)', () {
+      for (final caller in <String, Map<String, Object?>>{
+        'no calling package': {'intentPackage': 'io.diogel.symudol'},
+        'Symudol as its own caller': {
+          'callingPackage': 'io.diogel.symudol',
+          'callerCertificateSha256': 'AA:BB',
+        },
+      }.entries) {
+        test('${caller.key}: no timeframe, and approving saves nothing', () async {
+          final store = FakeNip55PermissionStore();
+          final controller = Nip55Controller(
+            gateway: gateway,
+            vaultController: vaultController,
+            vaultService: vaultService,
+            requestController: requestController,
+            permissionStore: store,
+          );
+          final pubkey = vaultController.state.activeIdentity!.publicKey;
+
+          await controller.handleRawIntent({
+            'requestToken': 'pk-unknown',
+            'type': 'get_public_key',
+            ...caller.value,
+          });
+          expect(controller.canSelectTimeframeForPendingPublicKeyRequest(), isFalse);
+          await controller.approvePublicKeyRequest(
+            timeframe: Nip55ApprovalTimeframe.always,
+          );
+
+          await controller.handleRawIntent({
+            'requestToken': 'msg-unknown',
+            'type': 'sign_message',
+            'content': 'hello',
+            'currentUser': pubkey,
+            ...caller.value,
+          });
+          expect(controller.canSelectTimeframeForPendingCryptoRequest(), isFalse);
+          await controller.approveCryptoRequest(
+            timeframe: Nip55ApprovalTimeframe.always,
+          );
+
+          await controller.handleRawIntent({
+            ...signEventRaw(id: 'unknown'),
+            ...caller.value,
+          });
+          final requestId = controller.state.pendingSigningRequestId!;
+          expect(
+            controller.canSelectTimeframeForPendingSigningRequest(requestId),
+            isFalse,
+          );
+          await controller.approveSigningRequest(
+            requestId,
+            timeframe: Nip55ApprovalTimeframe.always,
+          );
+
+          expect(store.grants, isEmpty);
+        });
+      }
+    });
+
     group('a rejection remembered for 8 hours expires (#5)', () {
       test('public key', () async {
         final store = FakeNip55PermissionStore();

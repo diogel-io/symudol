@@ -89,7 +89,10 @@ class Nip55BridgeActivity : Activity() {
             return
         }
 
-        val callerPackage = callingPackage ?: original.`package`
+        // The caller is only who Android says started us for a result. With no callingPackage
+        // (startActivity, not for result) it is unknown: never the intent's target, which is
+        // this app, and never this app itself, whose grants would then serve anyone (#11).
+        val callerPackage = callingPackage?.takeIf { it != packageName }
         val originalData = original.data!!
         val originalTypeExtra = original.getStringExtra(getString(R.string.key_type))
         val method = originalTypeExtra ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_type))

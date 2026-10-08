@@ -40,7 +40,8 @@ class Nip55ContentProvider : ContentProvider() {
         if (!Nip55RequestCodec.isSupportedAuthority(uri.authority)) return null
 
         val method = Nip55RequestCodec.methodFor(uri) ?: return null
-        val callerPackage = callingPackage()
+        // This app as its own caller is treated as unknown: no grant may serve it (#11).
+        val callerPackage = callingPackage()?.takeIf { it != context?.packageName }
         val callerCertSha256 = resolveSigningCertificateSha256(callerPackage)
         Log.d(TAG, "query: method=$method caller=$callerPackage authority=${uri.authority}")
 

@@ -298,4 +298,47 @@ void main() {
       expect(request.currentUser, isNull);
     });
   });
+
+  group('the caller is only what Android attested (#11)', () {
+    Map<String, Object?> raw(Map<String, Object?> caller) => {
+      'requestToken': 'token-caller',
+      'type': 'get_public_key',
+      ...caller,
+    };
+
+    test('an attested caller is known and verified', () {
+      final identity = parser.parse(raw({
+        'callingPackage': 'com.example.client',
+        'callerAppLabel': 'Client',
+        'callerCertificateSha256': 'AA:BB',
+        'intentPackage': 'io.diogel.symudol',
+      })).clientIdentity;
+
+      expect(identity.packageName, 'com.example.client');
+      expect(identity.provenanceVerified, isTrue);
+    });
+
+    test('with no callingPackage the caller is unknown, whatever the intent targets', () {
+      final identity = parser.parse(raw({
+        'intentPackage': 'io.diogel.symudol',
+      })).clientIdentity;
+
+      expect(identity.packageName, isNull);
+      expect(identity.certificateSha256, isNull);
+      expect(identity.provenanceVerified, isFalse);
+    });
+
+    test('Symudol as its own caller is unknown', () {
+      final identity = parser.parse(raw({
+        'callingPackage': 'io.diogel.symudol',
+        'callerAppLabel': 'Symudol',
+        'callerCertificateSha256': 'CC:DD',
+      })).clientIdentity;
+
+      expect(identity.packageName, isNull);
+      expect(identity.appLabel, isNull);
+      expect(identity.certificateSha256, isNull);
+      expect(identity.provenanceVerified, isFalse);
+    });
+  });
 }
