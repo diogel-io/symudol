@@ -35,10 +35,15 @@ class PublicKeyApprovalContext extends ApprovalContext {
   final Nip55ParsedPermissions parsedPermissions;
   final bool canRemember;
 
+  /// The active identity's key, which approving shares. Not the request's
+  /// current_user: NIP-55 get_public_key carries none (diogel-io/workspace#39).
+  final String? publicKeyToShare;
+
   PublicKeyApprovalContext({
     required this.request,
     required this.parsedPermissions,
     required this.canRemember,
+    required this.publicKeyToShare,
   });
 
   @override
