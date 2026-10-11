@@ -91,6 +91,8 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
         request: publicKeyRequest,
         parsedPermissions: parsed,
         canRemember: canRemember,
+        publicKeyToShare:
+            ref.watch(vaultControllerProvider).activeIdentity?.publicKey,
       );
     }
 

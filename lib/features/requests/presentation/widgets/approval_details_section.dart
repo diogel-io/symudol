@@ -203,7 +203,7 @@ class _PublicKeyDetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pubkey = approval.request.currentUser;
+    final pubkey = approval.publicKeyToShare;
     final truncatedNpub = pubkey == null ? 'No active identity' : _npubFingerprint(pubkey);
     final scopes = approval.parsedPermissions.scopes;
 

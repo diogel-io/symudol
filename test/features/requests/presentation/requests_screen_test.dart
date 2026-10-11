@@ -19,6 +19,7 @@ import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'dart:typed_data';
 
+import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -563,6 +564,46 @@ void main() {
         expect(nip55Gateway.completedToken, 'pk-token');
       },
     );
+
+    for (final callingPackage in [null, 'com.example.amethyst']) {
+      testWidgets(
+        'public-key details show the active key that will be shared '
+        '(calling package: $callingPackage) (diogel-io/workspace#39)',
+        (tester) async {
+          tester.view.physicalSize = const Size(1200, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(() => tester.view.reset());
+
+          await vaultController.createVault('1234');
+          await vaultController.createIdentity(displayName: 'User');
+          final pubkey = vaultController.state.activeIdentity!.publicKey;
+          final npub = Nostr.instance.services.bech32.encodePublicKeyToNpub(
+            pubkey,
+          );
+
+          // NIP-55 get_public_key carries no current_user: the client is
+          // asking for the key because it doesn't know it yet.
+          await nip55Controller.handleRawIntent({
+            'requestToken': 'pk-token',
+            'type': 'get_public_key',
+            'callingPackage': ?callingPackage,
+          });
+
+          await tester.pumpWidget(createTestWidget());
+          await tester.pump();
+          await tester.tap(find.text('Show details'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('No active identity'), findsNothing);
+          expect(
+            find.text(
+              '${npub.substring(0, 8)}...${npub.substring(npub.length - 8)}',
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+    }
 
     testWidgets('shows kind 31234 NIP-37 Draft Wrap approval summary', (
       tester,
