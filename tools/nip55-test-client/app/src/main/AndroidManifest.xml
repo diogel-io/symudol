@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Package visibility (Android 11+): the signer's intents and ContentProvider. -->
+    <queries>
+        <package android:name="io.diogel.symudol" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nostrsigner" />
+        </intent>
+    </queries>
+
+    <application android:label="NIP-55 test client">
+
+        <!-- Exported so nip55_device_check.sh can start a scenario with adb. -->
+        <activity
+            android:name=".ScenarioActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The browser flow's callbackUrl: nip55testclient://callback?event=<result>. -->
+        <activity
+            android:name=".CallbackActivity"
+            android:exported="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="callback"
+                    android:scheme="nip55testclient" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

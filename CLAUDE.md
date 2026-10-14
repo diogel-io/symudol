@@ -17,6 +17,7 @@ The core trust model: keep signing material on-device, make every approval expli
 - `flutter test --plain-name "<test name>"` — run a single test by name
 - `flutter run` — run the app on a connected device/emulator
 - `./fix_emulators.sh` — fixes stale Android emulator locks/snapshot issues (run if emulators fail to boot)
+- `./nip55_device_check.sh` — installs Symudol and the NIP-55 test client (`tools/nip55-test-client/`) on a device and runs every scenario; semi-attended, clears Symudol's data (see `documentation/nip55-device-checks.md`)
 
 For Android-native (Kotlin) changes under `android/app/src/main/kotlin/io/diogel/symudol/`, build/verify via Gradle (`android/gradlew`) or by running the Flutter app on an Android target — there are no separate Dart tests for native code paths.
 
