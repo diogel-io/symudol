@@ -2,8 +2,9 @@
 
 ## Status
 
-Approved. This record supersedes the impossible acceptance criteria in
-`requirements/functional/nip55-signer-discovery.md` and documents the
+Approved. This record supersedes the impossible acceptance criteria in the
+functional requirement (Diogel workspace:
+`10-products/symudol/requirements/functional/nip55-signer-discovery.md`) and documents the
 platform-correct engineering interpretation.
 
 ---
@@ -27,7 +28,7 @@ package name in advance**. The client discovers it at runtime.
 
 ---
 
-## 2. Diogel Production Identity
+## 2. Symudol Production Identity
 
 | Property | Value |
 |----------|-------|
@@ -37,7 +38,7 @@ package name in advance**. The client discovers it at runtime.
 | `nostrsigner:` intent filter | Declared in `Nip55BridgeActivity`, exported, with `DEFAULT` and `BROWSABLE`. |
 
 The production application ID must remain `io.diogel.symudol`. It is not
-negotiable. Diogel is a distinct app with its own identity, security model, and
+negotiable. Symudol is a distinct app with its own identity, security model, and
 update channel.
 
 ---
@@ -47,21 +48,21 @@ update channel.
 ### 3a. Provider Authority Aliases Do Not Satisfy PackageManager Package Checks
 
 Android ContentProvider authorities are routing strings, not package identifiers.
-Declaring `com.greenart7c3.nostrsigner.SIGN_EVENT` as an authority in Diogel's
-manifest makes `ContentResolver.query(Uri.parse("content://com.greenart7c3.nostrsigner.SIGN_EVENT"), ...)` route to Diogel's `Nip55ContentProvider`. However:
+Declaring `com.greenart7c3.nostrsigner.SIGN_EVENT` as an authority in Symudol's
+manifest makes `ContentResolver.query(Uri.parse("content://com.greenart7c3.nostrsigner.SIGN_EVENT"), ...)` route to Symudol's `Nip55ContentProvider`. However:
 
 - `PackageManager.getPackageInfo("com.greenart7c3.nostrsigner", 0)` still fails
   (throws `NameNotFoundException`) because **provider authorities are not package
   names**. Android resolves `getPackageInfo` by application ID, not by content
   authority strings.
 - Any client that first checks whether Amber is installed via `getPackageInfo`
-  before building provider URIs will never reach the alias provider in Diogel.
+  before building provider URIs will never reach the alias provider in Symudol.
 
 **Primal's `ClientSignerUtils.isCompatibleAmberVersionInstalled()`** does exactly
 this — it calls `getPackageInfo("com.greenart7c3.nostrsigner", 0)`. This check
-will fail for Diogel regardless of which provider authorities Diogel declares.
+will fail for Symudol regardless of which provider authorities Symudol declares.
 
-### 3b. Package-Targeted Intents Cannot Resolve to Diogel's Normal Package
+### 3b. Package-Targeted Intents Cannot Resolve to Symudol's Normal Package
 
 When a client issues `intent.package = "com.greenart7c3.nostrsigner"`, Android's
 intent resolution only searches for matching activities in the named package. An
@@ -71,12 +72,12 @@ shim that can bridge this — it is an Android platform invariant.
 
 **Primal's `AmberLauncher.kt`** sets `intent.package = "com.greenart7c3.nostrsigner"`
 on all its Intent-based flows (login picker, `sign_event` via Intent). These
-intents will never resolve to Diogel in a normal install.
+intents will never resolve to Symudol in a normal install.
 
 ### 3c. Amber Authority Aliases Conflict with Amber When Both Apps Are Installed
 
 Android enforces that each ContentProvider authority is globally unique across
-all installed apps. If Diogel declares `com.greenart7c3.nostrsigner.SIGN_EVENT`
+all installed apps. If Symudol declares `com.greenart7c3.nostrsigner.SIGN_EVENT`
 and the real Amber is also installed, Android's package installer will refuse to
 install one of them (the second installer raises an `INSTALL_FAILED_CONFLICTING_PROVIDER` error).
 
@@ -88,15 +89,15 @@ would break users who have both apps installed.
 
 ## 4. Primal Compatibility Matrix
 
-| Primal behaviour | Stock Diogel result | Root cause |
+| Primal behaviour | Stock Symudol result | Root cause |
 |------------------|---------------------|------------|
-| `getPackageInfo("com.greenart7c3.nostrsigner")` | **Fails** (NameNotFoundException) | Diogel's application ID is `io.diogel.symudol`. Provider authorities are not package IDs. |
-| `content://com.greenart7c3.nostrsigner.SIGN_EVENT` query | **Fails** in stock Diogel | Diogel does not declare Amber's provider authorities. |
-| `intent.package = "com.greenart7c3.nostrsigner"` | **Does not resolve** to Diogel | Package-targeted intents only search the named package. |
-| `queryIntentActivities(ACTION_VIEW, "nostrsigner:")` | **Finds Diogel** ✅ | Diogel exports `Nip55BridgeActivity` with the `nostrsigner:` intent filter. |
+| `getPackageInfo("com.greenart7c3.nostrsigner")` | **Fails** (NameNotFoundException) | Symudol's application ID is `io.diogel.symudol`. Provider authorities are not package IDs. |
+| `content://com.greenart7c3.nostrsigner.SIGN_EVENT` query | **Fails** in stock Symudol | Symudol does not declare Amber's provider authorities. |
+| `intent.package = "com.greenart7c3.nostrsigner"` | **Does not resolve** to Symudol | Package-targeted intents only search the named package. |
+| `queryIntentActivities(ACTION_VIEW, "nostrsigner:")` | **Finds Symudol** ✅ | Symudol exports `Nip55BridgeActivity` with the `nostrsigner:` intent filter. |
 | `content://io.diogel.symudol.SIGN_EVENT` (post-discovery) | **Works** ✅ | Standard NIP-55 authority convention after intent discovery. |
 
-**Conclusion**: stock Primal cannot discover stock Diogel through the current
+**Conclusion**: stock Primal cannot discover stock Symudol through the current
 Amber-specific path. Primal's integration is gated on three Amber-specific checks
 (package name, authority prefix, package-targeted intent) that cannot be satisfied
 by a differently-packaged app without impersonating Amber.
@@ -112,13 +113,13 @@ A separate build variant can declare Amber provider authorities. This build:
 - Does not change the production application ID.
 - Does not make `PackageManager.getPackageInfo("com.greenart7c3.nostrsigner")`
   succeed (that check still fails — only the ContentProvider routing changes).
-- Does not make package-targeted intents resolve to Diogel.
+- Does not make package-targeted intents resolve to Symudol.
 
 This workstream is **not implemented in the default production build**. Product
 approval is required before adding it to any release workflow. See the
-implementation pack at
-`../architecture/nip55-signer-discovery-implementation-pack.md` for the
-technical approach.
+implementation pack in the Diogel workspace at
+`10-products/symudol/architecture/nip55-signer-discovery-implementation-pack.md`
+for the technical approach.
 
 ---
 
@@ -128,12 +129,12 @@ Primal's `ClientSignerUtils` checks `packageInfo.longVersionCode >= 115`
 (`COMPATIBLE_AMBER_VERSION_CODE`). This check:
 
 - Is performed **after** `getPackageInfo("com.greenart7c3.nostrsigner")`.
-- Has no bearing on Diogel's production versionCode because the package check
+- Has no bearing on Symudol's production versionCode because the package check
   already fails for `io.diogel.symudol`.
 - Is relevant only if a compatibility build with `applicationId = "com.greenart7c3.nostrsigner"`
   is ever shipped — that build would need `versionCode >= 115`.
 
-**Diogel's production versionCode must not be changed solely to satisfy Primal's
+**Symudol's production versionCode must not be changed solely to satisfy Primal's
 Amber version check.** Any versionCode changes are driven by normal release
 management, not by Amber compatibility.
 
@@ -156,40 +157,39 @@ The following can be submitted as a GitHub issue or discussion to Primal:
 >    the user has not selected a signer or where Amber is the only installed signer.
 >
 > This change enables Primal to work with any NIP-55-compliant signer, including
-> Diogel, without any signer-specific code in Primal.
+> Symudol, without any signer-specific code in Primal.
 
 ---
 
 ## 8. Manual Verification
 
-After installing Diogel on a device or emulator, run these `adb` commands to
+After installing Symudol on a device or emulator, run these `adb` commands to
 verify intent discovery works:
 
 ```sh
-# List all apps that handle nostrsigner: — Diogel should appear
+# List all apps that handle nostrsigner: — Symudol should appear
 adb shell cmd package query-intent-activities -a android.intent.action.VIEW -d nostrsigner:
 
-# Confirm Diogel resolves the nostrsigner: intent
+# Confirm Symudol resolves the nostrsigner: intent
 adb shell cmd package resolve-activity -a android.intent.action.VIEW -d nostrsigner: -p io.diogel.symudol
 
 # Test the PING capability probe via ContentProvider
 adb shell content query --uri content://io.diogel.symudol.PING
 
-# Confirm Amber package-targeted intent does NOT resolve to Diogel (negative check)
+# Confirm Amber package-targeted intent does NOT resolve to Symudol (negative check)
 adb shell cmd package resolve-activity -a android.intent.action.VIEW -d nostrsigner: -p com.greenart7c3.nostrsigner
 ```
 
 The positive checks pass when the resolved activity package is
 `io.diogel.symudol` and the activity name is `Nip55BridgeActivity`.
 
-The negative check passes when no activity is resolved (Diogel is not Amber).
+The negative check passes when no activity is resolved (Symudol is not Amber).
 
 ---
 
 ## 9. Links
 
-- Implementation pack: `../architecture/nip55-signer-discovery-implementation-pack.md`
-- Functional requirement: `../requirements/functional/nip55-signer-discovery.md`
+- Implementation pack (Diogel workspace): `10-products/symudol/architecture/nip55-signer-discovery-implementation-pack.md`
+- Functional requirement (Diogel workspace): `10-products/symudol/requirements/functional/nip55-signer-discovery.md`
 - Client discovery reference: `nip55-client-discovery-reference.md`
 - ContentProvider MVP scope: `nip55-contentprovider-mvp.md`
-- Compatibility report: `../../../../../30-research/nostr/reference-implementations/android/compatibility-report.md`

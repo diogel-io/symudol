@@ -8,8 +8,8 @@ import 'package:pointycastle/export.dart';
 /// [VaultCryptoService] implementation backed by `pointycastle`.
 ///
 /// Uses Argon2id for PIN-based key derivation and AES-256-GCM for both DEK
-/// wrapping and identity-secret encryption, per
-/// `documentation/vault-pin-key-encryption-design.md`.
+/// wrapping and identity-secret encryption (the key hierarchy is described on
+/// [VaultCryptoService]).
 class PointyCastleVaultCryptoService implements VaultCryptoService {
   static const int _saltLength = 16;
   static const int _dekLength = 32;

@@ -2,10 +2,10 @@
 
 ## Summary
 
-Diogel's `Nip55ContentProvider` implements **warm-session ContentProvider support**:
+Symudol's `Nip55ContentProvider` implements **warm-session ContentProvider support**:
 a remembered-grant, vault-unlocked fast path that answers NIP-55 queries from
 client apps without launching the Flutter UI. This is distinct from cold background
-signing, which Diogel does not support.
+signing, which Symudol does not support.
 
 ## What the ContentProvider Covers
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Manual NIP-55 verification helper.
-# Mirrors the scenarios documented in documentation/nip55-manual-verification.md.
-# Requires an emulator/device with Diogel installed (see fix_emulators.sh / new.sh).
+# Each scenario below sends Symudol a nostrsigner: intent through adb; check the result in the app.
+# Requires an emulator/device with Symudol installed (see fix_emulators.sh / new.sh).
 #
 # Usage:
 #   ./nip55_manual_check.sh <scenario> [active-pubkey]
@@ -28,7 +28,7 @@ pubkey="${2:-}"
 
 require_pubkey() {
   if [ -z "$pubkey" ]; then
-    echo "Scenario '$scenario' requires the active Diogel identity pubkey as the second argument." >&2
+    echo "Scenario '$scenario' requires the active Symudol identity pubkey as the second argument." >&2
     exit 1
   fi
 }

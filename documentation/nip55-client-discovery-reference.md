@@ -3,7 +3,7 @@
 This reference shows how an Android Nostr client should discover NIP-55 signers
 and build ContentProvider URIs. It is designed to be shared with client
 developers (Primal, Amethyst, Dark-Wisp, Nostria, and others) without
-Diogel-specific assumptions.
+Symudol-specific assumptions.
 
 ---
 
@@ -151,7 +151,6 @@ All authorities are prefixed with the signer's discovered package name, e.g.
 
 ## Links
 
-- NIP-55 specification: local copy at
-  `../../../../../../30-research/nostr/nips/source/55.md`
+- NIP-55 specification: <https://github.com/nostr-protocol/nips/blob/master/55.md>
 - Signer discovery decisions: `nip55-signer-discovery.md`
 - Primal compatibility: `nip55-signer-discovery.md#4-primal-compatibility-matrix`

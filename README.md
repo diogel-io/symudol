@@ -18,6 +18,36 @@ The application is built around a strict trust model:
 
 Symudol is not intended to be a full Nostr social client, a generic crypto wallet, or a bloated all-purpose app. It is intended to be a focused mobile signer that does a small number of security-critical jobs well.
 
+## What Symudol supports
+
+Clients reach Symudol in two ways. Either way, the client never sees the private key.
+
+### NIP-55: clients on the same phone
+
+[NIP-55](https://github.com/nostr-protocol/nips/blob/master/55.md) is the Android signer protocol
+used by clients such as Amethyst and Primal.
+
+- **`nostrsigner:` intents.** The client opens Symudol, the user reviews the request, and
+  Symudol returns the result. Methods: `get_public_key`, `sign_event`, `sign_message`,
+  `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt` and `decrypt_zap_event`.
+- **Background ContentProvider.** If the user chose to remember a decision for that app and the
+  vault is unlocked, the client gets its answer in the background without Symudol opening.
+  Otherwise the provider returns nothing and the client falls back to an intent.
+
+Decision records:
+[ContentProvider scope](documentation/nip55-contentprovider-mvp.md),
+[why native code does not sign](documentation/nip55-native-crypto-decision.md),
+[signer discovery](documentation/nip55-signer-discovery.md) and the
+[client discovery reference](documentation/nip55-client-discovery-reference.md).
+
+### NIP-46: remote clients over relays
+
+[NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md) lets a client on another
+device ask Symudol to sign over Nostr relays. To connect, give the client a `bunker://` token
+from Symudol, or paste the `nostrconnect://` URI the client shows. Connections are approved, listed
+and revoked under **Settings → Remote Signer (NIP-46)**. A request that the connection's
+remembered permissions don't cover waits for the user's review.
+
 ## Requirements
 
 Install and configure:
