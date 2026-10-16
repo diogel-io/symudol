@@ -53,7 +53,7 @@ void main() {
   });
 
   test('production manifest does not declare Amber package identity or authorities', () {
-    // Workstream B / Product Decision: production Diogel must not impersonate Amber.
+    // Workstream B / Product Decision: production Symudol must not impersonate Amber.
     // Provider authority aliases for com.greenart7c3.nostrsigner are only permitted
     // in an explicitly gated compatibility build flavor, not in the default manifest.
     final manifest = File(
@@ -77,7 +77,7 @@ void main() {
     // NIP-55 intended discovery flow
     expect(doc, contains('queryIntentActivities'));
     expect(doc, contains('nostrsigner:'));
-    // Diogel production identity documented
+    // Symudol production identity documented
     expect(doc, contains('io.diogel.symudol'));
     // Platform constraints documented
     expect(
@@ -87,15 +87,15 @@ void main() {
     expect(doc, contains('Package-Targeted Intents Cannot Resolve'));
     expect(doc, contains('Amber Authority Aliases Conflict'));
     // Primal compatibility matrix present
-    expect(doc, contains('Stock Diogel result'));
+    expect(doc, contains('Stock Symudol result'));
     // Manual verification commands present
     expect(doc, contains('adb shell cmd package query-intent-activities'));
     // Upstream recommendation for Primal present
     expect(doc, contains('Recommended change'));
-    // Explicit statement that stock Primal cannot discover stock Diogel
+    // Explicit statement that stock Primal cannot discover stock Symudol
     expect(
       doc,
-      contains('stock Primal cannot discover stock Diogel'),
+      contains('stock Primal cannot discover stock Symudol'),
     );
   });
 

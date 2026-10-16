@@ -77,19 +77,16 @@ void main() {
 - Check `flutter_secure_storage` logs if vault initialization fails.
 - The `fix_emulators.sh` script is available in the root to troubleshoot Android emulator locking issues.
 
-### NOS Protocol
-- **Nostr Protocol**:  The project uses the `dart_nostr` library for Nostr interactions.
-- **Nostr Event Handling**: Events are processed asynchronously to ensure smooth UI updates and prevent blocking the main thread.
-- **Nostr Relay Management**: The application supports multiple Nostr relays for redundancy and load balancing.
+### Nostr Protocol
+- **Nostr Protocol**: The project uses the `dart_nostr` library for Nostr interactions.
+- **Signer protocols**: NIP-55 (`lib/features/nip55/` plus the Kotlin transport) serves clients on the same phone; NIP-46 (`lib/features/nip46/`) serves remote clients over relays. See `CLAUDE.md` for how each is put together.
 
 The list of relevant NIPs:
-- [NIP 01](https://github.com/nostr-protocol/nips/blob/master/01.md) - Basic protocol flow description
-- [NIP- 55](https://github.com/nostr-protocol/nips/blob/master/55.md) - Android Signer Application
-
-- [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Encrypted Payloads (Versioned), used by the signer for encryption/decryption operations.
-
-- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md): Nostr Remote Signing, which provides a remote signing protocol, though NIP-55 is the native Android local solution. 
-    
+- [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md): Basic protocol flow description.
+- [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md): Encrypted Direct Message (legacy), still requested by clients through `nip04_encrypt` and `nip04_decrypt`.
+- [NIP-44](https://github.com/nostr-protocol/nips/blob/master/44.md): Encrypted Payloads (Versioned), used by the signer for encryption/decryption operations and for NIP-46 messages.
+- [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md): Nostr Remote Signing, implemented in `lib/features/nip46/` for clients on other devices.
+- [NIP-55](https://github.com/nostr-protocol/nips/blob/master/55.md): Android Signer Application, the local signer protocol for clients on the same phone.
 - [NIP-49](https://github.com/nostr-protocol/nips/blob/master/49.md): Private Key Encryption, which may be relevant for key storage and management within the signer app.
   
 

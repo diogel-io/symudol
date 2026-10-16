@@ -37,7 +37,6 @@ class VaultKdfParams {
 
 /// Implements the PIN-derived key hierarchy used to protect identity secrets.
 ///
-/// See `documentation/vault-pin-key-encryption-design.md` for the full design:
 /// `PIN --Argon2id--> KEK --AES-256-GCM wrap--> DEK --AES-256-GCM--> secrets`.
 abstract class VaultCryptoService {
   /// Generates a random salt suitable for [deriveKek].
