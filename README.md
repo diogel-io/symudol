@@ -138,6 +138,19 @@ A NIP-55 security change adds its attack case here, and checks it fails on the c
 fix. The fake caller is a package installed with `shadowOf(packageManager).installPackage(...)`
 (give it a `SigningInfo` as well as `signatures`), called with `setCallingPackage(...)`.
 
+### Testing NIP-55 on a device
+
+What the JVM can't show, such as a separate app's caller identity, is checked on a device or
+emulator with a small test client (`tools/nip55-test-client/`). One command installs Symudol and
+the client and runs every scenario, with a pass/fail summary:
+
+```bash
+./nip55_device_check.sh
+```
+
+It clears Symudol's data first and pauses when a scenario needs an approval in Symudol. See
+`documentation/nip55-device-checks.md`.
+
 ## Build Android artifacts
 
 Build a debug APK:

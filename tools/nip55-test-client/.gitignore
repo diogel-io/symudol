@@ -1,0 +1,9 @@
+/.gradle/
+/build/
+/app/build/
+/local.properties
+/.kotlin/
+
+# The root .gitignore ignores every keystore. This one is test-only and committed on purpose:
+# see keystore/README.md.
+!/keystore/test-client.jks

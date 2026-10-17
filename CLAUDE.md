@@ -17,6 +17,7 @@ The core trust model: keep signing material on-device, make every approval expli
 - `flutter test --plain-name "<test name>"` — run a single test by name
 - `flutter run` — run the app on a connected device/emulator
 - `./fix_emulators.sh` — fixes stale Android emulator locks/snapshot issues (run if emulators fail to boot)
+- `./nip55_device_check.sh` — installs Symudol and the NIP-55 test client (`tools/nip55-test-client/`) on a device and runs every scenario; semi-attended, clears Symudol's data (see `documentation/nip55-device-checks.md`)
 - `flutter build apk --config-only && (cd android && ./gradlew testDebugUnitTest)` — run the JVM tests for the Android-native code (`android/gradlew` is generated, not committed)
 
 Android-native (Kotlin) code under `android/app/src/main/kotlin/io/diogel/symudol/` is tested with Robolectric in `android/app/src/test/java/io/diogel/symudol/` (see `README.md`, "Testing NIP-55 without a device"). CI (`.github/workflows/ci.yml`) runs analyze, the Flutter tests and the Gradle tests in the pinned `ghcr.io/cirruslabs/flutter:3.44.0` image; to reproduce it locally:
@@ -89,5 +90,6 @@ Relevant NIPs: NIP-01 (basic protocol), NIP-04/NIP-44 (encryption), NIP-46 (remo
 - `nip55-native-crypto-decision.md` — why native code does not sign (diogel-io/symudol#12)
 - `nip55-signer-discovery.md` — how clients discover Symudol as a signer
 - `nip55-client-discovery-reference.md` — how known clients look for a signer
+- `nip55-device-checks.md` — running the NIP-55 device checks with the test client
 
-`nip55_manual_check.sh` runs the manual NIP-55 checks on a device.
+`nip55_device_check.sh` runs the NIP-55 checks on a device.
