@@ -7,7 +7,6 @@ import '../../identity/domain/vault_identity.dart';
 import '../../nip55/application/nip55_providers.dart';
 import '../../nip55/domain/nip55_approval_timeframe.dart';
 import '../../nip55/domain/nip55_permission_parser.dart';
-import '../../profile/application/profile_providers.dart';
 import '../../vault/application/vault_providers.dart';
 import '../application/request_providers.dart';
 import '../domain/approval_context.dart';
@@ -28,19 +27,6 @@ class ApprovalScreen extends ConsumerStatefulWidget {
 }
 
 class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // See AccountsScreen.initState: profile metadata is cached for the
-    // provider's lifetime, so re-entering this tab is the refresh trigger.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final activeIdentity = ref.read(vaultControllerProvider).activeIdentity;
-      if (activeIdentity != null) {
-        ref.invalidate(nostrProfileProvider(activeIdentity.publicKey));
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final approval = _resolveContext(ref);
