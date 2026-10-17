@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../theme/tokens.dart';
 import '../../../identity/domain/vault_identity.dart';
 import '../../../profile/application/profile_providers.dart';
+import '../../../profile/domain/profile_load_state.dart';
+import 'load_profile_action.dart';
 
 class IdentityTile extends ConsumerWidget {
   final VaultIdentity identity;
@@ -19,10 +21,10 @@ class IdentityTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isActive = identity.isActive;
-    final pictureUrl = ref
-        .watch(nostrProfileProvider(identity.publicKey))
-        .value
-        ?.picture;
+    // Watching never fetches: the picture appears only after the user loads
+    // this identity's profile.
+    final profileState = ref.watch(nostrProfileProvider(identity.publicKey));
+    final pictureUrl = profileState.profile?.picture;
 
     return Container(
       padding: const EdgeInsets.all(DiogelSpacing.space4),
@@ -102,6 +104,23 @@ class IdentityTile extends ConsumerWidget {
                 ],
               ),
             ),
+            if (profileState is ProfileLoading)
+              const Padding(
+                padding: EdgeInsets.all(DiogelSpacing.space3),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              IconButton(
+                tooltip: 'Load profile',
+                icon: const Icon(Icons.cloud_download_outlined),
+                color: DiogelColors.textTertiary,
+                onPressed: () =>
+                    confirmAndLoadProfile(context, ref, identity.publicKey),
+              ),
             if (!isActive)
               const Icon(Icons.chevron_right, color: DiogelColors.textTertiary),
           ],

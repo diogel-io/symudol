@@ -27,7 +27,12 @@ class RelayProfileService {
   }
 
   /// Returns the most recent profile metadata for [pubkeyHex], or null if
-  /// no relay responded with a kind 0 event in time.
+  /// no relay responded with a kind 0 event in time. Throws
+  /// [ProfileFetchException] when the relays cannot be queried or the
+  /// profile cannot be read, so callers can tell a failure from no profile.
+  ///
+  /// Each relay learns [pubkeyHex] and the device's IP address, so call this
+  /// only when the user has asked (diogel-io/symudol#83).
   Future<NostrProfile?> fetchProfile(String pubkeyHex) async {
     try {
       await _ensureRelaysInitialized();
@@ -76,8 +81,18 @@ class RelayProfileService {
       if (content == null || content.isEmpty) return null;
 
       return NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
+    } catch (error) {
+      throw ProfileFetchException(error);
     }
   }
+}
+
+/// The profile could not be fetched or read.
+class ProfileFetchException implements Exception {
+  const ProfileFetchException(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'ProfileFetchException: $cause';
 }

@@ -1,5 +1,4 @@
 import 'package:symudol/app/app.dart';
-import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/presentation/setup_vault_screen.dart';
 import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
@@ -30,7 +29,6 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
-            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),
@@ -69,7 +67,6 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
-            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),
@@ -102,7 +99,6 @@ void main() {
         ProviderScope(
           overrides: [
             vaultStoreProvider.overrideWithValue(fakeStore),
-            nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
           ],
           child: const DiogelApp(),
         ),

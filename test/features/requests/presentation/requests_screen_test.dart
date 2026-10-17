@@ -2,8 +2,6 @@ import 'package:symudol/features/nip55/application/nip55_controller.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
-import 'package:symudol/features/profile/data/relay_profile_service.dart';
-import 'package:symudol/features/profile/domain/nostr_profile.dart';
 import 'package:symudol/features/requests/application/request_controller.dart';
 import 'package:symudol/features/requests/application/request_providers.dart';
 import 'package:symudol/features/requests/data/fake_signer_service.dart';
@@ -24,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../fakes/fake_relay_profile_service.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 class FakeNip55Gateway implements Nip55Gateway {
@@ -77,12 +76,6 @@ class FakeNip55Gateway implements Nip55Gateway {
   Future<Uint8List?> getAppIcon(String packageName) async => null;
 }
 
-/// Avoids real relay/websocket connections from [ProfileAvatar] in tests.
-class FakeRelayProfileService extends RelayProfileService {
-  @override
-  Future<NostrProfile?> fetchProfile(String pubkeyHex) async => null;
-}
-
 void main() {
   late FakeVaultStore vaultStore;
   late VaultServiceImpl vaultService;
@@ -91,6 +84,7 @@ void main() {
   late RequestController requestController;
   late FakeNip55Gateway nip55Gateway;
   late Nip55Controller nip55Controller;
+  late FakeRelayProfileService profileService;
 
   setUp(() async {
     vaultStore = FakeVaultStore();
@@ -98,6 +92,7 @@ void main() {
     await vaultService.init();
     vaultController = VaultController(vaultService);
     signerService = FakeSignerService();
+    profileService = FakeRelayProfileService();
     requestController = RequestController(vaultController, signerService);
     nip55Gateway = FakeNip55Gateway();
     nip55Controller = Nip55Controller(
@@ -116,9 +111,7 @@ void main() {
         requestControllerProvider.overrideWith((ref) => requestController),
         nip55GatewayProvider.overrideWithValue(nip55Gateway),
         nip55ControllerProvider.overrideWith((ref) => nip55Controller),
-        relayProfileServiceProvider.overrideWithValue(
-          FakeRelayProfileService(),
-        ),
+        relayProfileServiceProvider.overrideWithValue(profileService),
       ],
       child: const MaterialApp(home: ApprovalScreen()),
     );
@@ -168,6 +161,9 @@ void main() {
 
       expect(find.text('Approval Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
+      // Opening the screen with an active identity fetches no profile
+      // (diogel-io/symudol#83).
+      expect(profileService.requested, isEmpty);
 
       await tester.tap(find.text('Show details'));
       await tester.pump();
