@@ -1,7 +1,6 @@
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
 import 'package:symudol/features/accounts/presentation/widgets/identity_tile.dart';
 import 'package:symudol/features/accounts/presentation/widgets/import_identity_dialog.dart';
-import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
@@ -69,9 +68,6 @@ void main() {
         overrides: [
           vaultServiceProvider.overrideWithValue(service),
           vaultControllerProvider.overrideWith((ref) => controller),
-          // Prevent real WebSocket connections; RelayProfileService opens
-          // timers via dart_nostr that outlive the widget tree in tests.
-          nostrProfileProvider.overrideWith((ref, pubkeyHex) async => null),
         ],
         child: const MaterialApp(home: AccountsScreen()),
       ));

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
-import '../../profile/application/profile_providers.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
@@ -20,19 +19,6 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // Profile metadata (and its avatar URL) is fetched once and cached for
-    // the provider's lifetime, so re-entering this screen is the trigger to
-    // pick up any changes made on relays since the last visit.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final identity in ref.read(vaultControllerProvider).identities) {
-        ref.invalidate(nostrProfileProvider(identity.publicKey));
-      }
-    });
-  }
-
   Future<void> _showImportIdentityDialog(BuildContext context) async {
     final result = await showDialog<bool>(
       context: context,

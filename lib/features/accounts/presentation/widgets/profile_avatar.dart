@@ -5,8 +5,9 @@ import '../../../../theme/tokens.dart';
 import '../../../profile/application/profile_providers.dart';
 import '../../../vault/application/vault_providers.dart';
 
-/// Displays the active Nostr identity's profile picture, falling back to a
-/// generic person icon while it loads, on error, or if none is set.
+/// Displays the active Nostr identity's profile picture once the user has
+/// loaded its profile, falling back to a generic person icon until then, on
+/// error, or if none is set. It never fetches a profile itself.
 class ProfileAvatar extends ConsumerWidget {
   const ProfileAvatar({super.key, this.radius = 16});
 
@@ -20,7 +21,7 @@ class ProfileAvatar extends ConsumerWidget {
     if (activeIdentity != null) {
       pictureUrl = ref
           .watch(nostrProfileProvider(activeIdentity.publicKey))
-          .value
+          .profile
           ?.picture;
     }
 
