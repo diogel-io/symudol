@@ -91,5 +91,6 @@ Relevant NIPs: NIP-01 (basic protocol), NIP-04/NIP-44 (encryption), NIP-46 (remo
 - `nip55-signer-discovery.md` — how clients discover Symudol as a signer
 - `nip55-client-discovery-reference.md` — how known clients look for a signer
 - `nip55-device-checks.md` — running the NIP-55 device checks with the test client
+- `releasing.md` — the release PR, versions and build numbers, and how a release is cut
 
 `nip55_device_check.sh` runs the NIP-55 checks on a device.

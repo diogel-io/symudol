@@ -151,6 +151,12 @@ the client and runs every scenario, with a pass/fail summary:
 It clears Symudol's data first and pauses when a scenario needs an approval in Symudol. See
 `documentation/nip55-device-checks.md`.
 
+## Releases
+
+Releases are cut by merging the release-please release PR, `chore(release): <version>`. Write
+Conventional Commits (`feat:`, `fix:`, `feat!:`), because they set the next version and the
+changelog. See `documentation/releasing.md`.
+
 ## Build Android artifacts
 
 Build a debug APK:
