@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:symudol/app/diogel_log.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../domain/nip46_session.dart';
@@ -37,7 +37,7 @@ class SecureStorageNip46SessionStore implements Nip46SessionStore {
           _cache = [];
         }
       }
-      debugPrint(
+      diogelLog(
         'SecureStorageNip46SessionStore: loaded ${_cache?.length ?? 0} sessions',
       );
       _initCompleter!.complete();

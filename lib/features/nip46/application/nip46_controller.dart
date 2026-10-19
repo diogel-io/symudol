@@ -3,11 +3,11 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
-import 'package:flutter/foundation.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 import '../data/dart_nip46_crypto.dart';
@@ -244,7 +244,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           result: 'ack',
         );
       } catch (e) {
-        debugPrint('Nip46Controller: failed to publish connect ack: $e');
+        diogelLog('Nip46Controller: failed to publish connect ack', error: e);
       }
     }
     _pendingConnectRequestId = null;
@@ -380,7 +380,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   void _onInboundEvent(Nip46InboundRelayEvent event) {
     if (!_markProcessed(event.eventId)) {
-      debugPrint(
+      diogelLog(
         'Nip46Controller: dropping duplicate event ${event.eventId}',
       );
       return;
@@ -399,8 +399,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     }
 
     if (session == null) {
-      debugPrint(
-        'Nip46Controller: no session for recipient ${event.recipientPubkey}',
+      diogelLog(
+        'Nip46Controller: no session for the event\'s recipient',
       );
       return;
     }
@@ -421,7 +421,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       request = result.$1;
       usesNip04 = result.$2;
     } catch (e) {
-      debugPrint('Nip46Controller: failed to decrypt event ${event.eventId}: $e');
+      diogelLog('Nip46Controller: failed to decrypt event ${event.eventId}', error: e);
       return;
     }
 
@@ -857,7 +857,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
             state.sessions.map((s) => s.id == updated.id ? updated : s).toList(),
       );
     } catch (e) {
-      debugPrint('Nip46Controller: error dispatching ${request.method}: $e');
+      diogelLog('Nip46Controller: error dispatching ${request.method}', error: e);
       await _publishErrorResponse(
         session: session,
         requestId: request.id,
@@ -934,7 +934,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       );
       await _relayService.publishEvent(session.id, signed.toJson());
     } catch (e) {
-      debugPrint('Nip46Controller: failed to publish error response: $e');
+      diogelLog('Nip46Controller: failed to publish error response', error: e);
     }
   }
 

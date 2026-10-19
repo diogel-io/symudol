@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:developer' as dev;
 
+import 'package:symudol/app/diogel_log.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 
@@ -16,12 +16,11 @@ class Nip55NativeMirrorSync {
   Future<void> syncGrants(List<Nip55PermissionGrant> grants) async {
     try {
       final payload = jsonEncode(grants.map((g) => g.toJson()).toList());
-      debugPrint('Nip55NativeMirrorSync: syncing ${grants.length} grants (${payload.length} bytes)');
+      diogelLog('Nip55NativeMirrorSync: syncing ${grants.length} grants (${payload.length} bytes)');
       await _channel.invokeMethod<void>('syncNip55PermissionGrants', payload);
-      debugPrint('Nip55NativeMirrorSync: sync complete');
+      diogelLog('Nip55NativeMirrorSync: sync complete');
     } catch (e) {
-      debugPrint('Nip55NativeMirrorSync: FAILED to sync grants: $e');
-      dev.log('Nip55NativeMirrorSync: failed to sync grants: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to sync grants', error: e);
     }
   }
 
@@ -31,7 +30,7 @@ class Nip55NativeMirrorSync {
     try {
       await _channel.invokeMethod<void>('setNip55ActiveIdentityPubkey', pubkey ?? '');
     } catch (e) {
-      dev.log('Nip55NativeMirrorSync: failed to set active pubkey: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to set active pubkey', error: e);
     }
   }
 
@@ -52,7 +51,7 @@ class Nip55NativeMirrorSync {
         'localId': localId,
       });
     } catch (e) {
-      dev.log('Nip55NativeMirrorSync: failed to set active key: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to set active key', error: e);
     } finally {
       keyBytes.fillRange(0, keyBytes.length, 0);
     }
@@ -67,7 +66,7 @@ class Nip55NativeMirrorSync {
         delay.inMilliseconds,
       );
     } catch (e) {
-      dev.log('Nip55NativeMirrorSync: failed to set lock deadline: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to set lock deadline', error: e);
     }
   }
 
@@ -76,7 +75,7 @@ class Nip55NativeMirrorSync {
     try {
       await _channel.invokeMethod<void>('clearNip55LockDeadline');
     } catch (e) {
-      dev.log('Nip55NativeMirrorSync: failed to clear lock deadline: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to clear lock deadline', error: e);
     }
   }
 
@@ -86,7 +85,7 @@ class Nip55NativeMirrorSync {
     try {
       await _channel.invokeMethod<void>('clearNip55ActiveKey');
     } catch (e) {
-      dev.log('Nip55NativeMirrorSync: failed to clear active key: $e', name: 'Diogel');
+      diogelLog('Nip55NativeMirrorSync: failed to clear active key', error: e);
     }
   }
 }

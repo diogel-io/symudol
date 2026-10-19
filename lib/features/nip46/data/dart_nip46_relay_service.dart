@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
+import 'package:symudol/app/diogel_log.dart';
 
 import '../domain/nip46_relay_event.dart';
 
@@ -146,7 +146,7 @@ class DartNip46RelayService implements Nip46RelayService {
     if (!_sessions.containsKey(sessionId)) return;
 
     try {
-      debugPrint('Nip46RelayService: connecting to ${conn.url}');
+      diogelLog('Nip46RelayService: connecting to ${conn.url}');
       final socket = await WebSocket.connect(conn.url);
       conn.socket = socket;
       conn.consecutiveFailures = 0;
@@ -161,7 +161,7 @@ class DartNip46RelayService implements Nip46RelayService {
         cancelOnError: true,
       );
     } catch (e) {
-      debugPrint('Nip46RelayService: failed to connect to ${conn.url}: $e');
+      diogelLog('Nip46RelayService: failed to connect to ${conn.url}', error: e);
       _scheduleReconnect(sessionId, conn, remoteSignerPubkey);
     }
   }
@@ -171,7 +171,7 @@ class DartNip46RelayService implements Nip46RelayService {
     _RelayConnection conn,
     String remoteSignerPubkey,
   ) {
-    debugPrint('Nip46RelayService: disconnected from ${conn.url}');
+    diogelLog('Nip46RelayService: disconnected from ${conn.url}');
     conn.socket = null;
     conn.subscriptionId = null;
     conn.refreshTimer?.cancel();
@@ -211,7 +211,7 @@ class DartNip46RelayService implements Nip46RelayService {
     try {
       socket.add(req);
     } catch (e) {
-      debugPrint('Nip46RelayService: failed to send REQ to ${conn.url}: $e');
+      diogelLog('Nip46RelayService: failed to send REQ to ${conn.url}', error: e);
     }
   }
 
@@ -254,7 +254,7 @@ class DartNip46RelayService implements Nip46RelayService {
         _checkUnhealthy(conn);
       }
     } else if (type == 'NOTICE') {
-      debugPrint('Nip46RelayService: NOTICE from ${conn.url}: ${msg.elementAtOrNull(1)}');
+      diogelLog('Nip46RelayService: NOTICE from ${conn.url}: ${msg.elementAtOrNull(1)}');
     }
   }
 
@@ -323,8 +323,9 @@ class DartNip46RelayService implements Nip46RelayService {
         // OK confirmation is handled in _onMessage; optimistically decrement.
         return;
       } catch (e) {
-        debugPrint(
-          'Nip46RelayService: publish attempt ${attempt + 1} failed on ${conn.url}: $e',
+        diogelLog(
+          'Nip46RelayService: publish attempt ${attempt + 1} failed on ${conn.url}',
+          error: e,
         );
         conn.consecutiveFailures++;
         _checkUnhealthy(conn);
@@ -335,14 +336,14 @@ class DartNip46RelayService implements Nip46RelayService {
         }
       }
     }
-    debugPrint(
+    diogelLog(
       'Nip46RelayService: giving up publishing to ${conn.url} after $_maxRetries attempts',
     );
   }
 
   void _checkUnhealthy(_RelayConnection conn) {
     if (conn.consecutiveFailures >= _unhealthyThreshold) {
-      debugPrint('Nip46RelayService: marking ${conn.url} as unhealthy');
+      diogelLog('Nip46RelayService: marking ${conn.url} as unhealthy');
     }
   }
 
