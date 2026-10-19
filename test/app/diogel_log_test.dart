@@ -22,7 +22,12 @@ void main() {
   });
 
   test('only diogelLog writes logs under lib/', () {
-    final direct = RegExp(r'\b(debugPrint|print|dev\.log|log)\(');
+    // Everything that reaches logcat or the VM log: print and debugPrint
+    // (release builds too), stdout and stderr, and dart:developer, whose log
+    // is reached only through its import.
+    final direct = RegExp(
+      r"\b(debugPrint|debugPrintStack|print)\(|\b(stdout|stderr)\.|import 'dart:developer'",
+    );
     final offenders = Directory('lib')
         .listSync(recursive: true)
         .whereType<File>()

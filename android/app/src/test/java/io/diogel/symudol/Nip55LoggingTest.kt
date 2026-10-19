@@ -145,7 +145,8 @@ class Nip55LoggingTest {
     fun onlyDiogelLogWritesToTheSystemLog() {
         val sources = File("src/main/kotlin/io/diogel/symudol").listFiles { f -> f.extension == "kt" }
         assertNotNull("run from android/app", sources)
-        val direct = Regex("""\bLog\.[vdiwe]\(""")
+        // Everything that reaches logcat: R8 strips only Log.v/d/i, and stack traces quote messages.
+        val direct = Regex("""\bLog\.(v|d|i|w|e|wtf|println)\(|\.printStackTrace\(|\bSystem\.(out|err)\b""")
         val offenders = sources!!.filter { it.name != "DiogelLog.kt" && direct.containsMatchIn(it.readText()) }
 
         assertEquals("call DiogelLog instead of android.util.Log", emptyList<String>(), offenders.map { it.name })
