@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/sensitive_clipboard.dart';
 
 import '../application/nip46_providers.dart';
 import '../domain/nip46_connection_token.dart';
@@ -301,9 +302,18 @@ class _TokenDisplay extends StatelessWidget {
             child: TextButton.icon(
               icon: const Icon(Icons.copy, size: 16),
               label: const Text('Copy'),
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: uri));
-                ScaffoldMessenger.of(context).showSnackBar(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  // Marked sensitive: the URI carries the connection secret.
+                  await copySensitiveText(uri, label: 'bunker URI');
+                } catch (_) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Could not copy the bunker:// token')),
+                  );
+                  return;
+                }
+                messenger.showSnackBar(
                   const SnackBar(
                     content: Text('bunker:// token copied'),
                     duration: Duration(seconds: 2),

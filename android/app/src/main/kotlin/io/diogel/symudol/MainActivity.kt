@@ -1,8 +1,5 @@
 package io.diogel.symudol
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -29,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private enum class CompletionAction { NONE, FINISH, BACKGROUND }
 
     companion object {
+        private const val CLIPBOARD_CHANNEL = "io.diogel.symudol/clipboard"
         private val appLabelCache = ConcurrentHashMap<String, String>()
         private val certificateCache = ConcurrentHashMap<String, String>()
         private val appIconCache = ConcurrentHashMap<String, ByteArray>()
@@ -69,6 +67,14 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         DiogelLog.d(TAG) { "configureFlutterEngine" }
         super.configureFlutterEngine(flutterEngine)
+        // Sensitive copies from Dart, such as the NIP-46 bunker URI (#94).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CLIPBOARD_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method != "copySensitiveText") return@setMethodCallHandler result.notImplemented()
+            val text = call.argument<String>("text")
+            if (text == null) return@setMethodCallHandler result.error("INVALID_ARGS", "text required", null)
+            SensitiveClipboard.copy(this, call.argument<String>("label") ?: "Symudol", text)
+            result.success(null)
+        }
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.let { Nip55ProviderBridge.attach(it) }
         channel?.setMethodCallHandler { call, result ->
@@ -351,8 +357,7 @@ class MainActivity : FlutterActivity() {
         if (extras["copyToClipboard"] != true) return
         val result = extras["result"]?.toString() ?: return
         val label = extras["clipboardLabel"]?.toString() ?: "NIP-55 result"
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        clipboard?.setPrimaryClip(ClipData.newPlainText(label, result))
+        SensitiveClipboard.copy(this, label, result)
     }
 
     private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {
