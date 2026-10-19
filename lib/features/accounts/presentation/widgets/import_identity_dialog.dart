@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/sensitive_selection.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import 'package:symudol/theme/tokens.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
@@ -148,25 +149,29 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
           children: [
             const Text('Enter your Nostr private key (nsec or hex format).'),
             const SizedBox(height: DiogelSpacing.space4),
-            TextField(
-              controller: _keyController,
-              decoration: InputDecoration(
-                labelText: 'Private Key',
-                hintText: 'nsec1... or 64 hex characters',
-                border: const OutlineInputBorder(),
-                errorText: _error != null ? '' : null, // Highlight field on error
-                suffixIcon: IconButton(
-                  icon: Icon(_obscureKey ? Icons.visibility : Icons.visibility_off),
-                  onPressed: () => setState(() => _obscureKey = !_obscureKey),
+            // No Copy or Cut: a revealed key would reach the clipboard unmarked (#96).
+            NoSelectionCopy(
+              child: TextField(
+                controller: _keyController,
+                decoration: InputDecoration(
+                  labelText: 'Private Key',
+                  hintText: 'nsec1... or 64 hex characters',
+                  border: const OutlineInputBorder(),
+                  errorText: _error != null ? '' : null, // Highlight field on error
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureKey ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _obscureKey = !_obscureKey),
+                  ),
                 ),
+                obscureText: _obscureKey,
+                enableSuggestions: false,
+                autocorrect: false,
+                // Asks the keyboard not to learn or sync what is typed or pasted here (#15).
+                enableIMEPersonalizedLearning: false,
+                enabled: !_isLoading,
+                autofocus: true,
+                contextMenuBuilder: noCopyContextMenuBuilder,
               ),
-              obscureText: _obscureKey,
-              enableSuggestions: false,
-              autocorrect: false,
-              // Asks the keyboard not to learn or sync what is typed or pasted here (#15).
-              enableIMEPersonalizedLearning: false,
-              enabled: !_isLoading,
-              autofocus: true,
             ),
             const SizedBox(height: DiogelSpacing.space4),
             const Text('Optional: Give this identity a display name.'),

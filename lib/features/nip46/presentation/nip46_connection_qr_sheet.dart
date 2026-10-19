@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:symudol/app/sensitive_clipboard.dart';
+import 'package:symudol/app/sensitive_selection.dart';
 
 import '../application/nip46_providers.dart';
 import '../domain/nip46_connection_token.dart';
@@ -237,27 +238,31 @@ class _ImportTab extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: 'nostrconnect:// URI',
-              hintText: 'nostrconnect://…',
-              border: const OutlineInputBorder(),
-              errorText: error,
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.paste),
-                tooltip: 'Paste',
-                onPressed: () async {
-                  final data =
-                      await Clipboard.getData(Clipboard.kTextPlain);
-                  if (data?.text != null) {
-                    controller.text = data!.text!;
-                  }
-                },
+          // No Copy or Cut: the URI carries the client's secret (#96).
+          NoSelectionCopy(
+            child: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'nostrconnect:// URI',
+                hintText: 'nostrconnect://…',
+                border: const OutlineInputBorder(),
+                errorText: error,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.paste),
+                  tooltip: 'Paste',
+                  onPressed: () async {
+                    final data =
+                        await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null) {
+                      controller.text = data!.text!;
+                    }
+                  },
+                ),
               ),
+              maxLines: 3,
+              keyboardType: TextInputType.url,
+              contextMenuBuilder: noCopyContextMenuBuilder,
             ),
-            maxLines: 3,
-            keyboardType: TextInputType.url,
           ),
           const SizedBox(height: 16),
           FilledButton(
