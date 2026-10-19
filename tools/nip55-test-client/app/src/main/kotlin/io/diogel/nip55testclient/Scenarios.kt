@@ -111,8 +111,17 @@ private fun Run.queryEach(checks: List<Check>, problems: List<String> = emptyLis
     }
 }
 
-/** Encrypts to the peer, then decrypts what came back, through the ContentProvider. */
-private fun Run.providerRoundTrip(encrypt: String, decrypt: String, pubkey: String, done: (String?) -> Unit) {
+/**
+ * Encrypts to the peer, then decrypts what came back, through the ContentProvider. [checkDecrypted]
+ * adds a check on the decrypt answer, such as its columns (#19).
+ */
+private fun Run.providerRoundTrip(
+    encrypt: String,
+    decrypt: String,
+    pubkey: String,
+    checkDecrypted: (ProviderAnswer) -> String? = { null },
+    done: (String?) -> Unit,
+) {
     val plaintext = "provider round trip ${now()}"
     query(encrypt, arrayOf(plaintext, Nostr.PEER_PUBKEY, pubkey)) { encrypted ->
         if (encrypted !is ProviderAnswer.Answered) return@query done("$encrypt ${encrypted.describe()}")
@@ -121,7 +130,7 @@ private fun Run.providerRoundTrip(encrypt: String, decrypt: String, pubkey: Stri
                 when {
                     decrypted !is ProviderAnswer.Answered -> "$decrypt ${decrypted.describe()}"
                     decrypted.result != plaintext -> "$decrypt returned different text"
-                    else -> null
+                    else -> checkDecrypted(decrypted)
                 },
             )
         }
@@ -305,8 +314,14 @@ object Scenarios {
                     Check("ping", arrayOf()) { columnProblem("ping", it) },
                 ),
             ) { problems ->
-                if (problems.isEmpty()) pass("signature, result and event on every method; package on get_public_key")
-                else fail(problems.joinToString("; "))
+                // The decrypts need a ciphertext from the remembered encrypts first.
+                providerRoundTrip("nip44_encrypt", "nip44_decrypt", pubkey, { columnProblem("nip44_decrypt", it) }) { nip44 ->
+                    providerRoundTrip("nip04_encrypt", "nip04_decrypt", pubkey, { columnProblem("nip04_decrypt", it) }) { nip04 ->
+                        val all = problems + listOfNotNull(nip44, nip04)
+                        if (all.isEmpty()) pass("signature, result and event on every method; package on get_public_key")
+                        else fail(all.joinToString("; "))
+                    }
+                }
             }
         },
 

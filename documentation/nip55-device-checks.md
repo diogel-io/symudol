@@ -71,7 +71,7 @@ remember.
 | `intent_nip04_round_trip` | intent | approve and remember both | as above, NIP-04 |
 | `intent_reject` | intent | reject the kind 7 reaction, without remembering | `RESULT_OK` with a Boolean `rejected` set to `true`, the request `id`, and no `result` (NIP-55) |
 | `provider_after_grant` | ContentProvider | nothing, keep Symudol unlocked | every remembered method answers, with correct results |
-| `provider_columns` (#19) | ContentProvider | nothing, keep Symudol unlocked | every answer has `signature`, `result` and `event`; `get_public_key` also has `package` |
+| `provider_columns` (#19) | ContentProvider | nothing, keep Symudol unlocked | every answer, including `nip44_decrypt` and `nip04_decrypt` of a remembered encrypt's ciphertext, has `signature`, `result` and `event`; `get_public_key` also has `package` |
 | `provider_bound` (#18) | ContentProvider | nothing, keep Symudol unlocked | every query answers within 750 ms (the 500 ms bound plus IPC), including an unremembered kind |
 | `provider_decrypt_zap_event` | provider, then intent, then provider | approve the zap decryption and remember it | a private zap made with the remembered `nip04_encrypt` decrypts to the plaintext, by intent and then by provider |
 | `intent_sign_message_event_serialisation` (#8) | intent | nothing | an event serialisation sent as a message is not signed |
