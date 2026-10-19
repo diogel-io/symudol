@@ -156,5 +156,22 @@ void main() {
       final updatedTextField = tester.widget<TextField>(find.byType(TextField).first);
       expect(updatedTextField.obscureText, isFalse);
     });
+
+    testWidgets('asks the keyboard not to learn the key (#15)', (WidgetTester tester) async {
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('I Understand'));
+      await tester.pumpAndSettle();
+
+      final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();
+      expect(fields, hasLength(2));
+      for (final field in fields) {
+        expect(field.enableIMEPersonalizedLearning, isFalse);
+      }
+      final keyField = fields.first;
+      expect(keyField.enableSuggestions, isFalse);
+      expect(keyField.autocorrect, isFalse);
+    });
   });
 }
