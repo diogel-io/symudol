@@ -20,8 +20,10 @@ internal object SensitiveClipboard {
             description.extras = PersistableBundle().apply { putBoolean(EXTRA_IS_SENSITIVE, true) }
         }
 
+    /** Throws [IllegalStateException] when there is no clipboard, so a caller never reports a copy that didn't happen. */
     fun copy(context: Context, label: String, text: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: throw IllegalStateException("no clipboard service")
         clipboard.setPrimaryClip(clip(label, text))
     }
 }

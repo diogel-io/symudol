@@ -173,5 +173,25 @@ void main() {
       expect(keyField.enableSuggestions, isFalse);
       expect(keyField.autocorrect, isFalse);
     });
+
+    testWidgets('a revealed key offers no Copy or Cut (#96)', (WidgetTester tester) async {
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('I Understand'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'nsec1secretkey');
+      await tester.tap(find.byIcon(Icons.visibility));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(find.byType(TextField).first).obscureText, isFalse);
+
+      await tester.longPressAt(tester.getRect(find.byType(EditableText).first).centerLeft + const Offset(16, 0));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<EditableText>(find.byType(EditableText).first).controller.selection.isCollapsed, isFalse);
+      expect(find.byType(AdaptiveTextSelectionToolbar), findsOneWidget);
+      expect(find.text('Copy'), findsNothing);
+      expect(find.text('Cut'), findsNothing);
+    });
   });
 }

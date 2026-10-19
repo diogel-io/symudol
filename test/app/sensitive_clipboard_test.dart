@@ -65,4 +65,18 @@ void main() {
 
     expect(offenders, isEmpty, reason: 'call copySensitiveText instead');
   });
+
+  // Framework selection copies unmarked; SensitiveSelectableText doesn't (#96).
+  test('only sensitive_selection.dart builds selectable text under lib/', () {
+    final offenders = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .where((f) => !f.path.endsWith('sensitive_selection.dart'))
+        .where((f) => RegExp(r'\b(SelectableText|SelectionArea)\(').hasMatch(f.readAsStringSync()))
+        .map((f) => f.path)
+        .toList();
+
+    expect(offenders, isEmpty, reason: 'use SensitiveSelectableText instead');
+  });
 }

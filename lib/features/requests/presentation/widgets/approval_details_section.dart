@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter/material.dart';
+import 'package:symudol/app/sensitive_selection.dart';
 
 import '../../../../../theme/tokens.dart';
 import '../../domain/approval_context.dart';
@@ -184,7 +185,7 @@ class _RawJsonBlock extends StatelessWidget {
         color: Colors.black,
         borderRadius: BorderRadius.circular(DiogelRadius.medium),
       ),
-      child: SelectableText(
+      child: SensitiveSelectableText(
         jsonString,
         style: const TextStyle(
           color: Colors.greenAccent,
@@ -277,7 +278,7 @@ class _CryptoDetailsSection extends StatelessWidget {
                 color: DiogelColors.textTertiary,
               ),
             )
-          : SelectableText(
+          : SensitiveSelectableText(
               content,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 fontFamily: 'monospace',
