@@ -22,21 +22,28 @@ object Nip55BridgeRegistry {
         val resultIntent = Intent()
         extras.forEach { (key, value) ->
             if (key is String && value != null) {
-                resultIntent.putExtra(key, value.toString())
+                // A Boolean stays a Boolean: clients read `rejected` with getBooleanExtra.
+                if (value is Boolean) resultIntent.putExtra(key, value)
+                else resultIntent.putExtra(key, value.toString())
             }
         }
         activity.complete(resultIntent)
         return true
     }
 
-    fun reject(token: String, error: String?): Boolean {
+    /**
+     * Ends [token]'s request without a result. When [rejected] is true the user (or a remembered
+     * reject) refused it, and the caller gets NIP-55's `RESULT_OK` with a Boolean `rejected`
+     * extra. Otherwise Symudol failed to handle it, which NIP-55 reports as a non-OK result.
+     */
+    fun reject(token: String, error: String?, rejected: Boolean): Boolean {
         Nip55Handoff.remove(token)
         val activity = pending.remove(token)?.get() ?: return false
         val resultIntent = Intent()
         if (!error.isNullOrBlank()) {
             resultIntent.putExtra("error", error)
         }
-        activity.reject(resultIntent)
+        if (rejected) activity.reject(resultIntent) else activity.fail(resultIntent)
         return true
     }
 }

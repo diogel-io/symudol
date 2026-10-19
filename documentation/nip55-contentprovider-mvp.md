@@ -65,6 +65,35 @@ The ContentProvider can only answer while `Nip55CryptoBridge` holds the key
 The Dart vault's own copy of the key, and the `BigInteger`s used during
 native ECDH, can't be zeroed; this bounds the native copy only.
 
+## How Long a Query Can Wait
+
+A provider query runs on the calling app's Binder thread, so it is bounded
+(diogel-io/symudol#18):
+
+- It returns `null` at once when there is no remembered allow, the key is not
+  held (the vault is locked or past its lock deadline), or no Flutter engine is
+  attached. None of these reaches the bridge.
+- A remembered `get_public_key` is answered from the persisted active pubkey,
+  without the key or the bridge.
+- Otherwise (signing, which only Dart does, or encryption when the native
+  self-test fails) `Nip55ProviderBridge` waits for Dart for at most **500 ms**
+  (`QUERY_TIMEOUT_MS`). After that it returns `null` and the client falls back
+  to the intent.
+
+## Result Columns
+
+Clients read the answer from different columns, so every answer carries all of
+them (diogel-io/symudol#19, REQ-NIP55-003):
+
+| Method | Columns |
+|--------|---------|
+| `sign_event` | `signature` and `result` (the signature), `event` (the signed event JSON) |
+| `get_public_key` | `signature`, `result` and `event` (the pubkey), `package` (Symudol's package name) |
+| Every other method | `signature`, `result` and `event`, all the same value |
+
+Symudol does not send permission `results` on `get_public_key` in 1.0.0. No
+target client depends on them.
+
 ## Projection Shape Validation
 
 **Projection shape validation** is enforced before bridging to Flutter. The

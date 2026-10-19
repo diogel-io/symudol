@@ -26,6 +26,9 @@ class Nip55PermissionMirror(private val context: Context) {
         private const val KEY_GRANTS = "grants"
         private const val KEY_ACTIVE_IDENTITY_PUBKEY = "active_identity_pubkey"
 
+        /** A grant's certificate when Dart could not read the caller's: matches no caller. */
+        internal const val UNRESOLVED_CERTIFICATE = "unresolved"
+
         /**
          * Normalizes a relay URL for consistent storage and matching.
          * Trims whitespace, lowercases, strips trailing slash.
@@ -300,19 +303,36 @@ class Nip55PermissionMirror(private val context: Context) {
         return result
     }
 
+    /**
+     * The string at [key], or null when it is missing or JSON null. Android's
+     * `optString(key, null)` returns the string "null" for a JSON null, which Dart writes for
+     * every unset field; read that way, no remembered sign_event or any-peer decrypt grant ever
+     * matched (diogel-io/symudol#19).
+     */
+    private fun JSONObject.stringOrNull(key: String): String? =
+        if (isNull(key)) null else getString(key)
+
     private fun parseGrant(obj: JSONObject): Grant {
         val scopeObj = obj.getJSONObject("scope")
         return Grant(
             id = obj.getString("id"),
             identityPubkey = obj.getString("identityPubkey"),
-            packageName = obj.optString("packageName", null),
-            certificateSha256 = obj.optString("certificateSha256", null),
+            packageName = obj.stringOrNull("packageName"),
+            // Dart writes a JSON null when it could not read the caller's certificate. A null
+            // here would match every certificate (certificateMatches), letting another app with
+            // the same package name use the grant, so it stays a value no caller has
+            // (REQ-NIP55-010).
+            certificateSha256 = if (obj.has("certificateSha256")) {
+                obj.stringOrNull("certificateSha256") ?: UNRESOLVED_CERTIFICATE
+            } else {
+                null
+            },
             scopeType = scopeObj.getString("type"),
             scopeKind = scopeObj.optInt("kind", -1).let { if (it == -1) null else it },
-            scopePeerPubkey = scopeObj.optString("peerPubkey", null),
-            scopeRelayUrl = scopeObj.optString("relayUrl", null),
+            scopePeerPubkey = scopeObj.stringOrNull("peerPubkey"),
+            scopeRelayUrl = scopeObj.stringOrNull("relayUrl"),
             decision = obj.getString("decision"),
-            expiresAtMillis = obj.optString("expiresAt", null)?.let {
+            expiresAtMillis = obj.stringOrNull("expiresAt")?.let {
                 // Parse ISO 8601 date to epoch millis
                 try {
                     java.time.Instant.parse(it).toEpochMilli()

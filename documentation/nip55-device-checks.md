@@ -69,7 +69,11 @@ remember.
 | `intent_sign_message` | intent | approve and remember | a 128-hex signature returns |
 | `intent_nip44_round_trip` | intent | approve and remember both | decrypting the ciphertext returns the plaintext |
 | `intent_nip04_round_trip` | intent | approve and remember both | as above, NIP-04 |
+| `intent_reject` | intent | reject the kind 7 reaction, without remembering | `RESULT_OK` with a Boolean `rejected` set to `true`, the request `id`, and no `result` (NIP-55) |
 | `provider_after_grant` | ContentProvider | nothing, keep Symudol unlocked | every remembered method answers, with correct results |
+| `provider_columns` (#19) | ContentProvider | nothing, keep Symudol unlocked | every answer, including `nip44_decrypt` and `nip04_decrypt` of a remembered encrypt's ciphertext, has `signature`, `result` and `event`; `get_public_key` also has `package` |
+| `provider_bound` (#18) | ContentProvider | nothing, keep Symudol unlocked | every query answers within 750 ms (the 500 ms bound plus IPC), including an unremembered kind |
+| `provider_decrypt_zap_event` | provider, then intent, then provider | approve the zap decryption and remember it | a private zap made with the remembered `nip04_encrypt` decrypts to the plaintext, by intent and then by provider |
 | `intent_sign_message_event_serialisation` (#8) | intent | nothing | an event serialisation sent as a message is not signed |
 | `provider_sign_message_event_serialisation` (#8) | ContentProvider | nothing | as above, through the provider, with a `sign_message` grant |
 | `intent_forged_identity` (#7) | explicit start of `MainActivity` | nothing; approve if asked (see below) | no answer within 30 s |
@@ -128,15 +132,11 @@ need a person to approve in Symudol, with the script reading logcat as it goes. 
 show that both APKs install and the client starts on a range of devices, for example with
 `gcloud firebase test android run --type robo --app <client.apk>`.
 
-## Amethyst
+## Real Clients
 
-Amethyst stays as an interoperability check before a release, not the routine one. Before tagging a
-release, on a device:
-
-- sign in to Amethyst with Symudol;
-- post a note, and react to one;
-- with grants remembered, confirm Amethyst signs without a prompt through the ContentProvider;
-- send and read a direct message.
+The test client covers Symudol's side of the protocol. Before a release, check the real clients
+too: Amethyst, Dark Wisp and Nostria. The procedure, the client versions and the latest results
+matrix are in [`nip55-client-interop.md`](nip55-client-interop.md) (diogel-io/symudol#87).
 
 ## CI
 

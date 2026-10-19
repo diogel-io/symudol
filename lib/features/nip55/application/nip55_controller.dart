@@ -205,6 +205,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final signingRequestId = state.pendingSigningRequestId;
     await cancelPendingExternalRequest(
       error: 'NIP-55 request timed out waiting for review',
+      rejected: false,
     );
     if (signingRequestId != null) {
       await _requestController.dismissRequest(signingRequestId);
@@ -547,6 +548,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _gateway.rejectNip55Intent(
         requestToken: incoming.requestToken,
         error: decision.reason,
+        rejected: true,
       );
       state = state.copyWith(isLoading: false, clearPendingIncoming: true);
       return;
@@ -608,6 +610,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _gateway.rejectNip55Intent(
         requestToken: incoming.requestToken,
         error: decision.reason,
+        rejected: true,
       );
       state = state.copyWith(isLoading: false, clearPendingIncoming: true);
       return;
@@ -678,6 +681,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _gateway.rejectNip55Intent(
         requestToken: incoming.requestToken,
         error: decision.reason,
+        rejected: true,
       );
       state = state.copyWith(isLoading: false, clearPendingIncoming: true);
       return;
@@ -769,6 +773,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await _gateway.rejectNip55Intent(
       requestToken: request.requestToken,
       error: 'User rejected public key request',
+      rejected: true,
     );
     state = state.copyWith(
       clearPendingIncoming: true,
@@ -841,6 +846,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await _gateway.rejectNip55Intent(
       requestToken: request.requestToken,
       error: 'User rejected ${request.method.wireName} request',
+      rejected: true,
     );
     state = state.copyWith(
       clearPendingIncoming: true,
@@ -1001,6 +1007,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       } else {
         await _rejectDeferredClientAuthenticationRequests(
           'Client authentication request was not remembered.',
+          rejected: true,
         );
       }
     }
@@ -1034,6 +1041,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _gateway.rejectNip55Intent(
         requestToken: incoming.requestToken,
         error: decision.reason,
+        rejected: true,
       );
       return true;
     }
@@ -1122,10 +1130,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await _gateway.rejectNip55Intent(
       requestToken: incoming.requestToken,
       error: 'User rejected signing request',
+      rejected: true,
     );
     if (_isClientAuthenticationRequest(incoming)) {
       await _rejectDeferredClientAuthenticationRequests(
         'User rejected signing request',
+        rejected: true,
       );
     }
     state = state.copyWith(
@@ -1134,8 +1144,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     );
   }
 
+  /// Ends the pending request without a result. A user cancel is a NIP-55
+  /// rejection; pass [rejected] false when Symudol gave up on it instead (a
+  /// timeout), which the client sees as a signer failure.
   Future<void> cancelPendingExternalRequest({
     String error = 'User cancelled NIP-55 request',
+    bool rejected = true,
   }) async {
     final incoming = state.pendingIncoming;
     if (incoming == null) return;
@@ -1143,6 +1157,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     await _gateway.rejectNip55Intent(
       requestToken: incoming.requestToken,
       error: error,
+      rejected: rejected,
     );
     state = state.copyWith(
       clearPendingIncoming: true,
@@ -1497,6 +1512,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       unawaited(
         cancelPendingExternalRequest(
           error: 'NIP-55 request timed out waiting for unlock',
+          rejected: false,
         ),
       );
     });
@@ -1593,17 +1609,22 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         await _gateway.rejectNip55Intent(
           requestToken: incoming.requestToken,
           error: decision.reason,
+          rejected: true,
         );
       } else {
         await _gateway.rejectNip55Intent(
           requestToken: incoming.requestToken,
           error: 'Client authentication request was not remembered.',
+          rejected: true,
         );
       }
     }
   }
 
-  Future<void> _rejectDeferredClientAuthenticationRequests(String error) async {
+  Future<void> _rejectDeferredClientAuthenticationRequests(
+    String error, {
+    required bool rejected,
+  }) async {
     if (_deferredClientAuthRequests.isEmpty) return;
     final deferred = List<Nip55IncomingRequest>.from(
       _deferredClientAuthRequests,
@@ -1613,6 +1634,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       await _gateway.rejectNip55Intent(
         requestToken: incoming.requestToken,
         error: error,
+        rejected: rejected,
       );
     }
   }

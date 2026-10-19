@@ -22,6 +22,18 @@ object Nostr {
             .toString()
 
     /**
+     * A NIP-57 zap request (kind 9734) with a private zap's encrypted [content], addressed to
+     * [recipient] by its `p` tag. `decrypt_zap_event` decrypts it between the user and that tag.
+     */
+    fun zapRequest(recipient: String, content: String, createdAt: Long): String =
+        JSONObject()
+            .put("kind", 9734)
+            .put("content", content)
+            .put("tags", JSONArray().put(JSONArray().put("p").put(recipient)))
+            .put("created_at", createdAt)
+            .toString()
+
+    /**
      * The NIP-01 serialisation an event id is the sha256 of: `[0,pubkey,created_at,kind,tags,content]`.
      * Sent as a `sign_message` it must be refused, or it would sign an event (#8).
      */

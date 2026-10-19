@@ -18,7 +18,15 @@ abstract interface class Nip55Gateway {
     required Map<String, Object?> extras,
   });
 
-  Future<void> rejectNip55Intent({required String requestToken, String? error});
+  /// Ends a request without a result. [rejected] is true when the user (or a
+  /// remembered reject) refused it: the client gets NIP-55's `RESULT_OK` with
+  /// `rejected`. Otherwise Symudol failed, which the client sees as a non-OK
+  /// result.
+  Future<void> rejectNip55Intent({
+    required String requestToken,
+    String? error,
+    bool rejected = false,
+  });
 
   Future<Uint8List?> getAppIcon(String packageName);
 }
@@ -95,8 +103,12 @@ class Nip55MethodChannelGateway implements Nip55Gateway {
   Future<void> rejectNip55Intent({
     required String requestToken,
     String? error,
+    bool rejected = false,
   }) async {
-    final arguments = <String, Object?>{'requestToken': requestToken};
+    final arguments = <String, Object?>{
+      'requestToken': requestToken,
+      'rejected': rejected,
+    };
     if (error != null) {
       arguments['error'] = error;
     }

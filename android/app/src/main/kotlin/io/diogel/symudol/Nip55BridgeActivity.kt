@@ -11,6 +11,7 @@ import java.security.MessageDigest
 
 class Nip55BridgeActivity : Activity() {
     private var requestToken: String? = null
+    private var requestId: String? = null
 
     companion object {
         // ── Certificate SHA-256 cache ────────────────────────────────────
@@ -108,20 +109,19 @@ class Nip55BridgeActivity : Activity() {
         } else null
 
         if (isRateLimited(callerPackage, method, eventKind)) {
-            val rejectedIntent = Intent().apply {
-                val incomingId = original.getStringExtra(getString(R.string.key_id))
-                    ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))
-                putExtra(getString(R.string.key_rejected), "rate_limited")
-                if (incomingId != null) putExtra(getString(R.string.key_id), incomingId)
-            }
-            setResult(RESULT_CANCELED, rejectedIntent)
-            finish()
+            // A refusal, not a failure: NIP-55's RESULT_OK with a Boolean `rejected`, so the
+            // client stops waiting instead of timing out.
+            requestId = original.getStringExtra(getString(R.string.key_id))
+                ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))
+            reject(Intent().putExtra("error", "rate_limited"))
             return
         }
 
         // Unguessable: the token is the only thing MainActivity accepts a request by (#7).
         val token = Nip55Handoff.newToken(getString(R.string.token_prefix_bridge))
         requestToken = token
+        requestId = original.getStringExtra(getString(R.string.key_id))
+            ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))
         Nip55BridgeRegistry.register(token, this)
         val shouldUseControlQueryForContent = originalTypeExtra == null || method == getString(R.string.method_nip04_decrypt)
         // The whole request, with the caller as Android reports it, stays in this process.
@@ -132,7 +132,7 @@ class Nip55BridgeActivity : Activity() {
             "bridgeToken" to token,
             "type" to method,
             "content" to (original.getStringExtra(getString(R.string.key_content)) ?: Nip55UriParser.content(originalData, method, shouldUseControlQueryForContent)),
-            "id" to (original.getStringExtra(getString(R.string.key_id)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_id))),
+            "id" to requestId,
             "currentUser" to (original.getStringExtra(getString(R.string.key_current_user)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_current_user))),
             "pubkey" to (original.getStringExtra(getString(R.string.key_pubkey)) ?: original.getStringExtra(getString(R.string.key_pubkey_alt)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_pubkey))),
             "permissions" to (original.getStringExtra(getString(R.string.key_permissions)) ?: Nip55UriParser.queryParameter(originalData, getString(R.string.key_permissions))),
@@ -180,7 +180,20 @@ class Nip55BridgeActivity : Activity() {
         finish()
     }
 
+    /**
+     * The user (or a remembered reject) refused the request. NIP-55 answers a rejection with
+     * `RESULT_OK` and a Boolean `rejected` extra; a non-OK result would mean the signer failed.
+     */
     fun reject(resultIntent: Intent) {
+        resultIntent.putExtra(getString(R.string.key_rejected), true)
+        requestId?.let { resultIntent.putExtra(getString(R.string.key_id), it) }
+        setResult(RESULT_OK, resultIntent)
+        finish()
+    }
+
+    /** Symudol could not handle the request: a non-OK result, which NIP-55 reads as signer failure. */
+    fun fail(resultIntent: Intent) {
+        requestId?.let { resultIntent.putExtra(getString(R.string.key_id), it) }
         setResult(RESULT_CANCELED, resultIntent)
         finish()
     }

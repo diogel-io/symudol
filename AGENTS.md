@@ -76,7 +76,7 @@ void main() {
 ### Debugging Tips
 - Check `flutter_secure_storage` logs if vault initialization fails.
 - The `fix_emulators.sh` script is available in the root to troubleshoot Android emulator locking issues.
-- `nip55_device_check.sh` runs the NIP-55 device checks with the test client in `tools/nip55-test-client/` (`documentation/nip55-device-checks.md`). Amethyst is the pre-release interop check, not the routine one.
+- `nip55_device_check.sh` runs the NIP-55 device checks with the test client in `tools/nip55-test-client/` (`documentation/nip55-device-checks.md`). Before a release, also check the real clients (Amethyst, Dark Wisp and Nostria) with `documentation/nip55-client-interop.md`.
 
 ### Nostr Protocol
 - **Nostr Protocol**: The project uses the `dart_nostr` library for Nostr interactions.

@@ -70,6 +70,26 @@ const val CALLBACK_URL = "nip55testclient://callback?event="
 
 private fun now(): Long = System.currentTimeMillis() / 1000
 
+/** NIP-55's slowest acceptable provider answer (#18): the 500 ms bound plus IPC headroom. */
+private const val PROVIDER_BOUND_MS = 750L
+
+/** The columns every answer carries (#19). */
+private val RESULT_COLUMNS = setOf("signature", "result", "event")
+
+/** What is wrong with [answer]'s columns, or null when every result column is there and equal. */
+private fun columnProblem(method: String, answer: ProviderAnswer): String? {
+    if (answer !is ProviderAnswer.Answered) return "$method ${answer.describe()}"
+    val missing = RESULT_COLUMNS - answer.columns.keys
+    return when {
+        missing.isNotEmpty() -> "$method is missing ${missing.sorted().joinToString()}"
+        method == "sign_event" && answer.columns["signature"] != answer.columns["result"] ->
+            "sign_event signature and result differ"
+        method != "sign_event" && RESULT_COLUMNS.map { answer.columns[it] }.toSet().size != 1 ->
+            "$method result columns differ"
+        else -> null
+    }
+}
+
 /** The result extra of an approved intent request, or null. */
 private fun answer(code: Int, data: Intent?): String? =
     data?.getStringExtra("result")?.takeIf { code == Activity.RESULT_OK && it.isNotBlank() }
@@ -91,8 +111,17 @@ private fun Run.queryEach(checks: List<Check>, problems: List<String> = emptyLis
     }
 }
 
-/** Encrypts to the peer, then decrypts what came back, through the ContentProvider. */
-private fun Run.providerRoundTrip(encrypt: String, decrypt: String, pubkey: String, done: (String?) -> Unit) {
+/**
+ * Encrypts to the peer, then decrypts what came back, through the ContentProvider. [checkDecrypted]
+ * adds a check on the decrypt answer, such as its columns (#19).
+ */
+private fun Run.providerRoundTrip(
+    encrypt: String,
+    decrypt: String,
+    pubkey: String,
+    checkDecrypted: (ProviderAnswer) -> String? = { null },
+    done: (String?) -> Unit,
+) {
     val plaintext = "provider round trip ${now()}"
     query(encrypt, arrayOf(plaintext, Nostr.PEER_PUBKEY, pubkey)) { encrypted ->
         if (encrypted !is ProviderAnswer.Answered) return@query done("$encrypt ${encrypted.describe()}")
@@ -101,7 +130,7 @@ private fun Run.providerRoundTrip(encrypt: String, decrypt: String, pubkey: Stri
                 when {
                     decrypted !is ProviderAnswer.Answered -> "$decrypt ${decrypted.describe()}"
                     decrypted.result != plaintext -> "$decrypt returned different text"
-                    else -> null
+                    else -> checkDecrypted(decrypted)
                 },
             )
         }
@@ -215,6 +244,22 @@ object Scenarios {
             intentRoundTrip("nip04_encrypt", "nip04_decrypt")
         },
 
+        Scenario("intent_reject", "Intent: a rejection is RESULT_OK with rejected", 120_000) {
+            // NIP-55: a user rejection is RESULT_OK with a Boolean `rejected`; a non-OK result
+            // means the signer failed.
+            val pubkey = requirePubkey() ?: return@Scenario
+            val event = Nostr.unsignedEvent(7, "+", now())
+            launch(Signer.intent("sign_event", event, mapOf("id" to "reject", "current_user" to pubkey))) { code, data ->
+                when {
+                    code != Activity.RESULT_OK -> fail("result code $code, not RESULT_OK")
+                    data?.getBooleanExtra("rejected", false) != true -> fail("no Boolean rejected extra")
+                    data.getStringExtra("id") != "reject" -> fail("id is ${data.getStringExtra("id")}, not reject")
+                    data.getStringExtra("result") != null -> fail("a rejection carried a result")
+                    else -> pass("RESULT_OK with rejected=true and the request id")
+                }
+            }
+        },
+
         Scenario("provider_after_grant", "Provider: answers after remembered grants", 60_000) {
             val pubkey = requirePubkey() ?: return@Scenario
             val event = Nostr.unsignedEvent(1, EVENT_CONTENT, now())
@@ -253,6 +298,81 @@ object Scenarios {
             }
         },
 
+        Scenario("provider_columns", "Provider: every answer carries every result column (#19)", 60_000) {
+            val pubkey = requirePubkey() ?: return@Scenario
+            val event = Nostr.unsignedEvent(1, EVENT_CONTENT, now())
+            queryEach(
+                listOf(
+                    Check("get_public_key", arrayOf("login")) { answer ->
+                        columnProblem("get_public_key", answer) ?: (answer as ProviderAnswer.Answered).let {
+                            if (it.columns["package"] != Signer.PACKAGE) "get_public_key package is ${it.columns["package"]}" else null
+                        }
+                    },
+                    Check("sign_event", arrayOf(event, "", pubkey)) { columnProblem("sign_event", it) },
+                    Check("nip44_encrypt", arrayOf(MESSAGE, Nostr.PEER_PUBKEY, pubkey)) { columnProblem("nip44_encrypt", it) },
+                    Check("nip04_encrypt", arrayOf(MESSAGE, Nostr.PEER_PUBKEY, pubkey)) { columnProblem("nip04_encrypt", it) },
+                    Check("ping", arrayOf()) { columnProblem("ping", it) },
+                ),
+            ) { problems ->
+                // The decrypts need a ciphertext from the remembered encrypts first.
+                providerRoundTrip("nip44_encrypt", "nip44_decrypt", pubkey, { columnProblem("nip44_decrypt", it) }) { nip44 ->
+                    providerRoundTrip("nip04_encrypt", "nip04_decrypt", pubkey, { columnProblem("nip04_decrypt", it) }) { nip04 ->
+                        val all = problems + listOfNotNull(nip44, nip04)
+                        if (all.isEmpty()) pass("signature, result and event on every method; package on get_public_key")
+                        else fail(all.joinToString("; "))
+                    }
+                }
+            }
+        },
+
+        Scenario("provider_bound", "Provider: every answer within the bound (#18)", 60_000) {
+            val pubkey = requirePubkey() ?: return@Scenario
+            val queries = listOf(
+                "get_public_key" to arrayOf("login"),
+                "sign_event" to arrayOf(Nostr.unsignedEvent(1, EVENT_CONTENT, now()), "", pubkey),
+                "sign_event" to arrayOf(Nostr.unsignedEvent(BROAD_KIND, EVENT_CONTENT, now()), "", pubkey),
+                "nip44_encrypt" to arrayOf(MESSAGE, Nostr.PEER_PUBKEY, pubkey),
+            )
+            fun next(index: Int, slow: List<String>) {
+                if (index == queries.size) {
+                    return if (slow.isEmpty()) pass("every query answered within $PROVIDER_BOUND_MS ms")
+                    else fail(slow.joinToString("; "))
+                }
+                val (method, projection) = queries[index]
+                val started = System.nanoTime()
+                query(method, projection) { answer ->
+                    val ms = (System.nanoTime() - started) / 1_000_000
+                    next(index + 1, if (ms > PROVIDER_BOUND_MS) slow + "$method took $ms ms (${answer.describe()})" else slow)
+                }
+            }
+            next(0, emptyList())
+        },
+
+        Scenario("provider_decrypt_zap_event", "decrypt_zap_event: intent, then provider", 150_000) {
+            // A private zap's content is NIP-04, addressed between the user and its p tag. The
+            // remembered nip04_encrypt makes one; the intent remembers decrypt_zap_event.
+            val pubkey = requirePubkey() ?: return@Scenario
+            val plaintext = "private zap ${now()}"
+            query("nip04_encrypt", arrayOf(plaintext, Nostr.PEER_PUBKEY, pubkey)) { encrypted ->
+                if (encrypted !is ProviderAnswer.Answered) {
+                    return@query fail("nip04_encrypt ${encrypted.describe()}: run intent_nip04_round_trip first")
+                }
+                val zap = Nostr.zapRequest(Nostr.PEER_PUBKEY, encrypted.result, now())
+                launch(Signer.intent("decrypt_zap_event", zap, mapOf("id" to "zap", "current_user" to pubkey))) { code, data ->
+                    if (answer(code, data) != plaintext) {
+                        return@launch fail("intent decrypt_zap_event did not return the plaintext (result code $code)")
+                    }
+                    query("decrypt_zap_event", arrayOf(zap, "", pubkey)) { answer ->
+                        when {
+                            answer !is ProviderAnswer.Answered -> fail("provider decrypt_zap_event ${answer.describe()}")
+                            answer.result != plaintext -> fail("provider decrypt_zap_event returned different text")
+                            else -> pass("decrypted the private zap through the intent and the provider")
+                        }
+                    }
+                }
+            }
+        },
+
         Scenario(
             "intent_sign_message_event_serialisation",
             "Intent: sign_message refuses an event serialisation (#8)",
@@ -266,7 +386,7 @@ object Scenarios {
                 if (answer(code, data) != null) {
                     fail("an event serialisation was signed as a message")
                 } else {
-                    pass("refused (result code $code, rejected=${data?.getStringExtra("rejected")})")
+                    pass("refused (result code $code, rejected=${data?.getBooleanExtra("rejected", false)})")
                 }
             }
             onTimeout = {

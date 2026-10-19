@@ -86,6 +86,7 @@ class Nip55ContentProviderTest {
         decision: String = "allow",
         certificate: String? = cert(),
         packageName: String = client,
+        nullScopeKeys: List<String> = emptyList(),
     ) = JSONObject().apply {
         put("id", "g-$type-$kind-$decision-$packageName")
         put("identityPubkey", pubKey)
@@ -94,6 +95,8 @@ class Nip55ContentProviderTest {
         put("scope", JSONObject().apply {
             put("type", type)
             if (kind != null) put("kind", kind)
+            // Dart writes an unset scope field as JSON null, not by leaving the key out.
+            nullScopeKeys.forEach { put(it, JSONObject.NULL) }
         })
         put("decision", decision)
         put("expiresAt", JSONObject.NULL)
@@ -275,6 +278,173 @@ class Nip55ContentProviderTest {
 
         assertEquals("dart-sign_message", viaFlutter { signMessage("hello") }!!.only("result"))
         assertEquals(listOf("sign_message"), askedFlutter)
+    }
+
+    // ── Result columns (#19) ───────────────────────────────────────────────
+
+    private fun Cursor.row(): Map<String, String?> {
+        assertTrue(moveToFirst())
+        return columnNames.associateWith { getString(getColumnIndexOrThrow(it)) }
+    }
+
+    @Test
+    fun aRememberedGetPublicKeyCarriesEveryResultColumnAndThePackage() {
+        grants(grant("get_public_key"))
+
+        val row = query("GET_PUBLIC_KEY", "login")!!.row()
+
+        assertEquals(mapOf("signature" to pubKey, "result" to pubKey, "event" to pubKey, "package" to appId), row)
+    }
+
+    @Test
+    fun aRememberedGetPublicKeyIsAnsweredWithoutTheKey() {
+        // The pubkey is persisted; no private key and no Flutter round trip is needed.
+        grants(grant("get_public_key"))
+        Nip55CryptoBridge.clearActiveKey()
+
+        assertEquals(pubKey, query("GET_PUBLIC_KEY", "login")!!.row()["result"])
+        assertTrue(askedFlutter.isEmpty())
+    }
+
+    @Test
+    fun encryptionCarriesSignatureResultAndEventColumns() {
+        grants(grant("nip44_encrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val row = query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey)!!.row()
+
+        assertEquals(setOf("signature", "result", "event"), row.keys)
+        assertEquals(1, row.values.toSet().size)
+    }
+
+    @Test
+    fun pingCarriesEveryResultColumn() {
+        val row = provider.query(Uri.parse("content://$appId.PING"), null, null, null, null)!!.row()
+
+        assertEquals(mapOf("signature" to "pong", "result" to "pong", "event" to "pong"), row)
+    }
+
+    @Test
+    fun aSignedEventCarriesSignatureResultAndEvent() {
+        grants(grant("sign_event", kind = 1))
+
+        val row = viaFlutter { signEvent(event(1)) }!!.row()
+
+        assertEquals(mapOf("signature" to DART_SIGNATURE, "result" to DART_SIGNATURE, "event" to DART_EVENT), row)
+    }
+
+    @Test
+    fun nip04CarriesSignatureResultAndEventColumns() {
+        grants(grant("nip04_encrypt"), grant("nip04_decrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val encrypted = query("NIP04_ENCRYPT", "hello", otherPubKey, pubKey)!!.row()
+        val decrypted = query("NIP04_DECRYPT", encrypted.getValue("result")!!, otherPubKey, pubKey)!!.row()
+
+        assertEquals(setOf("signature", "result", "event"), encrypted.keys)
+        assertEquals(1, encrypted.values.toSet().size)
+        assertEquals(mapOf("signature" to "hello", "result" to "hello", "event" to "hello"), decrypted)
+    }
+
+    @Test
+    fun nip44DecryptCarriesSignatureResultAndEventColumns() {
+        grants(grant("nip44_encrypt"), grant("nip44_decrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val ciphertext = query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey)!!.row().getValue("result")!!
+        val row = query("NIP44_DECRYPT", ciphertext, otherPubKey, pubKey)!!.row()
+
+        assertEquals(mapOf("signature" to "hello", "result" to "hello", "event" to "hello"), row)
+    }
+
+    @Test
+    fun decryptZapEventCarriesSignatureResultAndEventColumns() {
+        grants(grant("nip04_encrypt"), grant("decrypt_zap_event"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+        val content = query("NIP04_ENCRYPT", "zap note", otherPubKey, pubKey)!!.row().getValue("result")
+        val zap = JSONObject()
+            .put("kind", 9734)
+            .put("content", content)
+            .put("tags", JSONArray().put(JSONArray().put("p").put(otherPubKey)))
+            .toString()
+
+        val row = query("DECRYPT_ZAP_EVENT", zap, "", pubKey)!!.row()
+
+        assertEquals(mapOf("signature" to "zap note", "result" to "zap note", "event" to "zap note"), row)
+    }
+
+    @Test
+    fun aBridgedAnswerCarriesSignatureResultAndEvent() {
+        // sign_message is never native, and a failed self-test sends encryption to Dart too.
+        grants(grant("sign_message"), grant("nip44_encrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { false }
+
+        val message = viaFlutter { signMessage("hello") }!!.row()
+        val encrypted = viaFlutter { query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey) }!!.row()
+
+        val sign = "dart-sign_message"
+        val nip44 = "dart-nip44_encrypt"
+        assertEquals(mapOf("signature" to sign, "result" to sign, "event" to sign), message)
+        assertEquals(mapOf("signature" to nip44, "result" to nip44, "event" to nip44), encrypted)
+    }
+
+    // ── Grants as Dart writes them (#19) ───────────────────────────────────
+
+    @Test
+    fun aRememberedKindWithANullRelayIsAnswered() {
+        // Android's org.json reads a JSON null as the string "null"; that once made every
+        // remembered sign_event miss, so no client was ever answered in the background.
+        grants(grant("sign_event", kind = 1, nullScopeKeys = listOf("relayUrl")))
+
+        assertEquals(DART_SIGNATURE, viaFlutter { signEvent(event(1)) }!!.only("signature"))
+    }
+
+    @Test
+    fun aDecryptGrantForAnyPeerIsAnswered() {
+        grants(
+            grant("nip44_encrypt", nullScopeKeys = listOf("peerPubkey")),
+            grant("nip44_decrypt", nullScopeKeys = listOf("peerPubkey")),
+        )
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val ciphertext = query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey)!!.row().getValue("result")!!
+
+        assertEquals("hello", query("NIP44_DECRYPT", ciphertext, otherPubKey, pubKey)!!.only("result"))
+    }
+
+    @Test
+    fun aGrantSavedWithoutTheCallersCertificateMatchesNoCaller() {
+        // Dart writes "certificateSha256": null when it could not read the caller's certificate.
+        // That grant must not match every certificate, or another app with the same package
+        // name could use it (REQ-NIP55-010).
+        grants(grant("get_public_key", certificate = null))
+
+        assertNull(query("GET_PUBLIC_KEY", "login"))
+    }
+
+    // ── The provider bound (#18) ───────────────────────────────────────────
+
+    @Test
+    fun aQueryDartNeverAnswersReturnsNullWithinTheBound() {
+        // flutterChannel records the call but never replies, as a busy or stuck engine would.
+        grants(grant("sign_event", kind = 1))
+        Nip55ProviderBridge.attach(flutterChannel)
+
+        val started = System.nanoTime()
+        var cursor: Cursor? = null
+        val worker = Thread { cursor = signEvent(event(1)) }
+        worker.start()
+        val mainLooper = shadowOf(android.os.Looper.getMainLooper())
+        while (worker.isAlive) {
+            mainLooper.idle()
+            worker.join(5)
+        }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertNull("the client falls back to the intent", cursor)
+        assertTrue("Dart was asked", sentToFlutter.isNotEmpty())
+        assertTrue("returned after ${elapsedMs} ms", elapsedMs < Nip55ProviderBridge.QUERY_TIMEOUT_MS + 250)
+        assertEquals(500L, Nip55ProviderBridge.QUERY_TIMEOUT_MS)
     }
 
     // ── Never Symudol itself (#11) ─────────────────────────────────────────

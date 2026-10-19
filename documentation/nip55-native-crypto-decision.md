@@ -54,7 +54,8 @@ Dart as well, or adopting a vetted library, is follow-up work.
 ## Consequences
 
 - Background signing waits on the Flutter engine: the bridge posts to the main thread and blocks
-  the client's Binder thread for up to 3 seconds (`Nip55ProviderBridge`).
+  the client's Binder thread for up to 500 ms (`Nip55ProviderBridge`, diogel-io/symudol#18;
+  it was 3 seconds before).
 - When Dart cannot answer (a NIP-55 request is pending review, the vault is locked, or the bridge
   times out), the provider returns `null` and the client falls back to the intent, where the user
   sees the request. That is safe, but may mean more prompts.

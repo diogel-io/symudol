@@ -170,7 +170,7 @@ class Nip55BridgeActivityTest {
 
         val fourth = launch(nostrsigner("sign_message"), caller = null)
 
-        assertEquals("rate_limited", shadowOf(fourth).resultIntent.getStringExtra("rejected"))
+        assertTrue(shadowOf(fourth).resultIntent.getBooleanExtra("rejected", false))
     }
 
     @Test
@@ -180,8 +180,53 @@ class Nip55BridgeActivityTest {
         val fourth = launch(nostrsigner("sign_message"))
 
         assertNull(shadowOf(fourth).nextStartedActivity)
-        assertEquals(Activity.RESULT_CANCELED, shadowOf(fourth).resultCode)
-        assertEquals("rate_limited", shadowOf(fourth).resultIntent.getStringExtra("rejected"))
+        // A refusal is NIP-55's RESULT_OK with a Boolean `rejected`, so the client stops waiting.
+        val result = shadowOf(fourth).resultIntent
+        assertEquals(Activity.RESULT_OK, shadowOf(fourth).resultCode)
+        assertTrue(result.getBooleanExtra("rejected", false))
+        assertEquals("rate_limited", result.getStringExtra("error"))
+    }
+
+    @Test
+    fun aUserRejectionIsResultOkWithABooleanRejectedAndTheRequestId() {
+        val activity = launch(nostrsigner("sign_event").putExtra("id", "req-1"))
+        val (started, _) = handedOver(activity)
+
+        assertTrue(Nip55BridgeRegistry.reject(started.getStringExtra("requestToken")!!, "User rejected", rejected = true))
+
+        val result = shadowOf(activity).resultIntent
+        assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
+        assertTrue(result.getBooleanExtra("rejected", false))
+        assertEquals("req-1", result.getStringExtra("id"))
+        assertEquals("User rejected", result.getStringExtra("error"))
+    }
+
+    @Test
+    fun aSignerFailureIsANonOkResultWithoutRejected() {
+        val activity = launch(nostrsigner("sign_event").putExtra("id", "req-2"))
+        val (started, _) = handedOver(activity)
+
+        assertTrue(Nip55BridgeRegistry.reject(started.getStringExtra("requestToken")!!, "busy", rejected = false))
+
+        val result = shadowOf(activity).resultIntent
+        assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
+        assertFalse(result.hasExtra("rejected"))
+        assertEquals("req-2", result.getStringExtra("id"))
+    }
+
+    @Test
+    fun aBooleanResultExtraStaysABoolean() {
+        val activity = launch(nostrsigner("sign_event"))
+        val (started, _) = handedOver(activity)
+
+        Nip55BridgeRegistry.complete(
+            started.getStringExtra("requestToken")!!,
+            mapOf("result" to "sig", "rejected" to false),
+        )
+
+        val result = shadowOf(activity).resultIntent
+        assertEquals("sig", result.getStringExtra("result"))
+        assertFalse(result.getBooleanExtra("rejected", true))
     }
 
     @Test
