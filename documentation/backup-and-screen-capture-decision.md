@@ -63,7 +63,7 @@ Backup option 3 and screen-capture option 2.
 - **Moving to a new phone.** Keys move only through an export the user asks for (SR-22). Until
   that export ships (#24, the nsec export, and #25, the encrypted vault backup file), a user who
   moves phones re-imports their nsec, and loses remembered decisions and NIP-46 pairings. The
-  release notes and the Play listing say so.
+  1.0.0 release notes and the Play listing must say so (tracked in #39).
 - **Old backups.** Turning backup off does not delete backups taken by earlier builds. They expire
   on Android's own schedule, which the app cannot control.
 - **Screenshots.** Users cannot screenshot any Symudol screen, including harmless ones such as the
