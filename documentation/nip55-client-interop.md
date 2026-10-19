@@ -116,35 +116,42 @@ in the 1.0.0 milestone. Raise a client's own defect upstream on that client and 
 
 ### Latest Run
 
-Not run yet. The table below is filled in from the first run.
+A partial run for diogel-io/symudol#19: login, and the result columns on the intent and provider
+paths for the actions below. Dark Wisp, the direct messages, private zaps and rejections are not
+run yet; blank cells are not run. The emulator was taken offline after login, so nothing was
+published to a relay.
 
 | Symudol commit | Device | Date |
 |----------------|--------|------|
-| | | |
+| d204cd4 | Pixel 6 AVD, Android 14 (google_apis x86_64) | 2026-10-19 |
 
 | Client | Version | SHA-256 |
 |--------|---------|---------|
-| Amethyst | 1.19.0 | |
+| Amethyst | 1.19.0 | `c8c0c10b60e4ba13c016cf54e5e21b71b03de051f068ef40abfa2cb35baafaed` |
 | Dark Wisp | 1.2.5 | |
-| Nostria | 4.1.77 | |
+| Nostria | 4.1.77 | `4f4ce59ede4cfcf05bb43c48179751c5898ffdde5114a35a7fa8bdcbe9b1a7da` |
 
 | Method | Path | Amethyst | Dark Wisp | Nostria |
 |--------|------|----------|-----------|---------|
-| `get_public_key` (login) | intent | | | |
+| `get_public_key` (login) | intent | pass | | pass |
 | `get_public_key` | provider | | | |
-| `sign_event` | intent | | | |
-| `sign_event` | provider | | | |
+| `sign_event` | intent | pass (kinds 1, 5) | | pass (kinds 30078, 27235, 10086) |
+| `sign_event` | provider | pass (kinds 1, 5, 31234) | | pass (kind 27235) |
 | `nip04_encrypt` | intent | | not used | |
 | `nip04_encrypt` | provider | | not used | |
 | `nip04_decrypt` | intent | | not used | |
 | `nip04_decrypt` | provider | | not used | |
-| `nip44_encrypt` | intent | | | |
-| `nip44_encrypt` | provider | | | |
+| `nip44_encrypt` | intent | pass (draft) | | |
+| `nip44_encrypt` | provider | pass (draft) | | |
 | `nip44_decrypt` | intent | | | |
 | `nip44_decrypt` | provider | | | |
 | `decrypt_zap_event` | intent | | not used | not used |
 | `decrypt_zap_event` | provider | | not used | not used |
 | Rejection | intent | | | |
+
+Pass on the provider path means logcat showed the remembered allow answering, there was no
+Symudol prompt, and the client did not fall back to the intent. Amethyst also showed the
+provider-signed note on its profile, under the same npub as Symudol's identity.
 
 | Failure | Issue |
 |---------|-------|
