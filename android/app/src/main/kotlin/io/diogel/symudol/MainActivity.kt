@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.WindowManager
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import io.flutter.embedding.android.FlutterActivity
@@ -51,6 +52,10 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         DiogelLog.d(TAG) { "onCreate: action=${intent?.action}" }
+        // Flutter draws every screen in this window, keys, decrypted previews and approvals
+        // included: keep it out of screenshots, screen recording and the recents preview
+        // (SR-23, #15). Set before the first frame.
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
         initialNip55Intent = router.parse(intent)

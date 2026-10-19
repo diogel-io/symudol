@@ -163,6 +163,8 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
               obscureText: _obscureKey,
               enableSuggestions: false,
               autocorrect: false,
+              // Asks the keyboard not to learn or sync what is typed or pasted here (#15).
+              enableIMEPersonalizedLearning: false,
               enabled: !_isLoading,
               autofocus: true,
             ),
@@ -176,6 +178,7 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
                 hintText: 'e.g. My Main Account',
                 border: OutlineInputBorder(),
               ),
+              enableIMEPersonalizedLearning: false,
               enabled: !_isLoading,
             ),
           ],

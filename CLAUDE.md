@@ -88,6 +88,7 @@ Relevant NIPs: NIP-01 (basic protocol), NIP-04/NIP-44 (encryption), NIP-46 (remo
 `documentation/` contains the decision records. Check them before changing NIP-55 transport or native-key behavior:
 - `nip55-contentprovider-mvp.md` — what the ContentProvider answers in the background, and how long the native key lives
 - `nip55-native-crypto-decision.md` — why native code does not sign (diogel-io/symudol#12)
+- `backup-and-screen-capture-decision.md` — why nothing is backed up or transferred, and why the whole app blocks screen capture (diogel-io/symudol#15)
 - `nip55-signer-discovery.md` — how clients discover Symudol as a signer
 - `nip55-client-discovery-reference.md` — how known clients look for a signer
 - `nip55-device-checks.md` — running the NIP-55 device checks with the test client
