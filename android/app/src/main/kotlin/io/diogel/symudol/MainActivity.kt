@@ -72,7 +72,12 @@ class MainActivity : FlutterActivity() {
             if (call.method != "copySensitiveText") return@setMethodCallHandler result.notImplemented()
             val text = call.argument<String>("text")
             if (text == null) return@setMethodCallHandler result.error("INVALID_ARGS", "text required", null)
-            SensitiveClipboard.copy(this, call.argument<String>("label") ?: "Symudol", text)
+            try {
+                SensitiveClipboard.copy(applicationContext, call.argument<String>("label") ?: "Symudol", text)
+            } catch (e: Exception) {
+                DiogelLog.w(TAG, "copySensitiveText: clipboard copy failed", e)
+                return@setMethodCallHandler result.error("COPY_FAILED", "copy failed", null)
+            }
             result.success(null)
         }
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -357,7 +362,12 @@ class MainActivity : FlutterActivity() {
         if (extras["copyToClipboard"] != true) return
         val result = extras["result"]?.toString() ?: return
         val label = extras["clipboardLabel"]?.toString() ?: "NIP-55 result"
-        SensitiveClipboard.copy(this, label, result)
+        // A failed copy must not stop the bridge from answering the caller.
+        try {
+            SensitiveClipboard.copy(this, label, result)
+        } catch (e: Exception) {
+            DiogelLog.w(TAG, "completeNip55Intent: clipboard copy failed", e)
+        }
     }
 
     private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {

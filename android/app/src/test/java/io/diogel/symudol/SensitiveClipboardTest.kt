@@ -2,9 +2,11 @@ package io.diogel.symudol
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,10 +39,25 @@ class SensitiveClipboardTest {
     }
 
     @Test
+    fun copyThrowsWhenThereIsNoClipboard() {
+        val noClipboard = object : ContextWrapper(context) {
+            override fun getSystemService(name: String): Any? =
+                if (name == Context.CLIPBOARD_SERVICE) null else super.getSystemService(name)
+        }
+
+        assertThrows(IllegalStateException::class.java) {
+            SensitiveClipboard.copy(noClipboard, "bunker URI", "bunker://abc?secret=xyz")
+        }
+    }
+
+    @Test
     fun onlySensitiveClipboardSetsTheClipboard() {
-        val sources = File("src/main/kotlin/io/diogel/symudol").listFiles { f -> f.extension == "kt" }
-        assertNotNull("run from android/app", sources)
-        val offenders = sources!!.filter { it.name != "SensitiveClipboard.kt" && "setPrimaryClip" in it.readText() }
+        val root = File("src/main/kotlin")
+        assertTrue("run from android/app", root.isDirectory)
+        // Recursive, so a subpackage can't slip past (#96).
+        val sources = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue("found the Kotlin sources", sources.any { it.name == "SensitiveClipboard.kt" })
+        val offenders = sources.filter { it.name != "SensitiveClipboard.kt" && "setPrimaryClip" in it.readText() }
 
         assertEquals("copy through SensitiveClipboard", emptyList<String>(), offenders.map { it.name })
     }
