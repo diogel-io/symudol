@@ -37,10 +37,11 @@ class Nip55ResponseBuilder {
     };
   }
 
+  /// Permission `results` are not sent in 1.0.0: no target client
+  /// (Amethyst, Dark Wisp, Nostria) depends on them (diogel-io/symudol#19).
   Map<String, Object?> getPublicKeyExtras(
     VaultIdentity identity, {
     Nip55IncomingRequest? incoming,
-    String? permissionsResultsJson,
   }) {
     final options = incoming?.webReturnOptions;
     final extras = <String, Object?>{
@@ -54,9 +55,6 @@ class Nip55ResponseBuilder {
       if (options != null && options.isBrowserFlow && !options.hasCallback)
         'clipboardLabel': 'NIP-55 public key result',
     };
-    if (permissionsResultsJson case final results?) {
-      extras['results'] = results;
-    }
     return extras;
   }
 

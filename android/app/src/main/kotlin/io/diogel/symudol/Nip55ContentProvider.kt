@@ -140,12 +140,15 @@ class Nip55ContentProvider : ContentProvider() {
                     callerCertSha256 = callerCertSha256,
                 )
             ) {
+                // The pubkey needs no private key: answer from the persisted identity even
+                // while the vault is locked, rather than waiting on the Flutter bridge.
+                if (method == "get_public_key") return publicKeyCursor(activePubkey)
                 Log.d(TAG, "query: remembered allow for $callerPackage/$method — performing native crypto")
                 val nativeResult = performNativeCrypto(method, projection, activePubkey)
                 if (nativeResult != null) return nativeResult
                 // No key (locked, cleared or past the lock deadline): no signature, and not
                 // via the Flutter bridge either (#9). The client falls back to the intent.
-                if (method != "get_public_key" && !Nip55CryptoBridge.hasActiveKey) {
+                if (!Nip55CryptoBridge.hasActiveKey) {
                     Log.d(TAG, "query: no active key for $method; not answering in the background")
                     return null
                 }
@@ -196,6 +199,7 @@ class Nip55ContentProvider : ContentProvider() {
             val eventJson = result["event"]?.toString() ?: return null
             return Nip55RequestCodec.signEventCursor(operationResult, eventJson)
         }
+        if (method == "get_public_key") return publicKeyCursor(operationResult)
         return Nip55RequestCodec.operationResultCursor(operationResult)
     }
 
@@ -245,9 +249,7 @@ class Nip55ContentProvider : ContentProvider() {
         }
         return try {
             when (method) {
-                "get_public_key" -> {
-                    Nip55RequestCodec.operationResultCursor(activePubkey)
-                }
+                "get_public_key" -> publicKeyCursor(activePubkey)
                 "nip44_decrypt" -> {
                     val ciphertext = Nip55RequestCodec.payloadFromProjection(projection) ?: return null
                     val peerPubkey = Nip55RequestCodec.peerPubkeyFromProjection(projection) ?: return null
@@ -313,6 +315,9 @@ class Nip55ContentProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
     // ── Private helpers ──────────────────────────────────────────────────
+
+    private fun publicKeyCursor(pubkey: String): Cursor =
+        Nip55RequestCodec.publicKeyCursor(pubkey, context?.packageName ?: BuildConfig.APPLICATION_ID)
 
     private fun callingPackage(): String? {
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {

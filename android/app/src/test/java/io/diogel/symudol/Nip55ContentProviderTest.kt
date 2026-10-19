@@ -277,6 +277,84 @@ class Nip55ContentProviderTest {
         assertEquals(listOf("sign_message"), askedFlutter)
     }
 
+    // ── Result columns (#19) ───────────────────────────────────────────────
+
+    private fun Cursor.row(): Map<String, String?> {
+        assertTrue(moveToFirst())
+        return columnNames.associateWith { getString(getColumnIndexOrThrow(it)) }
+    }
+
+    @Test
+    fun aRememberedGetPublicKeyCarriesEveryResultColumnAndThePackage() {
+        grants(grant("get_public_key"))
+
+        val row = query("GET_PUBLIC_KEY", "login")!!.row()
+
+        assertEquals(mapOf("signature" to pubKey, "result" to pubKey, "event" to pubKey, "package" to appId), row)
+    }
+
+    @Test
+    fun aRememberedGetPublicKeyIsAnsweredWithoutTheKey() {
+        // The pubkey is persisted; no private key and no Flutter round trip is needed.
+        grants(grant("get_public_key"))
+        Nip55CryptoBridge.clearActiveKey()
+
+        assertEquals(pubKey, query("GET_PUBLIC_KEY", "login")!!.row()["result"])
+        assertTrue(askedFlutter.isEmpty())
+    }
+
+    @Test
+    fun encryptionCarriesSignatureResultAndEventColumns() {
+        grants(grant("nip44_encrypt"))
+        Nip55ContentProvider.nativeCryptoSound = { true }
+
+        val row = query("NIP44_ENCRYPT", "hello", otherPubKey, pubKey)!!.row()
+
+        assertEquals(setOf("signature", "result", "event"), row.keys)
+        assertEquals(1, row.values.toSet().size)
+    }
+
+    @Test
+    fun pingCarriesEveryResultColumn() {
+        val row = provider.query(Uri.parse("content://$appId.PING"), null, null, null, null)!!.row()
+
+        assertEquals(mapOf("signature" to "pong", "result" to "pong", "event" to "pong"), row)
+    }
+
+    @Test
+    fun aSignedEventCarriesSignatureResultAndEvent() {
+        grants(grant("sign_event", kind = 1))
+
+        val row = viaFlutter { signEvent(event(1)) }!!.row()
+
+        assertEquals(mapOf("signature" to DART_SIGNATURE, "result" to DART_SIGNATURE, "event" to DART_EVENT), row)
+    }
+
+    // ── The provider bound (#18) ───────────────────────────────────────────
+
+    @Test
+    fun aQueryDartNeverAnswersReturnsNullWithinTheBound() {
+        // flutterChannel records the call but never replies, as a busy or stuck engine would.
+        grants(grant("sign_event", kind = 1))
+        Nip55ProviderBridge.attach(flutterChannel)
+
+        val started = System.nanoTime()
+        var cursor: Cursor? = null
+        val worker = Thread { cursor = signEvent(event(1)) }
+        worker.start()
+        val mainLooper = shadowOf(android.os.Looper.getMainLooper())
+        while (worker.isAlive) {
+            mainLooper.idle()
+            worker.join(5)
+        }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        assertNull("the client falls back to the intent", cursor)
+        assertTrue("Dart was asked", sentToFlutter.isNotEmpty())
+        assertTrue("returned after ${elapsedMs} ms", elapsedMs < Nip55ProviderBridge.QUERY_TIMEOUT_MS + 250)
+        assertEquals(500L, Nip55ProviderBridge.QUERY_TIMEOUT_MS)
+    }
+
     // ── Never Symudol itself (#11) ─────────────────────────────────────────
 
     @Test

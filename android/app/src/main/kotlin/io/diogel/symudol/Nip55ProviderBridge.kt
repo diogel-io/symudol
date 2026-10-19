@@ -10,7 +10,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 object Nip55ProviderBridge {
     private const val METHOD_HANDLE_PROVIDER_QUERY = "handleNip55ProviderQuery"
-    private const val QUERY_TIMEOUT_MS = 3000L
+    /**
+     * The longest a provider query waits for Dart (diogel-io/symudol#18). After it the query
+     * returns null and the client falls back to the intent. Kept short because it holds the
+     * calling app's Binder thread.
+     */
+    internal const val QUERY_TIMEOUT_MS = 500L
     private const val MAX_QUEUED_QUERIES = 50
     @Volatile private var channel: MethodChannel? = null
     private val queuedQueriesCount = AtomicInteger(0)
@@ -27,11 +32,15 @@ object Nip55ProviderBridge {
 
     /**
      * Dispatch a NIP-55 query to the Flutter engine and block until a response
-     * arrives or the [QUERY_TIMEOUT_MS] deadline (3 s) passes.
+     * arrives or the [QUERY_TIMEOUT_MS] deadline (500 ms) passes.
+     *
+     * Returns null at once when no Flutter engine is attached. The provider only calls this for
+     * a remembered allow while the key is held, so a locked vault or a first-time request never
+     * waits here.
      *
      * **Caller-blocking warning**: this method is invoked on the ContentProvider
      * query thread, which is the *calling app's* Binder thread. It will hold that
-     * thread for up to 3 seconds while waiting for the Flutter engine to respond.
+     * thread for up to 500 ms while waiting for the Flutter engine to respond.
      * Calling apps that issue the query on their main thread risk an ANR; well-
      * behaved NIP-55 clients (Amethyst, Quartz) use a background thread for
      * ContentResolver queries, so in practice the ANR risk is on the client side.

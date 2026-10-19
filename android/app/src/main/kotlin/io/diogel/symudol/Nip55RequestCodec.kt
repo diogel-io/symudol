@@ -229,12 +229,25 @@ object Nip55RequestCodec {
         }
     }
 
+    /**
+     * Every column a client may read the answer from, all with the same value: clients differ
+     * (Dark Wisp reads `event`, then `signature`, then `result`), and REQ-NIP55-003 asks for all
+     * three (diogel-io/symudol#19).
+     */
     fun operationResultCursor(result: String): MatrixCursor {
-        // Non-signing operations return only "result" and "event" columns.
-        // "signature" is intentionally absent — that column is only meaningful
-        // for sign_event; placing a pubkey or plaintext there is semantically wrong.
-        return MatrixCursor(arrayOf("result", "event")).apply {
-            addRow(arrayOf(result, result))
+        return MatrixCursor(arrayOf("signature", "result", "event")).apply {
+            addRow(arrayOf(result, result, result))
+        }
+    }
+
+    /**
+     * The `get_public_key` answer: the pubkey in every result column, plus the signer's
+     * `package`, which NIP-55 lists for this method (diogel-io/symudol#19). Permission `results`
+     * are not sent: no target client depends on them.
+     */
+    fun publicKeyCursor(pubkey: String, signerPackage: String): MatrixCursor {
+        return MatrixCursor(arrayOf("signature", "result", "event", "package")).apply {
+            addRow(arrayOf(pubkey, pubkey, pubkey, signerPackage))
         }
     }
 }
