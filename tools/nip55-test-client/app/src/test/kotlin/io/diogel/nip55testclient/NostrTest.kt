@@ -41,6 +41,16 @@ class NostrTest {
     }
 
     @Test
+    fun `zapRequest is a kind 9734 addressed by its p tag`() {
+        val zap = JSONObject(Nostr.zapRequest(pubkey, "cipher?iv=abc", 1_700_000_000))
+
+        assertEquals(9734, zap.getInt("kind"))
+        assertEquals("cipher?iv=abc", zap.getString("content"))
+        assertEquals("p", zap.getJSONArray("tags").getJSONArray(0).getString(0))
+        assertEquals(pubkey, zap.getJSONArray("tags").getJSONArray(0).getString(1))
+    }
+
+    @Test
     fun `sha256Hex matches a known digest`() {
         assertEquals(
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

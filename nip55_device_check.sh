@@ -40,7 +40,11 @@ SCENARIOS=(
   intent_sign_message
   intent_nip44_round_trip
   intent_nip04_round_trip
+  intent_reject
   provider_after_grant
+  provider_columns
+  provider_bound
+  provider_decrypt_zap_event
   intent_sign_message_event_serialisation
   provider_sign_message_event_serialisation
   intent_forged_identity
@@ -62,8 +66,12 @@ hint() {
       echo "Approve NIP-44 encrypt, then NIP-44 decrypt; remember both." ;;
     intent_nip04_round_trip)
       echo "Approve NIP-04 encrypt, then NIP-04 decrypt; remember both." ;;
-    provider_after_grant)
+    intent_reject)
+      echo "Reject signing the kind 7 reaction. Do not remember the decision." ;;
+    provider_after_grant | provider_columns | provider_bound)
       echo "Nothing to tap. Keep Symudol unlocked." ;;
+    provider_decrypt_zap_event)
+      echo "Approve decrypting the zap event and remember it. Keep Symudol unlocked." ;;
     intent_sign_message_event_serialisation)
       echo "Symudol should refuse this by itself. Do not approve anything. Waits up to 30 s." ;;
     intent_forged_identity)
@@ -79,8 +87,8 @@ timeout_for() {
   case "$1" in
     provider_before_grant | provider_sign_message_event_serialisation) echo 40 ;;
     intent_sign_message_event_serialisation | intent_forged_identity) echo 45 ;;
-    provider_after_grant) echo 75 ;;
-    provider_broad_grant) echo 165 ;;
+    provider_after_grant | provider_columns | provider_bound) echo 75 ;;
+    provider_broad_grant | provider_decrypt_zap_event) echo 165 ;;
     intent_nip44_round_trip | intent_nip04_round_trip) echo 195 ;;
     *) echo 135 ;;
   esac

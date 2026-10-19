@@ -29,7 +29,12 @@ sealed interface ProviderAnswer {
 
     data class Rejected(val value: String?) : ProviderAnswer
 
-    data class Answered(val result: String, val event: String?) : ProviderAnswer
+    /** [columns] holds every column the cursor returned, for checks on the column set (#19). */
+    data class Answered(
+        val result: String,
+        val event: String?,
+        val columns: Map<String, String?> = emptyMap(),
+    ) : ProviderAnswer
 
     data class Error(val message: String) : ProviderAnswer
 }
@@ -48,7 +53,8 @@ fun ContentResolver.queryNip55(method: String, projection: Array<String>): Provi
         val result = it.getColumnIndex("result")
         if (result < 0) return@use ProviderAnswer.None
         val event = it.getColumnIndex("event")
-        ProviderAnswer.Answered(it.getString(result), if (event >= 0) it.getString(event) else null)
+        val columns = it.columnNames.withIndex().associate { (index, name) -> name to it.getString(index) }
+        ProviderAnswer.Answered(it.getString(result), if (event >= 0) it.getString(event) else null, columns)
     }
 }
 
