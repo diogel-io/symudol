@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
+import 'package:symudol/app/diogel_log.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'nip55_native_mirror_sync.dart';
@@ -24,7 +24,7 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
   /// Force sync current grants to native mirror. Called on startup.
   Future<void> syncToNative() async {
     await _ensureInitialized();
-    debugPrint('SecureStorageNip55PermissionStore: syncToNative: ${_cache?.length ?? 0} grants');
+    diogelLog('SecureStorageNip55PermissionStore: syncToNative: ${_cache?.length ?? 0} grants');
     await _nativeSync?.syncGrants(_cache ?? []);
   }
 
@@ -51,7 +51,7 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
           // actually be remembered.
           _cache = loaded.where(_isStorable).toList();
           if (_cache!.length != loaded.length) {
-            debugPrint(
+            diogelLog(
               'SecureStorageNip55PermissionStore: dropped '
               '${loaded.length - _cache!.length} grant(s) that cannot be kept',
             );
@@ -66,7 +66,7 @@ class SecureStorageNip55PermissionStore implements Nip55PermissionStore {
       }
       // Sync loaded grants to native mirror so ContentProvider can use them
       // immediately on startup without waiting for a grant write.
-      debugPrint('SecureStorageNip55PermissionStore: loaded ${_cache?.length ?? 0} grants, syncing to native mirror');
+      diogelLog('SecureStorageNip55PermissionStore: loaded ${_cache?.length ?? 0} grants, syncing to native mirror');
       await _nativeSync?.syncGrants(_cache ?? []);
       _initCompleter!.complete();
     } catch (e) {

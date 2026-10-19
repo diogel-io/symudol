@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as dev;
-import 'package:flutter/foundation.dart';
+import 'diogel_log.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,14 +63,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     if (vaultControllerState.vaultState is VaultUnlocked) {
       final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
       if (timeoutMinutes > 0) {
-        if (kDebugMode) {
-          dev.log('Resetting inactivity timer: $timeoutMinutes minutes');
-        }
+        diogelLog('Resetting inactivity timer: $timeoutMinutes minutes');
         _inactivityTimer = Timer(Duration(minutes: timeoutMinutes), () {
           if (!mounted) return;
-          if (kDebugMode) {
-            dev.log('Inactivity timer expired');
-          }
+          diogelLog('Inactivity timer expired');
           ref.read(vaultControllerProvider.notifier).expireSession();
         });
       }
@@ -98,9 +93,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     // scheduled again (_handleNip55Changed). The native key gets a deadline
     // covering both, in case the engine goes before then (#9).
     if (ref.read(nip55ControllerProvider).hasPendingExternalRequest) {
-      if (kDebugMode) {
-        dev.log('Deferring background lock while NIP-55 request is active');
-      }
+      diogelLog('Deferring background lock while NIP-55 request is active');
       if (delayMinutes >= 0) {
         final nip55 = ref.read(nip55ControllerProvider.notifier);
         final expiresAt = nip55.pendingReviewExpiresAt;
@@ -117,17 +110,13 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
-    if (kDebugMode) {
-      dev.log('Scheduling background lock: $delayMinutes minutes');
-    }
+    diogelLog('Scheduling background lock: $delayMinutes minutes');
     if (delayMinutes == -1) {
       return;
     }
 
     if (delayMinutes == 0) {
-      if (kDebugMode) {
-        dev.log('Background lock delay is 0, locking immediately');
-      }
+      diogelLog('Background lock delay is 0, locking immediately');
       ref.read(vaultControllerProvider.notifier).lock();
       return;
     }
@@ -135,9 +124,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     unawaited(nativeSync.setLockDeadline(Duration(minutes: delayMinutes)));
     _backgroundLockTimer = Timer(Duration(minutes: delayMinutes), () {
       if (!mounted) return;
-      if (kDebugMode) {
-        dev.log('Background lock timer expired');
-      }
+      diogelLog('Background lock timer expired');
       ref.read(vaultControllerProvider.notifier).expireSession();
     });
   }
@@ -162,9 +149,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     // Handle NIP-55 resume after unlock
     final nip55State = ref.read(nip55ControllerProvider);
     if (nip55State.isWaitingForUnlock) {
-      if (kDebugMode) {
-        dev.log('Vault unlocked while NIP-55 request is pending. Resuming...');
-      }
+      diogelLog('Vault unlocked while NIP-55 request is pending. Resuming...');
       ref.read(nip55ControllerProvider.notifier).resumePendingAfterUnlock();
     }
 
@@ -189,14 +174,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (kDebugMode) {
-      dev.log('App lifecycle state changed: $state');
-    }
+    diogelLog('App lifecycle state changed: $state');
 
     if (state == AppLifecycleState.detached) {
-      if (kDebugMode) {
-        dev.log('App is detaching: locking the vault');
-      }
+      diogelLog('App is detaching: locking the vault');
       _cancelLockTimers();
       // Without the engine nothing would lock later; locking also clears the
       // native key. MainActivity.onDestroy clears it too, as the guarantee (#9).
@@ -223,7 +204,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   @override
   Widget build(BuildContext context) {
-    dev.log('DiogelApp build', name: 'Diogel');
+    diogelLog('App build');
     ref.listen(vaultControllerProvider, _handleVaultControllerChanged);
     ref.listen(nip55ControllerProvider, _handleNip55Changed);
 

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:developer' as dev;
+import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/requests/application/request_controller.dart';
 import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
@@ -246,9 +246,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     _keySync = _keySync
         .then((_) => _syncNativeKey(state))
         .catchError(
-          (Object e) => dev.log(
-            'Nip55Controller: native key sync failed: $e',
-            name: 'Diogel',
+          (Object e) => diogelLog(
+            'Nip55Controller: native key sync failed',
+            error: e,
           ),
         );
   }
@@ -268,30 +268,30 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     try {
       await _nativeSync?.setActiveIdentityPubkey(pubkey);
     } catch (_) {}
-    dev.log('Nip55Controller: _onVaultStateChanged: vaultState=${state.vaultState.runtimeType}, hasPubkey=${pubkey != null}, nativeSync=${_nativeSync != null}', name: 'Diogel');
+    diogelLog('Nip55Controller: _onVaultStateChanged: vaultState=${state.vaultState.runtimeType}, hasPubkey=${pubkey != null}, nativeSync=${_nativeSync != null}');
     if (vaultUnlocked && pubkey != null) {
       try {
         final privateKey = await _vaultService.getActivePrivateKey();
-        dev.log('Nip55Controller: got privateKey=${privateKey != null ? "yes(${privateKey.length}chars)" : "null"}', name: 'Diogel');
+        diogelLog('Nip55Controller: active private key found=${privateKey != null}');
         if (privateKey != null && !_isUnlockedAs(state.activeIdentity!)) {
           // Locked or switched while the key was decrypting: the sync queued
           // behind this one holds the vault's current state (#13).
-          dev.log('Nip55Controller: vault changed during key sync, not syncing stale key', name: 'Diogel');
+          diogelLog('Nip55Controller: vault changed during key sync, not syncing stale key');
         } else if (privateKey != null) {
           await _nativeSync?.setActiveKey(
             privateKey: privateKey,
             publicKey: pubkey,
             localId: state.activeIdentity!.localId,
           );
-          dev.log('Nip55Controller: synced active key to native bridge', name: 'Diogel');
+          diogelLog('Nip55Controller: synced active key to native bridge');
         } else {
-          dev.log('Nip55Controller: privateKey was null, not syncing to native bridge', name: 'Diogel');
+          diogelLog('Nip55Controller: privateKey was null, not syncing to native bridge');
         }
       } catch (e) {
-        dev.log('Failed to sync active key to native bridge: $e', name: 'Diogel');
+        diogelLog('Failed to sync active key to native bridge', error: e);
       }
     } else {
-      dev.log('Nip55Controller: vault locked or no active identity, clearing native bridge', name: 'Diogel');
+      diogelLog('Nip55Controller: vault locked or no active identity, clearing native bridge');
       await _nativeSync?.clearActiveKey();
     }
   }
@@ -996,7 +996,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           expiresAt: _expiresAtFor(timeframe),
         );
       } catch (e) {
-        dev.log('Failed to save permission grant: $e', name: 'Diogel');
+        diogelLog('Failed to save permission grant', error: e);
       }
     }
     await completeApprovedSigningRequest(requestId);
@@ -1254,9 +1254,8 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // is reviewed (#5). This covers connect-time permissions and a signing
     // request whose kind is missing.
     if (!grant.isRememberable) {
-      dev.log(
+      diogelLog(
         'Not remembering broad permission ${scope.wire} for $packageName',
-        name: 'Diogel',
       );
       return;
     }
@@ -1290,9 +1289,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
           expiresAt: expiresAt,
         );
       } catch (e) {
-        dev.log(
-          'Failed to save connect-time permission ${scope.wire}: $e',
-          name: 'Diogel',
+        diogelLog(
+          'Failed to save connect-time permission ${scope.wire}',
+          error: e,
         );
       }
     }

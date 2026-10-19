@@ -1,4 +1,4 @@
-import 'dart:developer' as dev;
+import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_failure.dart';
@@ -68,7 +68,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
   }
 
   Future<void> initialize() async {
-    dev.log('VaultController: initializing. State: ${state.vaultState.runtimeType}', name: 'Diogel');
+    diogelLog('VaultController: initializing. State: ${state.vaultState.runtimeType}');
 
     if (_vaultService.state is VaultUnlocked) {
       await _refreshState();
@@ -77,13 +77,17 @@ class VaultController extends StateNotifier<VaultControllerState> {
 
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
-      dev.log('VaultController: calling _vaultService.init()', name: 'Diogel');
+      diogelLog('VaultController: calling _vaultService.init()');
       await _vaultService.init();
-      dev.log('VaultController: calling _refreshState()', name: 'Diogel');
+      diogelLog('VaultController: calling _refreshState()');
       await _refreshState();
-      dev.log('VaultController: initialized. State: ${state.vaultState.runtimeType}', name: 'Diogel');
+      diogelLog('VaultController: initialized. State: ${state.vaultState.runtimeType}');
     } catch (e, stack) {
-      dev.log('VaultController: initialization error: $e', stackTrace: stack, name: 'Diogel');
+      diogelLog(
+        'VaultController: initialization error',
+        error: e,
+        stackTrace: stack,
+      );
       state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {
       state = state.copyWith(isLoading: false);

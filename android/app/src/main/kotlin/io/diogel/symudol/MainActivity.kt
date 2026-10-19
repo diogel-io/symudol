@@ -16,7 +16,6 @@ import android.os.Handler
 import android.os.Looper
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
-import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -51,24 +50,24 @@ class MainActivity : FlutterActivity() {
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        Log.d(TAG, "onCreate: intent=$intent")
+        DiogelLog.d(TAG) { "onCreate: action=${intent?.action}" }
         currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
         initialNip55Intent = router.parse(intent)
         initialNip55Intent?.let { router.activate(it, markDelivered = false) }
-        Log.d(TAG, "onCreate: activeRequestToken=${router.activeRequestToken}")
+        DiogelLog.d(TAG) { "onCreate: activeRequestToken=${router.activeRequestToken}" }
         
         // Asynchronously resolve app label and certificate if they are missing
         initialNip55Intent?.let { resolveMetadataAsync(it) { updated -> initialNip55Intent = updated } }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        Log.d(TAG, "configureFlutterEngine")
+        DiogelLog.d(TAG) { "configureFlutterEngine" }
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.let { Nip55ProviderBridge.attach(it) }
         channel?.setMethodCallHandler { call, result ->
-            Log.d(TAG, "onMethodCall: ${call.method}")
+            DiogelLog.d(TAG) { "onMethodCall: ${call.method}" }
             when (call.method) {
                 "getInitialNip55Intent" -> {
                     val payload = initialNip55Intent
@@ -92,7 +91,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "syncNip55PermissionGrants" -> {
                     val grantsJson = call.arguments as? String
-                    Log.d(TAG, "onMethodCall: syncNip55PermissionGrants grantsJson=${grantsJson?.take(80)}...")
+                    DiogelLog.d(TAG) { "onMethodCall: syncNip55PermissionGrants hasGrants=${grantsJson != null}" }
                     if (grantsJson != null) {
                         Nip55PermissionMirror(this).syncGrants(grantsJson)
                     }
@@ -104,7 +103,7 @@ class MainActivity : FlutterActivity() {
                     val privateKey = args?.get("privateKey") as? ByteArray
                     val publicKey = args?.get("publicKey")?.toString()
                     val localId = args?.get("localId")?.toString()
-                    Log.d(TAG, "onMethodCall: setNip55ActiveKey pubkey=${publicKey?.take(8)}... localId=$localId")
+                    DiogelLog.d(TAG) { "onMethodCall: setNip55ActiveKey" }
                     if (privateKey != null && privateKey.size == 32 && publicKey != null) {
                         Nip55CryptoBridge.setActiveKey(privateKey, publicKey, localId ?: "")
                         privateKey.fill(0)
@@ -115,7 +114,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "clearNip55ActiveKey" -> {
-                    Log.d(TAG, "onMethodCall: clearNip55ActiveKey")
+                    DiogelLog.d(TAG) { "onMethodCall: clearNip55ActiveKey" }
                     Nip55CryptoBridge.clearActiveKey()
                     result.success(null)
                 }
@@ -145,7 +144,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "setNip55ActiveIdentityPubkey" -> {
                     val pubkey = call.arguments as? String
-                    Log.d(TAG, "onMethodCall: setNip55ActiveIdentityPubkey pubkey=${pubkey?.take(8)}...")
+                    DiogelLog.d(TAG) { "onMethodCall: setNip55ActiveIdentityPubkey" }
                     if (pubkey.isNullOrBlank()) {
                         Nip55PermissionMirror(this).setActiveIdentityPubkey(null)
                     } else {
@@ -175,7 +174,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
-        Log.d(TAG, "onNewIntent: intent=$intent")
+        DiogelLog.d(TAG) { "onNewIntent: action=${intent.action}" }
         super.onNewIntent(intent)
         setIntent(intent)
         val payload = router.parse(intent)
@@ -190,12 +189,12 @@ class MainActivity : FlutterActivity() {
     private fun deliverNip55Payload(payload: Map<String, Any?>): Boolean {
         if (channel == null) return false
         pendingCompletionRunnable?.let {
-            Log.d(TAG, "deliverNip55Payload: Cancelling pending completion for new request")
+            DiogelLog.d(TAG) { "deliverNip55Payload: Cancelling pending completion for new request" }
             mainHandler.removeCallbacks(it)
             pendingCompletionRunnable = null
         }
         if (!router.activate(payload, markDelivered = true)) {
-            Log.d(TAG, "deliverNip55Payload: request already delivered, ignoring")
+            DiogelLog.d(TAG) { "deliverNip55Payload: request already delivered, ignoring" }
             return true
         }
         latestNip55Intent = payload
@@ -203,7 +202,7 @@ class MainActivity : FlutterActivity() {
         // Asynchronously resolve metadata before sending to Dart.
         resolveMetadataAsync(payload) { updated ->
             latestNip55Intent = updated
-            Log.d(TAG, "deliverNip55Payload: Sending onNip55Intent to Dart")
+            DiogelLog.d(TAG) { "deliverNip55Payload: Sending onNip55Intent to Dart" }
             runOnUiThread {
                 channel?.invokeMethod("onNip55Intent", updated)
             }
@@ -363,7 +362,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun runAfterMethodResponse(action: CompletionAction) {
-        Log.d(TAG, "runAfterMethodResponse: action=$action")
+        DiogelLog.d(TAG) { "runAfterMethodResponse: action=$action" }
         if (action == CompletionAction.NONE) return
 
         // Cancel any existing pending completion to avoid finishing/backgrounding
@@ -373,7 +372,7 @@ class MainActivity : FlutterActivity() {
         val runnable = Runnable {
             pendingCompletionRunnable = null
 
-            Log.d(TAG, "Executing completion action: $action")
+            DiogelLog.d(TAG) { "Executing completion action: $action" }
             when (action) {
                 CompletionAction.BACKGROUND -> moveTaskToBack(true)
                 CompletionAction.FINISH -> finish()

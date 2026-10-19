@@ -2,7 +2,6 @@ package io.diogel.symudol
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -260,14 +259,14 @@ class Nip55PermissionMirror(private val context: Context) {
         val grants = try {
             parseGrants(grantsJson)
         } catch (e: Exception) {
-            Log.e(TAG, "syncGrants: invalid JSON, refusing to write", e)
+            DiogelLog.e(TAG, "syncGrants: invalid JSON, refusing to write", e)
             return
         }
         // Never keep a grant for this app itself (#11).
         val kept = grants.filter { it.packageName != context.packageName }
         val json = if (kept.size == grants.size) grantsJson else serializeGrants(kept)
         prefs.edit().putString(KEY_GRANTS, json).apply()
-        Log.d(TAG, "syncGrants: synced ${kept.size} grants")
+        DiogelLog.d(TAG) { "syncGrants: synced ${kept.size} grants" }
     }
 
     /**
@@ -276,7 +275,7 @@ class Nip55PermissionMirror(private val context: Context) {
     fun deleteAllForPackage(packageName: String) {
         val current = listGrants().filter { it.packageName != packageName }
         prefs.edit().putString(KEY_GRANTS, serializeGrants(current)).apply()
-        Log.d(TAG, "deleteAllForPackage: removed grants for $packageName, ${current.size} remaining")
+        DiogelLog.d(TAG) { "deleteAllForPackage: removed grants for $packageName, ${current.size} remaining" }
     }
 
     /**
@@ -284,7 +283,7 @@ class Nip55PermissionMirror(private val context: Context) {
      */
     fun clearAll() {
         prefs.edit().remove(KEY_GRANTS).apply()
-        Log.d(TAG, "clearAll: all grants removed")
+        DiogelLog.d(TAG) { "clearAll: all grants removed" }
     }
 
     // ── Serialization ────────────────────────────────────────────────────
@@ -297,7 +296,7 @@ class Nip55PermissionMirror(private val context: Context) {
             try {
                 result.add(parseGrant(obj))
             } catch (e: Exception) {
-                Log.w(TAG, "parseGrants: skipping malformed grant at index $i", e)
+                DiogelLog.w(TAG, "parseGrants: skipping malformed grant at index $i", e)
             }
         }
         return result

@@ -1,7 +1,6 @@
 package io.diogel.symudol
 
 import android.content.Intent
-import android.util.Log
 
 /**
  * Which NIP-55 requests [MainActivity] is handling, and where their answers go.
@@ -53,7 +52,7 @@ class Nip55RequestRouter(private val bridge: Bridge = RegistryBridge) {
         val request = Nip55Handoff.resolve(token)
         if (request == null && (token != null || intent.hasExtra("type") || intent.data?.scheme == "nostrsigner")) {
             // Never log the extras: they may carry event content or plaintext.
-            Log.w(TAG, "parse: ignored a NIP-55 intent that was not handed over by the bridge")
+            DiogelLog.w(TAG, "parse: ignored a NIP-55 intent that was not handed over by the bridge")
         }
         return request
     }
@@ -88,7 +87,7 @@ class Nip55RequestRouter(private val bridge: Bridge = RegistryBridge) {
         if (token == null || !isActive(token)) return Outcome.NOT_ACTIVE
         clear(token)
         if (deliver(token)) return Outcome.DELIVERED
-        Log.w(TAG, "settle: no bridge for the request; its answer is dropped")
+        DiogelLog.w(TAG, "settle: no bridge for the request; its answer is dropped")
         return Outcome.NO_BRIDGE
     }
 
