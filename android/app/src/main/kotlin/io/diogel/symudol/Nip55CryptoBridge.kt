@@ -3,7 +3,6 @@ package io.diogel.symudol
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 
 /**
  * In-memory bridge that holds the active identity's private key
@@ -56,7 +55,7 @@ object Nip55CryptoBridge {
             this.publicKey = publicKey
             this.localId = localId
         }
-        Log.d(TAG, "Active key set: pubkey=${publicKey.take(8)}...")
+        DiogelLog.d(TAG) { "Active key set" }
     }
 
     /**
@@ -80,9 +79,9 @@ object Nip55CryptoBridge {
             mainHandler.postDelayed(expireTask, delayMs.coerceAtLeast(0))
         } catch (e: RuntimeException) {
             // No main looper (plain JVM tests): the deadline check on read still applies.
-            Log.w(TAG, "setLockDeadline: no timer, the deadline is checked on read")
+            DiogelLog.w(TAG, "setLockDeadline: no timer, the deadline is checked on read")
         }
-        Log.d(TAG, "Lock deadline set: ${delayMs}ms")
+        DiogelLog.d(TAG) { "Lock deadline set: ${delayMs}ms" }
     }
 
     /** The app is back in the foreground: no deadline. */
@@ -100,7 +99,7 @@ object Nip55CryptoBridge {
      */
     fun clearActiveKey() {
         synchronized(lock) { clearLocked() }
-        Log.d(TAG, "Active key cleared")
+        DiogelLog.d(TAG) { "Active key cleared" }
     }
 
     private fun expireIfDue() {
@@ -111,7 +110,7 @@ object Nip55CryptoBridge {
     private fun isLiveLocked(): Boolean {
         val deadline = lockAtMs
         if (deadline != null && clock() >= deadline) {
-            Log.d(TAG, "Lock deadline passed: clearing the active key")
+            DiogelLog.d(TAG) { "Lock deadline passed: clearing the active key" }
             clearLocked()
             return false
         }

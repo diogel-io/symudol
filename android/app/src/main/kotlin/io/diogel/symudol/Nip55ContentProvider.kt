@@ -5,7 +5,6 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
-import android.util.Log
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
@@ -43,7 +42,7 @@ class Nip55ContentProvider : ContentProvider() {
         // This app as its own caller is treated as unknown: no grant may serve it (#11).
         val callerPackage = callingPackage()?.takeIf { it != context?.packageName }
         val callerCertSha256 = resolveSigningCertificateSha256(callerPackage)
-        Log.d(TAG, "query: method=$method caller=$callerPackage authority=${uri.authority}")
+        DiogelLog.d(TAG) { "query: method=$method caller=$callerPackage authority=${uri.authority}" }
 
         // PING is treated as a stateless capability probe — always returns pong
         if (method == "ping") {
@@ -61,7 +60,7 @@ class Nip55ContentProvider : ContentProvider() {
         // A request for another account (or an unreadable current_user) is never answered
         // here: the client falls back to the intent, where Diogel shows it (#10).
         if (activePubkey != null && !Nip55RequestCodec.currentUserMatches(projection, method, activePubkey)) {
-            Log.d(TAG, "query: current_user is not the active identity; not answering in the background")
+            DiogelLog.d(TAG) { "query: current_user is not the active identity; not answering in the background" }
             return null
         }
 
@@ -69,7 +68,7 @@ class Nip55ContentProvider : ContentProvider() {
         if (method == "sign_event" &&
             Nip55RequestCodec.integerKind(Nip55RequestCodec.eventJsonFromProjection(projection)) == null
         ) {
-            Log.d(TAG, "query: sign_event has no integer kind; not answering in the background")
+            DiogelLog.d(TAG) { "query: sign_event has no integer kind; not answering in the background" }
             return null
         }
 
@@ -124,7 +123,7 @@ class Nip55ContentProvider : ContentProvider() {
                     callerCertSha256 = callerCertSha256,
                 )
             ) {
-                Log.d(TAG, "query: remembered reject for $callerPackage/$method")
+                DiogelLog.d(TAG) { "query: remembered reject for $callerPackage/$method" }
                 return Nip55RequestCodec.rejectedCursor()
             }
 
@@ -143,25 +142,25 @@ class Nip55ContentProvider : ContentProvider() {
                 // The pubkey needs no private key: answer from the persisted identity even
                 // while the vault is locked, rather than waiting on the Flutter bridge.
                 if (method == "get_public_key") return publicKeyCursor(activePubkey)
-                Log.d(TAG, "query: remembered allow for $callerPackage/$method — performing native crypto")
+                DiogelLog.d(TAG) { "query: remembered allow for $callerPackage/$method — performing native crypto" }
                 val nativeResult = performNativeCrypto(method, projection, activePubkey)
                 if (nativeResult != null) return nativeResult
                 // No key (locked, cleared or past the lock deadline): no signature, and not
                 // via the Flutter bridge either (#9). The client falls back to the intent.
                 if (!Nip55CryptoBridge.hasActiveKey) {
-                    Log.d(TAG, "query: no active key for $method; not answering in the background")
+                    DiogelLog.d(TAG) { "query: no active key for $method; not answering in the background" }
                     return null
                 }
                 // Native crypto not available for this method — fall through to bridge
                 nativeCryptoFellThrough = true
-                Log.d(TAG, "query: native crypto unavailable for $method, falling through to Flutter bridge")
+                DiogelLog.d(TAG) { "query: native crypto unavailable for $method, falling through to Flutter bridge" }
             }
         }
 
         // ── Also check legacy SharedPreferences reject store ──────────────
         // (kept for backward compatibility during migration)
         if (hasLegacyRememberedReject(callerPackage, method)) {
-            Log.d(TAG, "query: legacy remembered reject for $callerPackage/$method")
+            DiogelLog.d(TAG) { "query: legacy remembered reject for $callerPackage/$method" }
             return Nip55RequestCodec.rejectedCursor()
         }
 
@@ -232,7 +231,7 @@ class Nip55ContentProvider : ContentProvider() {
             nativeCryptoWithKey(method, projection, activePubkey, privateKey)
         }
         if (cursor == null && !Nip55CryptoBridge.hasActiveKey) {
-            Log.w(TAG, "performNativeCrypto: no active private key")
+            DiogelLog.w(TAG, "performNativeCrypto: no active private key")
         }
         return cursor
     }
@@ -244,7 +243,7 @@ class Nip55ContentProvider : ContentProvider() {
         privateKey: ByteArray,
     ): Cursor? {
         if (method in NATIVE_ECDH_METHODS && !nativeCryptoSound()) {
-            Log.w(TAG, "performNativeCrypto: self-test failed, not using native crypto for $method")
+            DiogelLog.w(TAG, "performNativeCrypto: self-test failed, not using native crypto for $method")
             return null
         }
         return try {
@@ -294,14 +293,14 @@ class Nip55ContentProvider : ContentProvider() {
                     if (result != null) {
                         Nip55RequestCodec.operationResultCursor(result)
                     } else {
-                        Log.w(TAG, "performNativeCrypto: decryptZapEvent failed, falling back")
+                        DiogelLog.w(TAG, "performNativeCrypto: decryptZapEvent failed, falling back")
                         null
                     }
                 }
                 else -> null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "performNativeCrypto: failed for method=$method", e)
+            DiogelLog.e(TAG, "performNativeCrypto: failed for method=$method", e)
             // On crypto failure, fall back to bridge rather than crashing
             null
         }

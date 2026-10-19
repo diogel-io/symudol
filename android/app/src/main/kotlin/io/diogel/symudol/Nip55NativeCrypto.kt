@@ -1,6 +1,5 @@
 package io.diogel.symudol
 
-import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
@@ -52,11 +51,11 @@ object Nip55NativeCrypto {
         val conversationKey = try {
             nip44ConversationKey(hexToBytes(KAT_SECRET), KAT_PEER)
         } catch (e: Exception) {
-            Log.e(TAG, "selfTest FAIL: NIP-44 conversation key threw", e)
+            DiogelLog.e(TAG, "selfTest FAIL: NIP-44 conversation key threw", e)
             return false
         }
         if (bytesToHex(conversationKey) != KAT_CONVERSATION_KEY) {
-            Log.e(TAG, "selfTest FAIL: NIP-44 conversation key mismatch")
+            DiogelLog.e(TAG, "selfTest FAIL: NIP-44 conversation key mismatch")
             return false
         }
         return true
@@ -149,7 +148,7 @@ object Nip55NativeCrypto {
 
             nip04Decrypt(privateKey, peerPubkey, content)
         } catch (e: Exception) {
-            Log.e(TAG, "decryptZapEvent failed", e)
+            DiogelLog.e(TAG, "decryptZapEvent failed", e)
             null
         }
     }
@@ -434,22 +433,22 @@ object Secp256k1 {
     fun selfTest(): Boolean {
         val g1 = multiply(G, BigInteger.ONE)
         if (g1 != G) {
-            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 1*G != G")
+            DiogelLog.e("Diogel-Secp256k1", "selfTest FAIL: 1*G != G")
             return false
         }
         val g2 = multiply(G, BigInteger.valueOf(2))
         val expected2Gx = BigInteger("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5", 16)
         if (g2?.x != expected2Gx) {
-            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: 2*G x mismatch")
+            DiogelLog.e("Diogel-Secp256k1", "selfTest FAIL: 2*G x mismatch")
             return false
         }
         val full = multiply(G, BigInteger("B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF", 16))
         val expectedFullX = BigInteger("DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659", 16)
         if (full?.x != expectedFullX) {
-            android.util.Log.e("Diogel-Secp256k1", "selfTest FAIL: full-width scalar x mismatch")
+            DiogelLog.e("Diogel-Secp256k1", "selfTest FAIL: full-width scalar x mismatch")
             return false
         }
-        android.util.Log.d("Diogel-Secp256k1", "selfTest PASS: secp256k1 point arithmetic is correct")
+        DiogelLog.d("Diogel-Secp256k1") { "selfTest PASS: secp256k1 point arithmetic is correct" }
         return true
     }
 }
