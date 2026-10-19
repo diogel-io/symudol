@@ -17,12 +17,13 @@ class Nip55RequestRouter(private val bridge: Bridge = RegistryBridge) {
     /** Where answers are delivered: the bridge activity that holds the caller's result. */
     interface Bridge {
         fun complete(token: String, extras: Map<*, *>): Boolean
-        fun reject(token: String, error: String?): Boolean
+        fun reject(token: String, error: String?, rejected: Boolean): Boolean
     }
 
     object RegistryBridge : Bridge {
         override fun complete(token: String, extras: Map<*, *>) = Nip55BridgeRegistry.complete(token, extras)
-        override fun reject(token: String, error: String?) = Nip55BridgeRegistry.reject(token, error)
+        override fun reject(token: String, error: String?, rejected: Boolean) =
+            Nip55BridgeRegistry.reject(token, error, rejected)
     }
 
     enum class Outcome {
@@ -76,9 +77,12 @@ class Nip55RequestRouter(private val bridge: Bridge = RegistryBridge) {
     fun complete(token: String?, extras: Map<*, *>): Outcome =
         settle(token) { bridge.complete(it, extras) }
 
-    /** Sends the rejection of [token]'s request to its bridge. */
-    fun reject(token: String?, error: String?): Outcome =
-        settle(token) { bridge.reject(it, error) }
+    /**
+     * Ends [token]'s request without a result: a rejection when [rejected] is true, otherwise a
+     * failure (see [Nip55BridgeRegistry.reject]).
+     */
+    fun reject(token: String?, error: String?, rejected: Boolean): Outcome =
+        settle(token) { bridge.reject(it, error, rejected) }
 
     private fun settle(token: String?, deliver: (String) -> Boolean): Outcome {
         if (token == null || !isActive(token)) return Outcome.NOT_ACTIVE

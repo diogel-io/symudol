@@ -19,8 +19,10 @@ class Nip55RequestRouterTest {
     private class FakeBridge(var present: Boolean = true) : Nip55RequestRouter.Bridge {
         val completed = mutableListOf<String>()
         val rejected = mutableListOf<String>()
+        val rejectedFlags = mutableListOf<Boolean>()
         override fun complete(token: String, extras: Map<*, *>) = present.also { if (it) completed += token }
-        override fun reject(token: String, error: String?) = present.also { if (it) rejected += token }
+        override fun reject(token: String, error: String?, rejected: Boolean) =
+            present.also { if (it) { this.rejected += token; rejectedFlags += rejected } }
     }
 
     private val bridge = FakeBridge()
@@ -81,9 +83,10 @@ class Nip55RequestRouterTest {
         router.activate(router.parse(handoff(refused))!!, markDelivered = true)
 
         assertEquals(Nip55RequestRouter.Outcome.DELIVERED, router.complete(signed, mapOf("result" to "sig")))
-        assertEquals(Nip55RequestRouter.Outcome.DELIVERED, router.reject(refused, "User rejected"))
+        assertEquals(Nip55RequestRouter.Outcome.DELIVERED, router.reject(refused, "User rejected", rejected = true))
         assertEquals(listOf(signed), bridge.completed)
         assertEquals(listOf(refused), bridge.rejected)
+        assertEquals(listOf(true), bridge.rejectedFlags)
     }
 
     @Test

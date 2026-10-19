@@ -78,6 +78,7 @@ class FakeNip55Gateway implements Nip55Gateway {
   String? rejectedToken;
   final rejectedTokens = <String>[];
   final rejectedErrorsByToken = <String, String?>{};
+  final rejectedFlagsByToken = <String, bool>{};
   void Function(Map<String, Object?> raw)? handler;
   Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
   providerQueryHandler;
@@ -125,11 +126,13 @@ class FakeNip55Gateway implements Nip55Gateway {
   Future<void> rejectNip55Intent({
     required String requestToken,
     String? error,
+    bool rejected = false,
   }) async {
     rejectedToken = requestToken;
     rejectedError = error;
     rejectedTokens.add(requestToken);
     rejectedErrorsByToken[requestToken] = error;
+    rejectedFlagsByToken[requestToken] = rejected;
   }
 
   @override
@@ -641,6 +644,7 @@ void main() {
       expect(gateway.completedExtras, isNull);
       expect(gateway.rejectedToken, 'token-fail');
       expect(gateway.rejectedError, 'Signing failed. No event was returned.');
+      expect(gateway.rejectedFlagsByToken['token-fail'], isFalse);
       expect(controller.state.pendingSigningRequestId, isNull);
       expect(requestController.state.requests.single.status.name, 'rejected');
     });
@@ -686,6 +690,8 @@ void main() {
 
       expect(gateway.rejectedError, contains('rejected'));
       expect(gateway.rejectedToken, 'token-external-id');
+      // NIP-55: a user rejection is RESULT_OK with `rejected`, not a failure.
+      expect(gateway.rejectedFlagsByToken['token-external-id'], isTrue);
     });
 
     test('malformed intent calls gateway reject', () async {
@@ -727,6 +733,7 @@ void main() {
 
       expect(gateway.rejectedToken, 'token-second');
       expect(gateway.rejectedError, contains('already reviewing'));
+      expect(gateway.rejectedFlagsByToken['token-second'], isFalse);
       expect(requestController.state.requests, hasLength(1));
     });
 
@@ -1168,6 +1175,7 @@ void main() {
 
       expect(gateway.rejectedError, contains('rejected'));
       expect(gateway.rejectedToken, 'pk-token');
+      expect(gateway.rejectedFlagsByToken['pk-token'], isTrue);
     });
 
     test('get_public_key with no identity fails safely', () async {
@@ -1318,6 +1326,7 @@ void main() {
           gateway.rejectedError,
           'NIP-55 request timed out waiting for review',
         );
+        expect(gateway.rejectedFlagsByToken['review-token'], isFalse);
         expect(controller.state.hasPendingExternalRequest, isFalse);
         expect(controller.pendingReviewExpiresAt, isNull);
       });
@@ -1978,6 +1987,7 @@ void main() {
 
       expect(gateway.rejectedToken, 'token-cancel');
       expect(gateway.rejectedError, contains('cancelled'));
+      expect(gateway.rejectedFlagsByToken['token-cancel'], isTrue);
       expect(controller.state.pendingIncoming, isNull);
     });
 

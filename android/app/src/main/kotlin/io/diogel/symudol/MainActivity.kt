@@ -354,7 +354,11 @@ class MainActivity : FlutterActivity() {
     private fun rejectNip55Intent(arguments: Map<*, *>?): CompletionAction {
         val requestedToken = arguments?.get("requestToken") as? String
         if (!router.isActive(requestedToken)) return CompletionAction.NONE
-        router.reject(requestedToken, arguments?.get("error") as? String)
+        router.reject(
+            requestedToken,
+            arguments?.get("error") as? String,
+            rejected = arguments?.get("rejected") as? Boolean ?: false,
+        )
         return CompletionAction.BACKGROUND
     }
 

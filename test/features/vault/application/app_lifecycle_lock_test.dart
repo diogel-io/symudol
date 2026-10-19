@@ -75,6 +75,7 @@ class _Gateway implements Nip55Gateway {
   Future<void> rejectNip55Intent({
     required String requestToken,
     String? error,
+    bool rejected = false,
   }) async => rejectedErrors.add(error);
 
   @override
