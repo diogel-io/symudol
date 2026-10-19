@@ -20,7 +20,12 @@ void main() {
     expect(mainActivity, contains('appendQueryParameter("result", result)'));
     expect(mainActivity, contains('Intent(Intent.ACTION_VIEW, callbackUri)'));
     expect(mainActivity, contains('maybeCopyToClipboard(extras)'));
-    expect(mainActivity, contains('ClipboardManager'));
-    expect(mainActivity, contains('ClipData.newPlainText'));
+    // The copy is marked sensitive by SensitiveClipboard (#94).
+    expect(mainActivity, contains('SensitiveClipboard.copy(this, label, result)'));
+    final sensitiveClipboard = File(
+      'android/app/src/main/kotlin/io/diogel/symudol/SensitiveClipboard.kt',
+    ).readAsStringSync();
+    expect(sensitiveClipboard, contains('ClipboardManager'));
+    expect(sensitiveClipboard, contains('ClipData.newPlainText'));
   });
 }
