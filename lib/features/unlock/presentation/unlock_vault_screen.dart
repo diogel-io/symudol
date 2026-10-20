@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
@@ -9,15 +7,11 @@ import 'package:symudol/features/vault/domain/vault_failure.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
+import 'pin_lockout_countdown.dart';
 import 'widgets/pin_button.dart';
 
 class UnlockVaultScreen extends ConsumerStatefulWidget {
   const UnlockVaultScreen({super.key});
-
-  /// Makes the stopwatch the lockout countdown runs on. A real [Stopwatch]
-  /// is monotonic; tests swap in one driven by fake time.
-  @visibleForTesting
-  static Stopwatch Function() stopwatchFactory = Stopwatch.new;
 
   @override
   ConsumerState<UnlockVaultScreen> createState() => _UnlockVaultScreenState();
@@ -27,18 +21,22 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
     with WidgetsBindingObserver {
   String _pin = '';
 
-  // The PIN lockout countdown (#16). The service enforces the lockout; this
-  // only shows it, timed on a Stopwatch so it does not follow the wall clock.
-  Duration _lockout = Duration.zero;
-  final Stopwatch _lockoutWatch = UnlockVaultScreen.stopwatchFactory();
-  Timer? _lockoutTimer;
+  // The PIN lockout countdown (#16).
+  late final PinLockoutCountdown _countdown = PinLockoutCountdown(
+    onTick: () {
+      if (mounted) setState(() {});
+    },
+    onEnd: () {
+      if (!mounted) return;
+      if (ref.read(vaultControllerProvider).failure is VaultLockedOutFailure) {
+        ref.read(vaultControllerProvider.notifier).clearFailure();
+      }
+    },
+  );
 
-  Duration get _lockoutLeft {
-    final left = _lockout - _lockoutWatch.elapsed;
-    return left > Duration.zero ? left : Duration.zero;
-  }
+  Duration get _lockoutLeft => _countdown.left;
 
-  bool get _isLockedOut => _lockoutLeft > Duration.zero;
+  bool get _isLockedOut => _countdown.isActive;
 
   @override
   void initState() {
@@ -50,7 +48,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _lockoutTimer?.cancel();
+    _countdown.dispose();
     super.dispose();
   }
 
@@ -63,26 +61,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
     }
   }
 
-  void _startLockout(Duration remaining) {
-    _lockoutTimer?.cancel();
-    _lockoutTimer = null;
-    _lockout = remaining;
-    _lockoutWatch
-      ..reset()
-      ..start();
-    if (remaining <= Duration.zero) return;
-    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      if (!_isLockedOut) {
-        timer.cancel();
-        if (ref.read(vaultControllerProvider).failure
-            is VaultLockedOutFailure) {
-          ref.read(vaultControllerProvider.notifier).clearFailure();
-        }
-      }
-      setState(() {});
-    });
-  }
+  void _startLockout(Duration remaining) => _countdown.start(remaining);
 
   Future<void> _unlockVault() async {
     if (_isLockedOut) return;
