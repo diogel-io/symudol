@@ -11,6 +11,7 @@ import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
@@ -482,6 +483,196 @@ void main() {
         vaultService.setWipeAfterFailures(10),
         throwsA(isA<VaultLockedException>()),
       );
+    });
+  });
+
+  group('VaultServiceImpl change PIN (#21)', () {
+    late FakeMonotonicClock clock;
+
+    setUp(() {
+      clock = FakeMonotonicClock();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+      );
+    });
+
+    Future<void> createWithIdentity() async {
+      await vaultService.createVault('123456');
+      await vaultService.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+    }
+
+    test('afterwards only the new PIN unlocks, with the same keys', () async {
+      await createWithIdentity();
+      final key = await vaultService.getActivePrivateKey();
+      final before = fakeStore.storedKeyEnvelope!;
+
+      await vaultService.changePin('123456', '654321');
+
+      final after = fakeStore.storedKeyEnvelope!;
+      expect(after.salt, isNot(before.salt));
+      expect(after.params, VaultKdfParams.defaultParams);
+      expect(vaultService.state, isA<VaultUnlocked>());
+      await vaultService.lock();
+      await expectLater(
+        vaultService.unlock('123456'),
+        throwsA(isA<InvalidPinException>()),
+      );
+      await vaultService.unlock('654321');
+      expect(await vaultService.getActivePrivateKey(), key);
+      expect(await vaultService.listIdentities(), hasLength(1));
+    });
+
+    test('a change moves weaker Argon2id params to the defaults', () async {
+      await createWithIdentity();
+      // As a vault from before #16: the same wrapped DEK under weaker params
+      // (the cheap test KDF ignores params, so the old PIN still unwraps it).
+      const weak = VaultKdfParams(memory: 19456, iterations: 2);
+      final stored = fakeStore.storedKeyEnvelope!;
+      await fakeStore.setKeyEnvelope(
+        VaultKeyEnvelope(
+          salt: stored.salt,
+          params: weak,
+          wrappedDek: stored.wrappedDek,
+        ),
+      );
+      expect(fakeStore.storedKeyEnvelope!.params, weak);
+
+      await vaultService.changePin('123456', '654321');
+
+      expect(
+        fakeStore.storedKeyEnvelope!.params,
+        VaultKdfParams.defaultParams,
+      );
+      await vaultService.lock();
+      await vaultService.unlock('654321');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('a wrong current PIN is refused and charged', () async {
+      await createWithIdentity();
+      final before = fakeStore.storedKeyEnvelope!;
+
+      await expectLater(
+        vaultService.changePin('000000', '654321'),
+        throwsA(isA<InvalidPinException>()),
+      );
+
+      expect(await fakeStore.getFailedUnlockAttempts(), 1);
+      expect(fakeStore.storedKeyEnvelope!.wrappedDek, before.wrappedDek);
+      await vaultService.lock();
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('wrong current PINs share the unlock lockout', () async {
+      await createWithIdentity();
+      await fakeStore.setFailedUnlockAttempts(4);
+
+      await expectLater(
+        vaultService.changePin('000000', '654321'),
+        throwsA(isA<InvalidPinException>()),
+      );
+
+      await expectLater(
+        vaultService.changePin('123456', '654321'),
+        throwsA(isA<VaultLockedOutException>()),
+      );
+      expect(
+        await vaultService.getLockoutRemaining(),
+        const Duration(seconds: 30),
+      );
+    });
+
+    test('a wrong current PIN at the wipe limit erases the vault', () async {
+      await createWithIdentity();
+      await vaultService.setWipeAfterFailures(10);
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      await expectLater(
+        vaultService.changePin('000000', '654321'),
+        throwsA(isA<VaultWipedException>()),
+      );
+
+      expect(vaultService.state, isA<NoVault>());
+      expect(await fakeStore.getWrappedDek(), isNull);
+    });
+
+    test('a right current PIN resets the count', () async {
+      await createWithIdentity();
+      await fakeStore.setFailedUnlockAttempts(3);
+
+      await vaultService.changePin('123456', '654321');
+
+      expect(await fakeStore.getFailedUnlockAttempts(), 0);
+    });
+
+    test('a failed write leaves the old PIN working', () async {
+      await createWithIdentity();
+      fakeStore.shouldThrowOnSetKeyEnvelope = true;
+
+      await expectLater(
+        vaultService.changePin('123456', '654321'),
+        throwsA(isA<VaultStorageException>()),
+      );
+
+      fakeStore.shouldThrowOnSetKeyEnvelope = false;
+      await vaultService.lock();
+      await expectLater(
+        vaultService.unlock('654321'),
+        throwsA(isA<InvalidPinException>()),
+      );
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('is refused while locked', () async {
+      await createWithIdentity();
+      await vaultService.lock();
+
+      await expectLater(
+        vaultService.changePin('123456', '654321'),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+
+    test('the new PIN must be 6 digits', () async {
+      await createWithIdentity();
+      for (final pin in ['12345', '1234567', '12345a', '']) {
+        await expectLater(
+          vaultService.changePin('123456', pin),
+          throwsA(isA<VaultStorageException>()),
+          reason: pin,
+        );
+      }
+      expect(await fakeStore.getFailedUnlockAttempts(), 0);
+    });
+
+    test('an unlock sent during a change waits for it', () async {
+      await createWithIdentity();
+
+      final change = vaultService.changePin('123456', '654321');
+      await vaultService.lock();
+      final unlock = vaultService.unlock('654321');
+
+      await change;
+      await unlock;
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('works across background isolates', () async {
+      ConcurrencyUtils.useSynchronousTasks = false;
+      addTearDown(() => ConcurrencyUtils.useSynchronousTasks = true);
+      await createWithIdentity();
+
+      await vaultService.changePin('123456', '654321');
+
+      await vaultService.lock();
+      await vaultService.unlock('654321');
+      expect(vaultService.state, isA<VaultUnlocked>());
     });
   });
 

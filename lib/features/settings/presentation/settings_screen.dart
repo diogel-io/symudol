@@ -6,6 +6,7 @@ import '../../nip46/application/nip46_providers.dart';
 import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../vault/presentation/vault_failure_messages.dart';
+import 'change_pin_screen.dart';
 import 'trusted_apps_screen.dart';
 import 'widgets/settings_tile.dart';
 import 'widgets/wipe_vault_dialog.dart';
@@ -66,10 +67,12 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: DiogelSpacing.space2),
-          const SettingsTile(
+          SettingsTile(
+            key: const Key('changePinTile'),
             icon: Icons.lock_outline,
             title: 'Change PIN',
             subtitle: 'Update your security access code',
+            onTap: () => _changePin(context),
           ),
           SettingsTile(
             icon: Icons.fingerprint,
@@ -296,6 +299,16 @@ class SettingsScreen extends ConsumerWidget {
     await ref
         .read(vaultControllerProvider.notifier)
         .setWipeAfterFailures(attempts);
+  }
+
+  Future<void> _changePin(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const ChangePinScreen()),
+    );
+    if (changed == true) {
+      messenger.showSnackBar(const SnackBar(content: Text('PIN changed')));
+    }
   }
 
   Future<void> _confirmAndWipe(BuildContext context, WidgetRef ref) async {

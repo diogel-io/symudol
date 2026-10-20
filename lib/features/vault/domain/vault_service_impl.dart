@@ -55,6 +55,8 @@ class VaultServiceImpl implements VaultService {
   /// never erases it (#16).
   static const Set<int> supportedWipeAfterFailures = {10, 15, 20};
 
+  static final RegExp _pinPattern = RegExp(r'^\d{6}$');
+
   /// The longest lockout a run of failed PINs earns.
   static const Duration maxLockout = Duration(hours: 24);
 
@@ -252,14 +254,42 @@ class VaultServiceImpl implements VaultService {
   /// Unlock attempts run one at a time, so a wrong PIN that erases the vault
   /// cannot be overtaken by a second attempt still checking its PIN.
   @override
-  Future<void> unlock(String pin) {
+  Future<void> unlock(String pin) => _queued(() => _unlock(pin));
+
+  /// Runs [task] after every PIN check already queued on this service:
+  /// unlocks and PIN changes never overlap (#16, #21).
+  Future<T> _queued<T>(Future<T> Function() task) {
     final previous = _unlockQueues[this] ?? Future<void>.value();
-    final attempt = previous.then((_) => _unlock(pin));
+    final attempt = previous.then((_) => task());
     _unlockQueues[this] = attempt.then<void>((_) {}, onError: (_) {});
     return attempt;
   }
 
   Future<void> _unlock(String pin) async {
+    final (:envelope, :dek) = await _checkPin(pin);
+    await _upgradeKeyEnvelope(pin, envelope, dek);
+
+    _dek = dek;
+    _state = const VaultUnlocked();
+
+    // Restore active identity from store
+    final activeId = await _store.getActiveIdentityId();
+    if (activeId != null) {
+      final record = await _store.getIdentityRecord(activeId);
+      _activeIdentity = record?.toVaultIdentity(isActive: true);
+    }
+  }
+
+  /// Checks [pin] against the stored key envelope and returns it with the
+  /// unwrapped DEK. Every PIN check, whether to unlock or to change the PIN,
+  /// goes through here, so all of them share one count, lockout and wipe.
+  ///
+  /// Throws [VaultNotFoundException], [VaultLockedOutException],
+  /// [InvalidPinException] or, at the wipe-after-N limit,
+  /// [VaultWipedException].
+  Future<({VaultKeyEnvelope envelope, Uint8List dek})> _checkPin(
+    String pin,
+  ) async {
     final envelope = await _store.getKeyEnvelope();
     if (envelope == null) {
       throw const VaultNotFoundException();
@@ -297,17 +327,44 @@ class VaultServiceImpl implements VaultService {
 
     await _store.setFailedUnlockAttempts(0);
     await _store.setLockout(null);
-    await _upgradeKeyEnvelope(pin, envelope, dek);
+    return (envelope: envelope, dek: dek);
+  }
 
-    _dek = dek;
-    _state = const VaultUnlocked();
-
-    // Restore active identity from store
-    final activeId = await _store.getActiveIdentityId();
-    if (activeId != null) {
-      final record = await _store.getIdentityRecord(activeId);
-      _activeIdentity = record?.toVaultIdentity(isActive: true);
+  /// Changing the PIN re-wraps the same DEK, so identities, NIP-55 grants and
+  /// NIP-46 sessions are untouched. The new envelope is one write: an
+  /// interrupted change leaves the old PIN working (#21).
+  @override
+  Future<void> changePin(String currentPin, String newPin) async {
+    _checkUnlocked();
+    if (!_pinPattern.hasMatch(newPin)) {
+      throw const VaultStorageException('The new PIN must be 6 digits');
     }
+    await _queued(() async {
+      // The DEK comes from the envelope, not the session, so a lock during
+      // the check does not stop the change.
+      final (envelope: _, :dek) = await _checkPin(currentPin);
+      final salt = _vaultCryptoService.generateSalt();
+      const params = VaultKdfParams.defaultParams;
+      final kek = await ConcurrencyUtils.runTask(
+        () => _vaultCryptoService.deriveKek(newPin, salt, params),
+      );
+      final wrappedDek = await ConcurrencyUtils.runTask(
+        () => _vaultCryptoService.wrapDek(dek, kek),
+      );
+      try {
+        await _store.setKeyEnvelope(
+          VaultKeyEnvelope(salt: salt, params: params, wrappedDek: wrappedDek),
+        );
+      } catch (e, stack) {
+        diogelLog(
+          'VaultService: could not save the new PIN',
+          error: e,
+          stackTrace: stack,
+        );
+        throw const VaultStorageException('Could not save the new PIN');
+      }
+      await _store.setVersion(storeVersion);
+    });
   }
 
   @override

@@ -35,6 +35,18 @@ abstract interface class VaultService {
   /// Locks the vault.
   Future<void> lock();
 
+  /// Changes the PIN from [currentPin] to [newPin] (6 digits).
+  ///
+  /// [currentPin] is checked like an unlock: it is charged, honours the
+  /// lockout, and counts towards the wipe-after-N limit.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked.
+  /// Throws [VaultStorageException] if [newPin] is not 6 digits or the new
+  /// PIN could not be saved; the old PIN then still works.
+  /// Throws [InvalidPinException], [VaultLockedOutException] or
+  /// [VaultWipedException] as [unlock] does.
+  Future<void> changePin(String currentPin, String newPin);
+
   /// The number of consecutive failed PIN attempts.
   Future<int> getFailedUnlockAttempts();
 

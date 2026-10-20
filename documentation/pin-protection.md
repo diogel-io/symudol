@@ -137,6 +137,23 @@ Existing vaults migrate on their next successful unlock:
 Migration is one-way: once the envelope is written, older builds cannot read the vault. Downgrades
 are not supported, which matches release-please's forward-only releases.
 
+## Changing the PIN
+
+Settings → Change PIN (diogel-io/symudol#21) asks for the current PIN, then the new PIN twice.
+
+- **The current PIN is checked like an unlock.** It is charged before Argon2id runs, honours the
+  lockout, and counts towards the wipe-after-N limit, through the same code as unlocking. Change
+  PIN would otherwise be a second place to guess the PIN on an unlocked phone, and learning it there
+  lets someone unlock later. Unlocks and changes are queued, so they never overlap.
+- **The same DEK is re-wrapped.** It gets a fresh salt and `VaultKdfParams.defaultParams` (so a
+  change also upgrades weaker parameters), and is saved in one `vault_key_envelope` write.
+  Identities, NIP-55 grants and NIP-46 sessions are untouched. The DEK is taken from the envelope,
+  not the session, so a lock during the change does not stop it.
+- **An interrupted change keeps the old PIN.** Until that one write lands, the old envelope is the
+  only one stored; a failed write is reported and the old PIN still works.
+
+A change runs Argon2id twice (check, then re-wrap): about 2 s on the reference emulator.
+
 ## No Keystore Binding for the KEK
 
 Binding the KEK to an Android Keystore key, so that offline guessing needs the device, was

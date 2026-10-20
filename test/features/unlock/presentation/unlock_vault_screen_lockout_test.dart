@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/app/app.dart';
+import 'package:symudol/features/unlock/presentation/pin_lockout_countdown.dart';
 import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_lockout.dart';
@@ -16,12 +17,12 @@ void main() {
 
   setUp(() async {
     // The countdown runs on fake time, which the tester's pumps advance.
-    UnlockVaultScreen.stopwatchFactory = () => clock.stopwatch();
+    PinLockoutCountdown.stopwatchFactory = () => clock.stopwatch();
     store = FakeVaultStore();
     await store.setWrappedDek('wrapped-dek-placeholder');
   });
 
-  tearDown(() => UnlockVaultScreen.stopwatchFactory = Stopwatch.new);
+  tearDown(() => PinLockoutCountdown.stopwatchFactory = Stopwatch.new);
 
   /// Off Android the clock is wall time with boot 0, so a lockout starting
   /// now is one the app reads as running.

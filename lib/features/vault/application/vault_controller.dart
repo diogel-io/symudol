@@ -134,6 +134,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
       approvalSessionDuration = await _vaultService
           .getApprovalSessionDurationMinutes();
       wipeAfterFailures = await _vaultService.getWipeAfterFailures();
+      // The count and lockout are read on demand (refreshLockout) while
+      // unlocked: only Change PIN needs them (#21).
+      failedUnlockAttempts = state.failedUnlockAttempts;
+      lockoutRemaining = state.lockoutRemaining;
     } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
       identities = [];
       activeIdentity = null;
@@ -168,11 +172,13 @@ class VaultController extends StateNotifier<VaultControllerState> {
     );
   }
 
-  /// Re-reads the PIN lockout, for the unlock screen's countdown (#16).
+  /// Re-reads the PIN lockout and failed-attempt count, for the unlock and
+  /// Change PIN screens' countdown and erase warning (#16, #21).
   Future<void> refreshLockout() async {
     try {
       state = state.copyWith(
         lockoutRemaining: await _vaultService.getLockoutRemaining(),
+        failedUnlockAttempts: await _vaultService.getFailedUnlockAttempts(),
       );
     } catch (e, stack) {
       diogelLog(
@@ -221,6 +227,35 @@ class VaultController extends StateNotifier<VaultControllerState> {
     } finally {
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  /// Changes the PIN (#21). Returns the failure, if any, for the Change PIN
+  /// screen, which is the only one that shows it; the shared state only
+  /// keeps an erase, for the setup screen. A wrong current PIN also updates
+  /// the count and lockout here.
+  Future<VaultFailure?> changePin(String currentPin, String newPin) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    VaultFailure? failure;
+    try {
+      await _vaultService.changePin(currentPin, newPin);
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a PIN change failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    if (state.vaultState is VaultUnlocked) await refreshLockout();
+    state = state.copyWith(
+      isLoading: false,
+      failure: failure is VaultWipedFailure ? failure : null,
+    );
+    return failure;
   }
 
   Future<void> setWipeAfterFailures(int? attempts) async {
