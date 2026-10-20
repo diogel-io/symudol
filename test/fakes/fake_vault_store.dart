@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/biometric_vault.dart';
+import 'package:symudol/features/vault/domain/monotonic_clock.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
@@ -17,6 +19,8 @@ class FakeVaultStore implements VaultStore {
   VaultLockout? _lockout;
   DateTime? _legacyLockoutUntil;
   int? _wipeAfterFailures;
+  BiometricWrap? _biometricWrap;
+  MonotonicInstant? _pinVerifiedAt;
   String? _activeIdentityId;
   int? _inactivityTimeout;
   int? _backgroundLockDelayMinutes;
@@ -177,6 +181,30 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
+  Future<BiometricWrap?> getBiometricWrap() async {
+    _checkError();
+    return _biometricWrap;
+  }
+
+  @override
+  Future<void> setBiometricWrap(BiometricWrap? wrap) async {
+    _checkError();
+    _biometricWrap = wrap;
+  }
+
+  @override
+  Future<MonotonicInstant?> getPinVerifiedAt() async {
+    _checkError();
+    return _pinVerifiedAt;
+  }
+
+  @override
+  Future<void> setPinVerifiedAt(MonotonicInstant instant) async {
+    _checkError();
+    _pinVerifiedAt = instant;
+  }
+
+  @override
   Future<String?> getActiveIdentityId() async {
     _checkError();
     return _activeIdentityId;
@@ -269,6 +297,8 @@ class FakeVaultStore implements VaultStore {
     _lockout = null;
     _legacyLockoutUntil = null;
     _wipeAfterFailures = null;
+    _biometricWrap = null;
+    _pinVerifiedAt = null;
     _activeIdentityId = null;
     _inactivityTimeout = null;
     _backgroundLockDelayMinutes = null;

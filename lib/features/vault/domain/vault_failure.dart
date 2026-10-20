@@ -60,3 +60,33 @@ class SecureStorageFailure extends VaultFailure {
 class CryptoFailure extends VaultFailure {
   const CryptoFailure(super.message);
 }
+
+/// Biometric unlock is off, or this phone cannot use it (#23).
+class BiometricUnavailableFailure extends VaultFailure {
+  const BiometricUnavailableFailure()
+    : super('Biometric unlock is not available');
+}
+
+/// The PIN is needed: after a restart, or 72 hours after the last PIN (#23).
+class BiometricPinRequiredFailure extends VaultFailure {
+  const BiometricPinRequiredFailure()
+    : super('Enter your PIN to use biometric unlock again');
+}
+
+/// Android stopped biometric checks after too many failed attempts (#23).
+class BiometricLockedOutFailure extends VaultFailure {
+  const BiometricLockedOutFailure()
+    : super('Too many fingerprint attempts. Use your PIN.');
+}
+
+/// The biometric key can no longer be used and biometric unlock was turned
+/// off, for example because a fingerprint was added (#23).
+class BiometricKeyInvalidatedFailure extends VaultFailure {
+  const BiometricKeyInvalidatedFailure()
+    : super('Biometric unlock was turned off');
+}
+
+/// The biometric check failed for another reason (#23).
+class BiometricFailure extends VaultFailure {
+  const BiometricFailure(super.message);
+}

@@ -31,8 +31,14 @@ class PinButton extends StatelessWidget {
 class PinButtonIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
+  final String? semanticLabel;
 
-  const PinButtonIcon(this.icon, {super.key, required this.onPressed});
+  const PinButtonIcon(
+    this.icon, {
+    super.key,
+    required this.onPressed,
+    this.semanticLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +48,7 @@ class PinButtonIcon extends StatelessWidget {
       child: Center(
         child: Icon(
           icon,
+          semanticLabel: semanticLabel,
           size: 32,
           color: onPressed == null
               ? DiogelColors.textTertiary

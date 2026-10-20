@@ -13,7 +13,9 @@ void main() {
     expect(formatApprovalSessionDuration(5), '5 minutes');
   });
 
-  testWidgets('biometric unlock is clearly disabled until implemented', (
+  // Off Android (here, the test host) biometric unlock is unavailable; the
+  // tile says so and can't be turned on (#23).
+  testWidgets('biometric unlock is disabled where the phone cannot use it', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -25,10 +27,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Biometric Unlock'), findsOneWidget);
-    expect(
-      find.text('Not available yet — PIN unlock remains required'),
-      findsOneWidget,
-    );
+    expect(find.text('Not available on this phone'), findsOneWidget);
 
     final biometricSwitch = tester.widget<Switch>(find.byType(Switch));
     expect(biometricSwitch.value, isFalse);

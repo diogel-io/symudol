@@ -3,6 +3,8 @@ package io.diogel.symudol
 import android.content.Intent
 import android.net.Uri
 import android.os.Looper
+import io.flutter.embedding.android.FlutterFragment
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMethodCodec
@@ -21,9 +23,10 @@ import java.nio.ByteBuffer
  * What MainActivity logs when a NIP-55 request reaches it (SR-21, #14): the `nostrsigner:` URI and
  * the handed-over request carry the event or plaintext, and must never reach the system log.
  *
- * There is no Flutter engine on the JVM, so FlutterActivity's own onCreate fails after
- * MainActivity's first log line. onNewIntent runs fully, because FlutterActivity ignores it
- * without an engine; a stand-in channel lets the request go all the way to Dart.
+ * There is no Flutter engine on the JVM, so FlutterFragmentActivity's own onCreate fails after
+ * MainActivity's first log line. onNewIntent runs fully with a stand-in FlutterFragment, which
+ * FlutterFragmentActivity forwards new intents to (#23), and a stand-in channel lets the request
+ * go all the way to Dart.
  */
 @RunWith(RobolectricTestRunner::class)
 class MainActivityLoggingTest {
@@ -85,6 +88,12 @@ class MainActivityLoggingTest {
         }
         MainActivity::class.java.getDeclaredField("channel").apply { isAccessible = true }
             .set(activity, MethodChannel(messenger, "io.diogel.symudol/nip55"))
+        // Without an engine there is no FlutterFragment to take the intent.
+        FlutterFragmentActivity::class.java.getDeclaredField("flutterFragment")
+            .apply { isAccessible = true }
+            .set(activity, object : FlutterFragment() {
+                override fun onNewIntent(intent: Intent) {}
+            })
     }
 
     @Test

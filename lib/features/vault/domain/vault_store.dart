@@ -1,4 +1,6 @@
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/biometric_vault.dart';
+import 'package:symudol/features/vault/domain/monotonic_clock.dart';
 import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
 import 'package:symudol/features/vault/domain/vault_lockout.dart';
 
@@ -50,6 +52,19 @@ abstract class VaultStore {
   /// Sets how many failed PIN attempts erase the vault. Pass `null` to turn
   /// it off.
   Future<void> setWipeAfterFailures(int? attempts);
+
+  /// Reads the DEK wrapped under the biometric key, or `null` when biometric
+  /// unlock is off (#23).
+  Future<BiometricWrap?> getBiometricWrap();
+
+  /// Sets the biometric wrap in one write. Pass `null` to turn it off.
+  Future<void> setBiometricWrap(BiometricWrap? wrap);
+
+  /// Reads when the PIN was last checked successfully (#23).
+  Future<MonotonicInstant?> getPinVerifiedAt();
+
+  /// Records when the PIN was last checked successfully.
+  Future<void> setPinVerifiedAt(MonotonicInstant instant);
 
   /// Reads the active identity ID.
   Future<String?> getActiveIdentityId();

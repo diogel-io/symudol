@@ -60,3 +60,39 @@ class VaultStorageException extends VaultException {
   @override
   String toString() => 'VaultStorageException: $message';
 }
+
+/// Biometric unlock is not turned on, or this phone cannot use it (#23).
+class BiometricUnavailableException extends VaultException {
+  const BiometricUnavailableException()
+    : super('Biometric unlock is not available');
+}
+
+/// The PIN is needed first: after a restart, or 72 hours after the last PIN
+/// unlock (#23).
+class BiometricPinRequiredException extends VaultException {
+  const BiometricPinRequiredException()
+    : super('Enter your PIN to use biometric unlock again');
+}
+
+/// The user dismissed the biometric prompt (#23).
+class BiometricCancelledException extends VaultException {
+  const BiometricCancelledException() : super('Biometric unlock cancelled');
+}
+
+/// Android stopped biometric checks after too many failed attempts (#23).
+class BiometricLockedOutException extends VaultException {
+  const BiometricLockedOutException()
+    : super('Too many fingerprint attempts. Use your PIN.');
+}
+
+/// The biometric key can no longer be used, for example because a
+/// fingerprint was added. Biometric unlock has been turned off (#23).
+class BiometricKeyInvalidatedException extends VaultException {
+  const BiometricKeyInvalidatedException()
+    : super('Biometric unlock was turned off');
+}
+
+/// The biometric check failed for another reason (#23).
+class BiometricFailedException extends VaultException {
+  const BiometricFailedException(super.message);
+}

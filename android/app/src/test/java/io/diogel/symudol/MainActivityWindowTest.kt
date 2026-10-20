@@ -16,7 +16,7 @@ class MainActivityWindowTest {
     @Test
     fun theWindowIsSecureBeforeFlutterStarts() {
         val controller = Robolectric.buildActivity(MainActivity::class.java)
-        // There is no Flutter engine on the JVM, so FlutterActivity's own onCreate fails; the flag
+        // There is no Flutter engine on the JVM, so FlutterFragmentActivity's own onCreate fails; the flag
         // is set before it runs.
         runCatching { controller.create() }
 

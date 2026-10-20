@@ -9,6 +9,7 @@ import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/biometric_vault.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
@@ -16,6 +17,7 @@ import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../fakes/fake_biometric_vault.dart';
 import '../../../fakes/fake_monotonic_clock.dart';
 import '../../../fakes/fake_nip46_session_store.dart';
 import '../../../fakes/fake_nip55_permission_store.dart';
@@ -673,6 +675,304 @@ void main() {
       await vaultService.lock();
       await vaultService.unlock('654321');
       expect(vaultService.state, isA<VaultUnlocked>());
+    });
+  });
+
+  group('VaultServiceImpl biometric unlock (#23)', () {
+    late FakeMonotonicClock clock;
+    late FakeBiometricVault biometric;
+
+    setUp(() {
+      clock = FakeMonotonicClock();
+      biometric = FakeBiometricVault();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+        biometricVault: biometric,
+      );
+    });
+
+    Future<String?> createWithIdentity() async {
+      await vaultService.createVault('123456');
+      await vaultService.importIdentity(
+        '0000000000000000000000000000000000000000000000000000000000000001',
+      );
+      return vaultService.getActivePrivateKey();
+    }
+
+    Future<String?> enabledThenLocked() async {
+      final key = await createWithIdentity();
+      await vaultService.enableBiometricUnlock('123456');
+      await vaultService.lock();
+      return key;
+    }
+
+    test('is off until turned on', () async {
+      await createWithIdentity();
+
+      final status = await vaultService.getBiometricUnlockStatus();
+      expect(status.enabled, isFalse);
+      expect(status.availability, BiometricAvailability.available);
+      expect(status.canUnlock, isFalse);
+      await vaultService.lock();
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<BiometricUnavailableException>()),
+      );
+    });
+
+    test('turning it on needs the PIN, then the prompt', () async {
+      await createWithIdentity();
+
+      await vaultService.enableBiometricUnlock('123456');
+
+      expect(biometric.prompts, 1);
+      expect(await fakeStore.getBiometricWrap(), isNotNull);
+      expect((await vaultService.getBiometricUnlockStatus()).canUnlock, isTrue);
+    });
+
+    test('a wrong PIN is charged and turns nothing on', () async {
+      await createWithIdentity();
+
+      await expectLater(
+        vaultService.enableBiometricUnlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+
+      expect(await fakeStore.getFailedUnlockAttempts(), 1);
+      expect(biometric.prompts, 0);
+      expect(await fakeStore.getBiometricWrap(), isNull);
+    });
+
+    test('it cannot be turned on while locked', () async {
+      await createWithIdentity();
+      await vaultService.lock();
+
+      await expectLater(
+        vaultService.enableBiometricUnlock('123456'),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+
+    test('it cannot be turned on without a fingerprint enrolled', () async {
+      await createWithIdentity();
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+
+      await expectLater(
+        vaultService.enableBiometricUnlock('123456'),
+        throwsA(isA<BiometricUnavailableException>()),
+      );
+      expect(await fakeStore.getFailedUnlockAttempts(), 0);
+    });
+
+    test('a cancelled prompt leaves it off', () async {
+      await createWithIdentity();
+      biometric.nextPromptError = const BiometricCancelledException();
+
+      await expectLater(
+        vaultService.enableBiometricUnlock('123456'),
+        throwsA(isA<BiometricCancelledException>()),
+      );
+      expect(await fakeStore.getBiometricWrap(), isNull);
+    });
+
+    test('a fingerprint unlocks the vault with the same keys', () async {
+      final key = await enabledThenLocked();
+
+      await vaultService.unlockWithBiometric();
+
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await vaultService.getActivePrivateKey(), key);
+      expect(vaultService.activeIdentity, isNotNull);
+    });
+
+    test('a cancelled unlock prompt leaves the vault locked', () async {
+      await enabledThenLocked();
+      biometric.nextPromptError = const BiometricCancelledException();
+
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<BiometricCancelledException>()),
+      );
+      expect(vaultService.state, isA<VaultLocked>());
+      expect(await fakeStore.getBiometricWrap(), isNotNull);
+    });
+
+    test('a fingerprint unlocks during a PIN lockout and clears it', () async {
+      await enabledThenLocked();
+      for (var i = 0; i < 5; i++) {
+        await expectLater(
+          vaultService.unlock('000000'),
+          throwsA(isA<InvalidPinException>()),
+        );
+      }
+      expect(await vaultService.getLockoutRemaining(), greaterThan(Duration.zero));
+
+      await vaultService.unlockWithBiometric();
+
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await vaultService.getFailedUnlockAttempts(), 0);
+      expect(await vaultService.getLockoutRemaining(), Duration.zero);
+    });
+
+    test('a restart asks for the PIN first', () async {
+      await enabledThenLocked();
+      clock.reboot();
+
+      expect((await vaultService.getBiometricUnlockStatus()).pinRequired, isTrue);
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<BiometricPinRequiredException>()),
+      );
+      expect(biometric.prompts, 1); // only the one that turned it on
+
+      await vaultService.unlock('123456');
+      await vaultService.lock();
+      expect((await vaultService.getBiometricUnlockStatus()).canUnlock, isTrue);
+      await vaultService.unlockWithBiometric();
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('72 hours after the last PIN, the PIN is needed first', () async {
+      await enabledThenLocked();
+
+      clock.advance(const Duration(hours: 71, minutes: 59));
+      expect((await vaultService.getBiometricUnlockStatus()).canUnlock, isTrue);
+      await vaultService.unlockWithBiometric();
+      await vaultService.lock();
+
+      // A biometric unlock does not renew the 72 hours.
+      clock.advance(const Duration(minutes: 1));
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<BiometricPinRequiredException>()),
+      );
+    });
+
+    test('changing the PIN keeps it working and counts as a PIN', () async {
+      await createWithIdentity();
+      await vaultService.enableBiometricUnlock('123456');
+      clock.advance(const Duration(hours: 71));
+
+      await vaultService.changePin('123456', '654321');
+      clock.advance(const Duration(hours: 2));
+      await vaultService.lock();
+
+      await vaultService.unlockWithBiometric();
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('an invalidated key turns it off, and the PIN still works', () async {
+      await enabledThenLocked();
+      biometric.invalidated = true;
+
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<BiometricKeyInvalidatedException>()),
+      );
+
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
+      expect((await vaultService.getBiometricUnlockStatus()).enabled, isFalse);
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('turning it off deletes the wrap and the key', () async {
+      await createWithIdentity();
+      await vaultService.enableBiometricUnlock('123456');
+
+      await vaultService.disableBiometricUnlock();
+
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
+    });
+
+    test('a wipe deletes the wrap and the key', () async {
+      await createWithIdentity();
+      await vaultService.enableBiometricUnlock('123456');
+
+      await vaultService.wipe();
+
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
+      expect(
+        (await vaultService.getBiometricUnlockStatus()).enabled,
+        isFalse,
+      );
+    });
+
+    test('the wipe after failed PINs deletes the key too', () async {
+      await createWithIdentity();
+      await vaultService.enableBiometricUnlock('123456');
+      await vaultService.setWipeAfterFailures(10);
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<VaultWipedException>()),
+      );
+
+      expect(biometric.hasKey, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNull);
+    });
+
+    test('with no fingerprint left it turns itself off, and says so', () async {
+      await enabledThenLocked();
+      // Removing every fingerprint invalidates the key, as adding one does.
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+
+      final status = await vaultService.getBiometricUnlockStatus();
+
+      expect(status.turnedOff, isTrue);
+      expect(status.enabled, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
+      expect((await vaultService.getBiometricUnlockStatus()).turnedOff, isFalse);
+    });
+
+    test("it stays on while the phone can't use it for now", () async {
+      await enabledThenLocked();
+      biometric.availabilityValue = BiometricAvailability.unavailable;
+
+      final status = await vaultService.getBiometricUnlockStatus();
+
+      expect(status.enabled, isTrue);
+      expect(status.enabledButUnavailable, isTrue);
+      expect(status.canUnlock, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNotNull);
+      biometric.availabilityValue = BiometricAvailability.available;
+      await vaultService.unlockWithBiometric();
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('a second unlock zeroes the DEK of the first', () async {
+      final crypto = _RecordingCryptoService();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: crypto,
+        biometricVault: biometric,
+      );
+      await enabledThenLocked();
+      await vaultService.unlock('123456');
+      final first = crypto.unwrapped.last;
+      expect(first.any((b) => b != 0), isTrue);
+
+      await vaultService.unlockWithBiometric();
+
+      expect(first.every((b) => b == 0), isTrue);
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await vaultService.getActivePrivateKey(), isNotNull);
+    });
+
+    test('with no vault there is nothing to unlock', () async {
+      await expectLater(
+        vaultService.unlockWithBiometric(),
+        throwsA(isA<VaultNotFoundException>()),
+      );
     });
   });
 
@@ -1356,5 +1656,17 @@ class _CheapKdfCryptoService extends PointyCastleVaultCryptoService {
   Uint8List unwrapDek(String wrapped, Uint8List kek) {
     if (crashOnUnwrap) throw StateError('killed mid-check');
     return super.unwrapDek(wrapped, kek);
+  }
+}
+
+/// Records each DEK it unwraps, to check that the vault zeroes it (#23).
+class _RecordingCryptoService extends _CheapKdfCryptoService {
+  final unwrapped = <Uint8List>[];
+
+  @override
+  Uint8List unwrapDek(String wrapped, Uint8List kek) {
+    final dek = super.unwrapDek(wrapped, kek);
+    unwrapped.add(dek);
+    return dek;
   }
 }

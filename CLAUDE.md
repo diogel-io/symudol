@@ -42,6 +42,8 @@ Providers are composed in `<feature>/application/*_providers.dart` and wired tog
 
 The vault holds identities and is the gate for everything else. `VaultState` is a sealed-ish union: `NoVault`, `VaultLocked`, `SessionExpired`, `VaultUnlocked`. `VaultController` drives transitions; `VaultServiceImpl` + `SecureStorageVaultStore` (backed by `flutter_secure_storage`) persist identities and PIN-derived material. PIN attempts escalate to lockouts timed on Android's monotonic clock, with an optional wipe after N failures, and the Argon2id salt, params and wrapped DEK are stored as one envelope (`documentation/pin-protection.md`, #16).
 
+Biometric unlock (#23) is an opt-in second wrap of the DEK under an Android Keystore key that needs a strong biometric for each use (`BiometricVault.kt` on the `io.diogel.symudol/biometric` channel, `PlatformBiometricVault` in Dart). `MainActivity` is a `FlutterFragmentActivity` for `BiometricPrompt`. The PIN is needed to turn it on, after a restart, and 72 h after the last PIN check (`documentation/biometric-unlock.md`).
+
 `DiogelApp` (`lib/app/app.dart`) owns two independent session timers, both set in Settings:
 - **inactivity timeout** — after N minutes with no user interaction while foregrounded, calls `VaultController.expireSession()` (state `SessionExpired`); 0 disables it
 - **background lock delay** — locks after the app is backgrounded for N minutes (0 = immediate, -1 = never while running); the same deadline is passed to native code with `setLockDeadline`
@@ -89,6 +91,8 @@ Relevant NIPs: NIP-01 (basic protocol), NIP-04/NIP-44 (encryption), NIP-46 (remo
 - `nip55-contentprovider-mvp.md` — what the ContentProvider answers in the background, and how long the native key lives
 - `nip55-native-crypto-decision.md` — why native code does not sign (diogel-io/symudol#12)
 - `backup-and-screen-capture-decision.md` — why nothing is backed up or transferred, and why the whole app blocks screen capture (diogel-io/symudol#15)
+- `pin-protection.md` — the PIN, lockouts, wipe after N failures, the key envelope, Change PIN and Forgot PIN (diogel-io/symudol#16, #21, #22)
+- `biometric-unlock.md` — the Keystore key behind biometric unlock, and when the PIN is still needed (diogel-io/symudol#23)
 - `nip55-signer-discovery.md` — how clients discover Symudol as a signer
 - `nip55-client-discovery-reference.md` — how known clients look for a signer
 - `nip55-device-checks.md` — running the NIP-55 device checks with the test client

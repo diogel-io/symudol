@@ -1,5 +1,6 @@
 import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/vault/domain/biometric_unlock_status.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_failure.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
@@ -22,6 +23,9 @@ class VaultControllerState {
 
   /// The lockout left when the state was read; [Duration.zero] for none.
   final Duration lockoutRemaining;
+
+  /// Where biometric unlock stands (#23).
+  final BiometricUnlockStatus biometricUnlock;
   final bool isLoading;
   final VaultFailure? failure;
 
@@ -35,6 +39,7 @@ class VaultControllerState {
     this.failedUnlockAttempts = 0,
     this.wipeAfterFailures,
     this.lockoutRemaining = Duration.zero,
+    this.biometricUnlock = BiometricUnlockStatus.off,
     this.isLoading = true,
     this.failure,
   });
@@ -50,6 +55,7 @@ class VaultControllerState {
     int? wipeAfterFailures,
     bool clearWipeAfterFailures = false,
     Duration? lockoutRemaining,
+    BiometricUnlockStatus? biometricUnlock,
     bool? isLoading,
     VaultFailure? failure,
     bool clearFailure = false,
@@ -72,6 +78,7 @@ class VaultControllerState {
           ? null
           : (wipeAfterFailures ?? this.wipeAfterFailures),
       lockoutRemaining: lockoutRemaining ?? this.lockoutRemaining,
+      biometricUnlock: biometricUnlock ?? this.biometricUnlock,
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
     );
@@ -157,9 +164,24 @@ class VaultController extends StateNotifier<VaultControllerState> {
       activeIdentity = null;
     }
 
+    var biometricUnlock = BiometricUnlockStatus.off;
+    if (vaultState is! NoVault) {
+      try {
+        biometricUnlock = await _vaultService.getBiometricUnlockStatus();
+      } catch (e, stack) {
+        diogelLog(
+          'VaultController: could not read biometric unlock',
+          error: e,
+          stackTrace: stack,
+        );
+      }
+    }
+
     state = state.copyWith(
       vaultState: vaultState,
       identities: identities,
+      biometricUnlock: biometricUnlock,
+      failure: _turnedOffFailure(biometricUnlock, vaultState),
       activeIdentity: activeIdentity,
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
@@ -306,6 +328,101 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
   }
 
+  /// Unlocks with a biometric (#23). Returns the failure, or `null` on
+  /// success or when the user cancelled the prompt.
+  Future<VaultFailure?> unlockWithBiometric() async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    VaultFailure? failure;
+    try {
+      await _vaultService.unlockWithBiometric();
+    } on BiometricCancelledException {
+      // Back to the PIN pad, with nothing to report.
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a biometric unlock failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    state = state.copyWith(isLoading: false, failure: failure);
+    return failure;
+  }
+
+  /// Turns biometric unlock on with the current [pin] (#23). Returns the
+  /// failure, or `null` on success or when the user cancelled the prompt.
+  Future<VaultFailure?> enableBiometricUnlock(String pin) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    VaultFailure? failure;
+    try {
+      await _vaultService.enableBiometricUnlock(pin);
+    } on BiometricCancelledException {
+      // Left off, with nothing to report.
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after turning on biometric unlock failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    if (state.vaultState is VaultUnlocked) await refreshLockout();
+    state = state.copyWith(
+      isLoading: false,
+      failure: failure is VaultWipedFailure ? failure : null,
+    );
+    return failure;
+  }
+
+  /// Turns biometric unlock off (#23).
+  Future<void> disableBiometricUnlock() async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      await _vaultService.disableBiometricUnlock();
+      await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  /// Re-reads whether biometric unlock can be offered, for example when the
+  /// app comes back after the user enrolled a fingerprint (#23).
+  Future<void> refreshBiometricUnlock() async {
+    if (state.vaultState is NoVault) return;
+    try {
+      final biometricUnlock = await _vaultService.getBiometricUnlockStatus();
+      state = state.copyWith(
+        biometricUnlock: biometricUnlock,
+        failure: _turnedOffFailure(biometricUnlock, state.vaultState),
+      );
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: could not read biometric unlock',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  /// Tells the unlock screen why biometric unlock is gone when a status
+  /// read just turned it off; Settings shows it as off.
+  VaultFailure? _turnedOffFailure(
+    BiometricUnlockStatus status,
+    VaultState vaultState,
+  ) => status.turnedOff && vaultState is! VaultUnlocked
+      ? const BiometricKeyInvalidatedFailure()
+      : null;
+
   Future<void> lock() async {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
@@ -424,6 +541,21 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
     if (e is IdentityNotFoundException) {
       return const IdentityNotFoundFailure();
+    }
+    if (e is BiometricUnavailableException) {
+      return const BiometricUnavailableFailure();
+    }
+    if (e is BiometricPinRequiredException) {
+      return const BiometricPinRequiredFailure();
+    }
+    if (e is BiometricLockedOutException) {
+      return const BiometricLockedOutFailure();
+    }
+    if (e is BiometricKeyInvalidatedException) {
+      return const BiometricKeyInvalidatedFailure();
+    }
+    if (e is BiometricFailedException) {
+      return BiometricFailure(e.message);
     }
     if (e is VaultStorageException) {
       final msg = e.message.toLowerCase();

@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../theme/tokens.dart';
 import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
+import '../../vault/domain/biometric_unlock_status.dart';
+import '../../vault/domain/biometric_vault.dart';
+import '../../vault/presentation/vault_failure_messages.dart';
 import 'change_pin_screen.dart';
 import 'trusted_apps_screen.dart';
+import 'widgets/biometric_pin_dialog.dart';
 import 'widgets/settings_tile.dart';
 import 'widgets/wipe_vault_dialog.dart';
 
@@ -39,6 +43,25 @@ String formatApprovalSessionDuration(int minutes) {
 String formatWipeAfterFailures(int? attempts) =>
     attempts == null ? 'Off' : 'After $attempts failed attempts';
 
+/// The Biometric Unlock tile's subtitle (#23).
+String biometricUnlockSubtitle(BiometricUnlockStatus status) {
+  if (status.enabledButUnavailable) {
+    return "On, but this phone can't use it right now; the PIN still works";
+  }
+  if (status.enabled ||
+      status.availability == BiometricAvailability.available) {
+    return 'Unlock with your fingerprint; the PIN is still needed after a '
+        'restart or every 72 hours';
+  }
+  return switch (status.availability) {
+    BiometricAvailability.noneEnrolled =>
+      'Add a fingerprint in Android settings first',
+    BiometricAvailability.noHardware =>
+      'This phone has no strong biometric sensor',
+    _ => 'Not available on this phone',
+  };
+}
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -51,6 +74,7 @@ class SettingsScreen extends ConsumerWidget {
     final approvalSessionDurationMinutes =
         vaultControllerState.approvalSessionDurationMinutes;
     final wipeAfterFailures = vaultControllerState.wipeAfterFailures;
+    final biometricUnlock = vaultControllerState.biometricUnlock;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -73,10 +97,20 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _changePin(context),
           ),
           SettingsTile(
+            key: const Key('biometricUnlockTile'),
             icon: Icons.fingerprint,
             title: 'Biometric Unlock',
-            subtitle: 'Not available yet — PIN unlock remains required',
-            trailing: const Switch(value: false, onChanged: null),
+            subtitle: biometricUnlockSubtitle(biometricUnlock),
+            trailing: Switch(
+              key: const Key('biometricUnlockSwitch'),
+              value: biometricUnlock.enabled,
+              onChanged: biometricUnlock.enabled ||
+                      biometricUnlock.availability ==
+                          BiometricAvailability.available
+                  ? (on) => _setBiometricUnlock(context, ref, on)
+                  : null,
+            ),
+            onTap: () => _toggleBiometricUnlock(context, ref),
           ),
           SettingsTile(
             key: const Key('wipeAfterFailuresTile'),
@@ -297,6 +331,57 @@ class SettingsScreen extends ConsumerWidget {
     await ref
         .read(vaultControllerProvider.notifier)
         .setWipeAfterFailures(attempts);
+  }
+
+  /// The tile itself: re-reads the sensor first, since a fingerprint may
+  /// have been added in Android settings since this screen opened (#23).
+  Future<void> _toggleBiometricUnlock(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final notifier = ref.read(vaultControllerProvider.notifier);
+    await notifier.refreshBiometricUnlock();
+    if (!context.mounted) return;
+    final status = ref.read(vaultControllerProvider).biometricUnlock;
+    if (status.enabled ||
+        status.availability == BiometricAvailability.available) {
+      await _setBiometricUnlock(context, ref, !status.enabled);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(biometricUnlockSubtitle(status))),
+      );
+    }
+  }
+
+  Future<void> _setBiometricUnlock(
+    BuildContext context,
+    WidgetRef ref,
+    bool on,
+  ) async {
+    final notifier = ref.read(vaultControllerProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    if (!on) {
+      await notifier.disableBiometricUnlock();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Biometric unlock is off')),
+      );
+      return;
+    }
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (_) => const BiometricPinDialog(),
+    );
+    if (pin == null) return;
+    final failure = await notifier.enableBiometricUnlock(pin);
+    if (failure != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(vaultFailureMessage(failure))),
+      );
+    } else if (ref.read(vaultControllerProvider).biometricUnlock.enabled) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Biometric unlock is on')),
+      );
+    }
   }
 
   Future<void> _changePin(BuildContext context) async {

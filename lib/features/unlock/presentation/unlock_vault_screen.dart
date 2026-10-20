@@ -23,6 +23,10 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
     with WidgetsBindingObserver {
   String _pin = '';
 
+  // Biometric unlock prompts once by itself when the screen opens (#23).
+  bool _biometricPrompted = false;
+  bool _biometricInProgress = false;
+
   // The PIN lockout countdown (#16).
   late final PinLockoutCountdown _countdown = PinLockoutCountdown(
     onTick: () {
@@ -45,6 +49,34 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startLockout(ref.read(vaultControllerProvider).lockoutRemaining);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _promptOnce());
+  }
+
+  /// Shows the biometric prompt once, while Symudol is in front: a prompt
+  /// started in the background is cancelled by Android.
+  void _promptOnce() {
+    if (!mounted || _biometricPrompted) return;
+    if (!ref.read(vaultControllerProvider).biometricUnlock.canUnlock) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    _biometricPrompted = true;
+    _unlockWithBiometric();
+  }
+
+  Future<void> _unlockWithBiometric() async {
+    if (_biometricInProgress) return;
+    _biometricInProgress = true;
+    try {
+      await ref.read(vaultControllerProvider.notifier).unlockWithBiometric();
+    } finally {
+      _biometricInProgress = false;
+    }
+    if (!mounted) return;
+    // A biometric unlock clears the PIN lockout (#23).
+    setState(() {
+      _pin = '';
+      _startLockout(ref.read(vaultControllerProvider).lockoutRemaining);
+    });
   }
 
   @override
@@ -60,6 +92,13 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
     // not, so take the time left from it again.
     if (state == AppLifecycleState.resumed && _isLockedOut) {
       ref.read(vaultControllerProvider.notifier).refreshLockout();
+    }
+    if (state == AppLifecycleState.resumed) {
+      // Re-read before prompting: a fingerprint may have been added meanwhile.
+      ref
+          .read(vaultControllerProvider.notifier)
+          .refreshBiometricUnlock()
+          .then((_) => _promptOnce());
     }
   }
 
@@ -124,6 +163,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
       }
     });
     final lockedOut = _isLockedOut;
+    final biometric = controllerState.biometricUnlock;
     final wipeWarning = wipeWarningMessage(
       failedAttempts: controllerState.failedUnlockAttempts,
       wipeAfterFailures: controllerState.wipeAfterFailures,
@@ -236,6 +276,37 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
                       textAlign: TextAlign.center,
                     ),
                   ],
+                  if (biometric.enabledButUnavailable && failure == null) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DiogelSpacing.space6,
+                      ),
+                      child: Text(
+                        biometricUnavailableMessage,
+                        key: const Key('unlockBiometricUnavailable'),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: DiogelColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ] else if (biometric.enabled &&
+                      biometric.pinRequired &&
+                      failure == null) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DiogelSpacing.space6,
+                      ),
+                      child: Text(
+                        biometricPinRequiredMessage,
+                        key: const Key('unlockBiometricPinRequired'),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: DiogelColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                   if (wipeWarning != null) ...[
                     const SizedBox(height: DiogelSpacing.space2),
                     Padding(
@@ -318,7 +389,17 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
                             : () => _onNumberPressed(number),
                       ),
                     ),
-                    const PinButtonIcon(Icons.fingerprint, onPressed: null),
+                    // Also during a PIN lockout: a fingerprint proves the
+                    // owner (#23).
+                    PinButtonIcon(
+                      Icons.fingerprint,
+                      key: const Key('biometricUnlockButton'),
+                      semanticLabel: 'Unlock with fingerprint',
+                      onPressed:
+                          biometric.canUnlock && !controllerState.isLoading
+                          ? _unlockWithBiometric
+                          : null,
+                    ),
                     PinButton(
                       '0',
                       onPressed: lockedOut ? null : () => _onNumberPressed('0'),

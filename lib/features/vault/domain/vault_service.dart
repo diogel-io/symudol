@@ -1,3 +1,4 @@
+import 'package:symudol/features/vault/domain/biometric_unlock_status.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
@@ -66,6 +67,34 @@ abstract interface class VaultService {
 
   /// Expires the session due to inactivity.
   Future<void> expireSession();
+
+  /// Where biometric unlock stands: on or off, whether this phone can use it,
+  /// and whether the PIN is needed first (#23).
+  Future<BiometricUnlockStatus> getBiometricUnlockStatus();
+
+  /// Turns biometric unlock on: checks [pin] like an unlock (charged,
+  /// honours the lockout, counts towards the wipe-after-N limit), then wraps
+  /// the DEK under a new biometric Keystore key, which shows the system
+  /// prompt.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked,
+  /// [BiometricUnavailableException] if this phone cannot use it, the PIN
+  /// errors [unlock] throws, or a biometric error from the prompt.
+  Future<void> enableBiometricUnlock(String pin);
+
+  /// Turns biometric unlock off: deletes the wrap and the key.
+  Future<void> disableBiometricUnlock();
+
+  /// Unlocks with a biometric instead of the PIN. Allowed during a PIN
+  /// lockout; success clears the failed-PIN count and the lockout, as a
+  /// correct PIN does.
+  ///
+  /// Throws [VaultNotFoundException] if no vault exists,
+  /// [BiometricUnavailableException] if biometric unlock is off,
+  /// [BiometricPinRequiredException] after a restart or 72 hours without a
+  /// PIN check, [BiometricKeyInvalidatedException] (and turns it off) if the
+  /// key can no longer be used, or another biometric error from the prompt.
+  Future<void> unlockWithBiometric();
 
   /// Permanently erases the vault and everything tied to it: every identity
   /// and key, NIP-55 grants (including the native mirror), and NIP-46

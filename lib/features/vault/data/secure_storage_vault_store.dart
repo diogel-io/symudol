@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/biometric_vault.dart';
+import 'package:symudol/features/vault/domain/monotonic_clock.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
 import 'package:symudol/features/vault/domain/vault_lockout.dart';
@@ -20,6 +22,8 @@ class SecureStorageVaultStore implements VaultStore {
   static const String _keyLockout = 'vault_lockout';
   static const String _keyLegacyLockoutUntil = 'vault_lockout_until';
   static const String _keyWipeAfterFailures = 'vault_wipe_after_failures';
+  static const String _keyBiometricWrap = 'vault_biometric_wrap';
+  static const String _keyPinVerifiedAt = 'vault_pin_verified_at';
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
   static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
@@ -146,6 +150,30 @@ class SecureStorageVaultStore implements VaultStore {
   @override
   Future<void> setWipeAfterFailures(int? attempts) =>
       _writeCached(_keyWipeAfterFailures, attempts?.toString() ?? '');
+
+  @override
+  Future<BiometricWrap?> getBiometricWrap() async {
+    final value = await _readCached(_keyBiometricWrap);
+    if (value == null || value.isEmpty) return null;
+    return BiometricWrap.fromJson(jsonDecode(value) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> setBiometricWrap(BiometricWrap? wrap) => _writeCached(
+    _keyBiometricWrap,
+    wrap == null ? '' : jsonEncode(wrap.toJson()),
+  );
+
+  @override
+  Future<MonotonicInstant?> getPinVerifiedAt() async {
+    final value = await _readCached(_keyPinVerifiedAt);
+    if (value == null || value.isEmpty) return null;
+    return MonotonicInstant.fromJson(jsonDecode(value) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> setPinVerifiedAt(MonotonicInstant instant) =>
+      _writeCached(_keyPinVerifiedAt, jsonEncode(instant.toJson()));
 
   @override
   Future<String?> getActiveIdentityId() => _readCached(_keyActiveIdentityId);

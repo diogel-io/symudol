@@ -185,6 +185,10 @@ every guess. And it would add a way to lose the vault: if that key were lost (Ke
 been lost on some devices after OS updates or lock-screen changes), the vault could not be opened
 even with the right PIN.
 
+Biometric unlock (#23) is a different thing: an optional second wrap of the same DEK, under a
+Keystore key that needs a fingerprint. Losing that key only turns biometric unlock off; the PIN
+wrap is untouched (`biometric-unlock.md`).
+
 ## Verification (2026-10-20)
 
 On the emulator above, with release builds:

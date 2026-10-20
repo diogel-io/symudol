@@ -31,7 +31,23 @@ String vaultFailureMessage(VaultFailure failure) {
   if (failure is VaultWipeIncompleteFailure) {
     return 'The wipe did not finish. Please try again.';
   }
-  if (failure is IdentityNotFoundFailure) {
+  if (failure is BiometricUnavailableFailure) {
+    return 'Biometric unlock is not available on this phone.';
+  }
+  if (failure is BiometricPinRequiredFailure) {
+    return biometricPinRequiredMessage;
+  }
+  if (failure is BiometricLockedOutFailure) {
+    return 'Too many fingerprint attempts. Unlock with your PIN.';
+  }
+  if (failure is BiometricKeyInvalidatedFailure) {
+    return "Biometric unlock was turned off because this phone's fingerprints "
+        'changed. Unlock with your PIN.';
+  }
+  if (failure is BiometricFailure) {
+    return 'The fingerprint check did not work. Unlock with your PIN.';
+  }
+    if (failure is IdentityNotFoundFailure) {
     return 'The requested identity was not found.';
   }
   if (failure is SecureStorageFailure) {
@@ -79,3 +95,15 @@ String? wipeWarningMessage({
   return '$left ${left == 1 ? 'attempt' : 'attempts'} left before Symudol '
       'erases all keys.';
 }
+
+/// Why the unlock screen offers no fingerprint although biometric unlock is
+/// on: the phone can't use it now (#23).
+const biometricUnavailableMessage =
+    "Biometric unlock isn't available on this phone right now. Unlock with "
+    'your PIN.';
+
+/// Why the unlock screen asks for the PIN although biometric unlock is on
+/// (#23).
+const biometricPinRequiredMessage =
+    'Enter your PIN: biometric unlock needs it after a restart or every '
+    '72 hours.';

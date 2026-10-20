@@ -61,6 +61,8 @@ flutter {
 }
 
 dependencies {
+    // BiometricPrompt with a Keystore CryptoObject, for biometric unlock (#23).
+    implementation("androidx.biometric:biometric:1.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
     // org.json is bundled in android.jar as a stub; provide the real library so
