@@ -1184,6 +1184,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   /// Ends the pending request without a result. A user cancel is a NIP-55
   /// rejection; pass [rejected] false when Symudol gave up on it instead (a
   /// timeout), which the client sees as a signer failure.
+  ///
+  /// The request ends even when the client can't be answered, and the error
+  /// is rethrown: kept pending with its timer cancelled, it would refuse every
+  /// later request as busy and be resumed after the next unlock (#104).
   Future<void> cancelPendingExternalRequest({
     String error = 'User cancelled NIP-55 request',
     bool rejected = true,
@@ -1191,18 +1195,21 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final incoming = state.pendingIncoming;
     if (incoming == null) return;
     _pendingUnlockTimer?.cancel();
-    await _gateway.rejectNip55Intent(
-      requestToken: incoming.requestToken,
-      error: error,
-      rejected: rejected,
-    );
-    state = state.copyWith(
-      clearPendingIncoming: true,
-      clearPendingSigningRequestId: true,
-      clearPendingPublicKeyRequest: true,
-      clearPendingCryptoRequest: true,
-      isLoading: false,
-    );
+    try {
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: error,
+        rejected: rejected,
+      );
+    } finally {
+      state = state.copyWith(
+        clearPendingIncoming: true,
+        clearPendingSigningRequestId: true,
+        clearPendingPublicKeyRequest: true,
+        clearPendingCryptoRequest: true,
+        isLoading: false,
+      );
+    }
   }
 
   void clearMessages() {

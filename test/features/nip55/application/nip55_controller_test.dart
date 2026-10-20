@@ -2015,6 +2015,28 @@ void main() {
       expect(controller.state.pendingIncoming, isNull);
     });
 
+    test(
+      'a cancel the client cannot receive still ends the request (#104)',
+      () async {
+        await vaultController.lock();
+        await controller.handleRawIntent({
+          'requestToken': 'token-cancel-fails',
+          'type': 'sign_message',
+          'content': 'hello',
+        });
+        gateway.throwOnReject = true;
+
+        await expectLater(
+          controller.cancelPendingExternalRequest(),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(gateway.rejectedTokens, ['token-cancel-fails']);
+        expect(controller.state.pendingIncoming, isNull);
+        expect(controller.state.hasPendingExternalRequest, isFalse);
+      },
+    );
+
     // -------------------------------------------------------------------------
     // Timeframe-based approval tests
     // -------------------------------------------------------------------------
@@ -2551,15 +2573,17 @@ void main() {
     });
 
     test('keeps a request that arrived before any vault existed', () async {
-      final noVaultController = VaultController(
-        VaultServiceImpl(FakeVaultStore()),
-      );
+      final noVaultService = VaultServiceImpl(FakeVaultStore());
+      final noVaultController = VaultController(noVaultService);
       await pumpEventQueue();
       final noVaultNip55 = Nip55Controller(
         gateway: gateway,
         vaultController: noVaultController,
-        vaultService: vaultService,
-        requestController: requestController,
+        vaultService: noVaultService,
+        requestController: RequestController(
+          noVaultController,
+          RealSignerService(noVaultService),
+        ),
       );
       await noVaultNip55.handleRawIntent({
         'requestToken': 'token-before-setup',
@@ -2588,6 +2612,10 @@ void main() {
       expect(gateway.rejectedTokens, ['token-unanswerable']);
       expect(vaultController.state.vaultState, isA<NoVault>());
       expect(await store.getWrappedDek(), isNull);
+      // The request ends anyway: kept, it would refuse every later request
+      // as busy and be resumed against the next vault.
+      expect(controller.state.pendingIncoming, isNull);
+      expect(controller.state.hasPendingExternalRequest, isFalse);
     });
 
     test('a failed wipe that leaves the vault keeps the request', () async {
