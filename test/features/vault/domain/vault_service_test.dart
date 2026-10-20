@@ -11,6 +11,7 @@ import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
@@ -523,6 +524,32 @@ void main() {
       await vaultService.unlock('654321');
       expect(await vaultService.getActivePrivateKey(), key);
       expect(await vaultService.listIdentities(), hasLength(1));
+    });
+
+    test('a change moves weaker Argon2id params to the defaults', () async {
+      await createWithIdentity();
+      // As a vault from before #16: the same wrapped DEK under weaker params
+      // (the cheap test KDF ignores params, so the old PIN still unwraps it).
+      const weak = VaultKdfParams(memory: 19456, iterations: 2);
+      final stored = fakeStore.storedKeyEnvelope!;
+      await fakeStore.setKeyEnvelope(
+        VaultKeyEnvelope(
+          salt: stored.salt,
+          params: weak,
+          wrappedDek: stored.wrappedDek,
+        ),
+      );
+      expect(fakeStore.storedKeyEnvelope!.params, weak);
+
+      await vaultService.changePin('123456', '654321');
+
+      expect(
+        fakeStore.storedKeyEnvelope!.params,
+        VaultKdfParams.defaultParams,
+      );
+      await vaultService.lock();
+      await vaultService.unlock('654321');
+      expect(vaultService.state, isA<VaultUnlocked>());
     });
 
     test('a wrong current PIN is refused and charged', () async {

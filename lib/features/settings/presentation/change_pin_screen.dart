@@ -22,7 +22,8 @@ class ChangePinScreen extends ConsumerStatefulWidget {
   ConsumerState<ChangePinScreen> createState() => _ChangePinScreenState();
 }
 
-class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
+class _ChangePinScreenState extends ConsumerState<ChangePinScreen>
+    with WidgetsBindingObserver {
   _Step _step = _Step.current;
   String _current = '';
   String _new = '';
@@ -42,13 +43,34 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _countdown.start(ref.read(vaultControllerProvider).lockoutRemaining);
+    // The count and lockout are only read on demand while unlocked.
+    _refreshLockout();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _countdown.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The Stopwatch stops while the phone sleeps; the service's clock does
+    // not, so take the time left from it again, as the unlock screen does.
+    if (state == AppLifecycleState.resumed && _countdown.isActive) {
+      _refreshLockout();
+    }
+  }
+
+  Future<void> _refreshLockout() async {
+    await ref.read(vaultControllerProvider.notifier).refreshLockout();
+    if (!mounted) return;
+    setState(
+      () => _countdown.start(ref.read(vaultControllerProvider).lockoutRemaining),
+    );
   }
 
   bool get _padEnabled =>

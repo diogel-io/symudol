@@ -280,7 +280,8 @@ void backgroundLockDelayControllerTests() {
       final failure = await controller.changePin('000000', '654321');
 
       expect(failure, isA<InvalidPinFailure>());
-      expect(controller.state.failure, isA<InvalidPinFailure>());
+      // Only the Change PIN screen shows it; it is not left for others.
+      expect(controller.state.failure, isNull);
       expect(controller.state.failedUnlockAttempts, 1);
       expect(controller.state.vaultState, isA<VaultUnlocked>());
     });

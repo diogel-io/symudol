@@ -156,6 +156,25 @@ void main() {
     expect(find.byKey(const Key('changePinLockoutMessage')), findsNothing);
   });
 
+  testWidgets('re-reads the lockout when the app resumes', (tester) async {
+    await store.setFailedUnlockAttempts(4);
+    await pumpSettings(tester);
+    await enter(tester, '000000');
+    await enter(tester, '654321');
+    await enter(tester, '654321');
+    expect(find.byKey(const Key('changePinLockoutMessage')), findsOneWidget);
+
+    // As if the lockout ran out while the phone slept, which the screen's
+    // Stopwatch does not see.
+    await store.setLockout(null);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+
+    expect(find.byKey(const Key('changePinLockoutMessage')), findsNothing);
+  });
+
   testWidgets('closes when the vault locks', (tester) async {
     await pumpSettings(tester);
 
