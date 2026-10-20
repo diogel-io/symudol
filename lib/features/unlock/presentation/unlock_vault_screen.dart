@@ -394,7 +394,7 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
                     PinButtonIcon(
                       Icons.fingerprint,
                       key: const Key('biometricUnlockButton'),
-                      semanticLabel: 'Unlock with fingerprint',
+                      semanticLabel: 'Unlock with fingerprint or face',
                       onPressed:
                           biometric.canUnlock && !controllerState.isLoading
                           ? _unlockWithBiometric

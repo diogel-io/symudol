@@ -82,7 +82,7 @@ class BiometricCancelledException extends VaultException {
 /// Android stopped biometric checks after too many failed attempts (#23).
 class BiometricLockedOutException extends VaultException {
   const BiometricLockedOutException()
-    : super('Too many fingerprint attempts. Use your PIN.');
+    : super('Too many biometric attempts. Use your PIN.');
 }
 
 /// The biometric key can no longer be used, for example because a

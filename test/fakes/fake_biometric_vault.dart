@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -15,9 +16,13 @@ class FakeBiometricVault implements BiometricVault {
   /// Stands for a fingerprint added since the key was made.
   bool invalidated = false;
 
+  /// When set, [wrap] waits for it after the prompt: a turn-on in progress.
+  Completer<void>? wrapGate;
+
   bool hasKey = false;
   int prompts = 0;
   int deletes = 0;
+  int availabilityReads = 0;
 
   void _prompt() {
     prompts++;
@@ -27,11 +32,15 @@ class FakeBiometricVault implements BiometricVault {
   }
 
   @override
-  Future<BiometricAvailability> availability() async => availabilityValue;
+  Future<BiometricAvailability> availability() async {
+    availabilityReads++;
+    return availabilityValue;
+  }
 
   @override
   Future<BiometricWrap> wrap(Uint8List dek) async {
     _prompt();
+    await wrapGate?.future;
     hasKey = true;
     invalidated = false;
     return BiometricWrap(

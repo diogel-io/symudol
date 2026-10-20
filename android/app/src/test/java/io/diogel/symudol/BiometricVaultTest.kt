@@ -76,6 +76,26 @@ class BiometricVaultTest {
     }
 
     @Test
+    fun aKeyThatCannotBeDeletedDoesNotStopTheRest() {
+        val deleted = mutableListOf<String>()
+        val left = BiometricVault.deleteBiometricAliases(
+            listOf(
+                "symudol_biometric_dek_wrap",
+                "symudol_biometric_dek_wrap.1",
+                "symudol_biometric_dek_wrap.2",
+                "symudol_biometric_dek_wrap.3",
+                "FlutterSecureStoragePluginKey",
+            ),
+            keep = "symudol_biometric_dek_wrap.3",
+        ) { alias ->
+            if (alias == "symudol_biometric_dek_wrap.1") throw java.security.KeyStoreException("busy")
+            deleted += alias
+        }
+        assertEquals(listOf("symudol_biometric_dek_wrap.1"), left)
+        assertEquals(listOf("symudol_biometric_dek_wrap", "symudol_biometric_dek_wrap.2"), deleted)
+    }
+
+    @Test
     fun anythingElseFails() {
         assertEquals("failed", BiometricVault.errorCodeFor(BiometricPrompt.ERROR_TIMEOUT))
         assertEquals("failed", BiometricVault.errorCodeFor(BiometricPrompt.ERROR_VENDOR))

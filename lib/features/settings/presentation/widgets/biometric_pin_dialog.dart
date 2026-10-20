@@ -36,7 +36,8 @@ class _BiometricPinDialogState extends State<BiometricPinDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Enter your PIN, then confirm with your fingerprint. Symudol '
+            'Enter your PIN, then confirm with your fingerprint or face. '
+            'Symudol '
             'still asks for the PIN after a restart or every 72 hours.',
           ),
           const SizedBox(height: 16),

@@ -122,8 +122,14 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
   }
 
-  Future<void> _refreshState() async {
+  /// Re-reads the vault into [state]. The biometric status is read only when
+  /// the vault state changes or [readBiometric] says it may have (#108): a
+  /// settings or identity change leaves it alone, and the resume and
+  /// Settings re-reads go through [refreshBiometricUnlock].
+  Future<void> _refreshState({bool readBiometric = false}) async {
     final vaultState = _vaultService.state;
+    final vaultStateChanged =
+        vaultState.runtimeType != state.vaultState.runtimeType;
     List<VaultIdentity> identities = [];
     VaultIdentity? activeIdentity;
     int timeout = 5;
@@ -164,11 +170,16 @@ class VaultController extends StateNotifier<VaultControllerState> {
       activeIdentity = null;
     }
 
-    var biometricUnlock = BiometricUnlockStatus.off;
-    if (vaultState is! NoVault) {
+    var biometricUnlock = state.biometricUnlock;
+    VaultFailure? turnedOff;
+    if (vaultState is NoVault) {
+      biometricUnlock = BiometricUnlockStatus.off;
+    } else if (readBiometric || vaultStateChanged) {
       try {
         biometricUnlock = await _vaultService.getBiometricUnlockStatus();
+        turnedOff = _turnedOffFailure(biometricUnlock, vaultState);
       } catch (e, stack) {
+        biometricUnlock = BiometricUnlockStatus.off;
         diogelLog(
           'VaultController: could not read biometric unlock',
           error: e,
@@ -181,7 +192,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       vaultState: vaultState,
       identities: identities,
       biometricUnlock: biometricUnlock,
-      failure: _turnedOffFailure(biometricUnlock, vaultState),
+      failure: turnedOff,
       activeIdentity: activeIdentity,
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
@@ -264,7 +275,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       failure = _mapExceptionToFailure(e);
     }
     try {
-      await _refreshState();
+      await _refreshState(readBiometric: true);
     } catch (e, stack) {
       diogelLog(
         'VaultController: refresh after a PIN change failed',
@@ -341,7 +352,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       failure = _mapExceptionToFailure(e);
     }
     try {
-      await _refreshState();
+      await _refreshState(readBiometric: true);
     } catch (e, stack) {
       diogelLog(
         'VaultController: refresh after a biometric unlock failed',
@@ -366,7 +377,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       failure = _mapExceptionToFailure(e);
     }
     try {
-      await _refreshState();
+      await _refreshState(readBiometric: true);
     } catch (e, stack) {
       diogelLog(
         'VaultController: refresh after turning on biometric unlock failed',
@@ -387,7 +398,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.disableBiometricUnlock();
-      await _refreshState();
+      await _refreshState(readBiometric: true);
     } catch (e) {
       state = state.copyWith(failure: _mapExceptionToFailure(e));
     } finally {

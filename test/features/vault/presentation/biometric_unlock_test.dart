@@ -167,7 +167,7 @@ void main() {
 
       expect(find.byType(UnlockVaultScreen), findsOneWidget);
       expect(
-        find.textContaining('fingerprints changed'),
+        find.textContaining('fingerprints or face changed'),
         findsOneWidget,
       );
       expect(await store.getBiometricWrap(), isNull);
@@ -206,6 +206,62 @@ void main() {
         findsNothing,
       );
       expect(await store.getBiometricWrap(), isNotNull);
+    });
+
+    testWidgets("Android's biometric lockout sends the user to the PIN (#108)", (
+      tester,
+    ) async {
+      await turnOn();
+      biometric.nextPromptError = const BiometricLockedOutException();
+
+      await pumpApp(tester);
+
+      expect(find.byType(UnlockVaultScreen), findsOneWidget);
+      expect(
+        find.text('Too many biometric attempts. Unlock with your PIN.'),
+        findsOneWidget,
+      );
+      expect(await store.getBiometricWrap(), isNotNull);
+      await enterPin(tester, '123456');
+      expect(find.byType(UnlockVaultScreen), findsNothing);
+    });
+
+    testWidgets('a failed biometric check says to use the PIN (#108)', (
+      tester,
+    ) async {
+      await turnOn();
+      biometric.nextPromptError = const BiometricFailedException('vendor');
+
+      await pumpApp(tester);
+
+      expect(find.byType(UnlockVaultScreen), findsOneWidget);
+      expect(
+        find.text('The biometric check did not work. Unlock with your PIN.'),
+        findsOneWidget,
+      );
+      expect(await store.getBiometricWrap(), isNotNull);
+    });
+
+    testWidgets('on resume it re-reads the sensor and prompts (#108)', (
+      tester,
+    ) async {
+      await turnOn();
+      biometric.availabilityValue = BiometricAvailability.unavailable;
+      await pumpApp(tester);
+      final promptsBefore = biometric.prompts;
+      expect(
+        find.byKey(const Key('unlockBiometricUnavailable')),
+        findsOneWidget,
+      );
+
+      biometric.availabilityValue = BiometricAvailability.available;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(biometric.prompts, promptsBefore + 1);
+      expect(find.byType(UnlockVaultScreen), findsNothing);
     });
 
     testWidgets('off: no prompt, and the fingerprint key does nothing', (
@@ -308,6 +364,27 @@ void main() {
       expect(biometricSwitch(tester).value, isFalse);
     });
 
+    testWidgets('on resume it shows a fingerprint added meanwhile (#108)', (
+      tester,
+    ) async {
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+      await openSettings(tester);
+      expect(biometricSwitch(tester).onChanged, isNull);
+
+      // Added in Android settings while Symudol was in the background.
+      biometric.availabilityValue = BiometricAvailability.available;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(biometricSwitch(tester).onChanged, isNotNull);
+      expect(
+        find.textContaining('Unlock with your fingerprint or face'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('with no fingerprint enrolled the switch is disabled', (
       tester,
     ) async {
@@ -316,7 +393,7 @@ void main() {
 
       expect(biometricSwitch(tester).onChanged, isNull);
       expect(
-        find.text('Add a fingerprint in Android settings first'),
+        find.text('Add a fingerprint or face in Android settings first'),
         findsOneWidget,
       );
     });

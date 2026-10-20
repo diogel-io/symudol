@@ -287,6 +287,19 @@ void main() {
         await vaultStore.setWipeAfterFailures(null);
         expect(await vaultStore.getWipeAfterFailures(), isNull);
       });
+
+      test('a wrap saved before it had an alias reads as the first key (#108)',
+          () async {
+        when(() => mockStorage.read(key: 'vault_biometric_wrap')).thenAnswer(
+          (_) async => jsonEncode({'iv': 'aXY=', 'ciphertext': 'Y3Q='}),
+        );
+
+        final wrap = await vaultStore.getBiometricWrap();
+
+        expect(wrap?.alias, 'symudol_biometric_dek_wrap');
+        expect(wrap?.iv, 'aXY=');
+        expect(wrap?.ciphertext, 'Y3Q=');
+      });
     });
   });
 }

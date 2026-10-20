@@ -356,7 +356,6 @@ class VaultServiceImpl implements VaultService {
 
   @override
   Future<BiometricUnlockStatus> getBiometricUnlockStatus() async {
-    var enabled = await _store.getBiometricWrap() != null;
     BiometricAvailability availability;
     try {
       availability = await _biometricVault.availability();
@@ -370,11 +369,19 @@ class VaultServiceImpl implements VaultService {
     }
     // With no fingerprint left, Android has invalidated the key for good
     // (as with a new one): turn it off now rather than claim it's on (#23).
+    // In the queue, so a turn-on still saving its wrap can't land after the
+    // turn-off and leave a dead key switched on (#108). Only then: a plain
+    // read doesn't wait behind an unlock.
+    var enabled = false;
     var turnedOff = false;
-    if (enabled && availability == BiometricAvailability.noneEnrolled) {
-      await disableBiometricUnlock();
-      enabled = false;
-      turnedOff = true;
+    if (availability == BiometricAvailability.noneEnrolled) {
+      turnedOff = await _queued(() async {
+        if (await _store.getBiometricWrap() == null) return false;
+        await _disableBiometricUnlock();
+        return true;
+      });
+    } else {
+      enabled = await _store.getBiometricWrap() != null;
     }
     return BiometricUnlockStatus(
       enabled: enabled,
@@ -428,7 +435,10 @@ class VaultServiceImpl implements VaultService {
   }
 
   @override
-  Future<void> disableBiometricUnlock() async {
+  Future<void> disableBiometricUnlock() => _queued(_disableBiometricUnlock);
+
+  /// For callers already in the queue.
+  Future<void> _disableBiometricUnlock() async {
     await _store.setBiometricWrap(null);
     await _deleteBiometricKey();
   }
@@ -463,7 +473,7 @@ class VaultServiceImpl implements VaultService {
     } on BiometricKeyInvalidatedException {
       // A fingerprint was added, or the screen lock removed: the key is gone
       // for good, and the PIN still works.
-      await disableBiometricUnlock();
+      await _disableBiometricUnlock();
       rethrow;
     }
 

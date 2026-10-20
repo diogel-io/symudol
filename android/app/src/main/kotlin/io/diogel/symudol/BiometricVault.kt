@@ -52,6 +52,25 @@ class BiometricVault(private val activity: FragmentActivity) {
         fun isBiometricAlias(alias: String): Boolean =
             alias == KEY_PREFIX || alias.startsWith("$KEY_PREFIX.")
 
+        /**
+         * Deletes each biometric key in [aliases] except [keep], going on past a key that can't
+         * be deleted. Returns the aliases that are left behind.
+         */
+        fun deleteBiometricAliases(
+            aliases: List<String>,
+            keep: String?,
+            delete: (String) -> Unit,
+        ): List<String> = aliases
+            .filter { isBiometricAlias(it) && it != keep }
+            .filterNot { alias ->
+                try {
+                    delete(alias)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+            }
+
         /** The error code Dart acts on for a [BiometricPrompt] error. */
         fun errorCodeFor(promptError: Int): String = when (promptError) {
             BiometricPrompt.ERROR_USER_CANCELED,
@@ -79,7 +98,7 @@ class BiometricVault(private val activity: FragmentActivity) {
                 val alias = call.argument<String>("alias")
                 val iv = call.argument<ByteArray>("iv")
                 val ciphertext = call.argument<ByteArray>("ciphertext")
-                if (alias == null || !alias.startsWith(KEY_PREFIX) || iv == null || ciphertext == null) {
+                if (alias == null || !isBiometricAlias(alias) || iv == null || ciphertext == null) {
                     return result.error("INVALID_ARGS", "alias, iv and ciphertext required", null)
                 }
                 unwrap(alias, iv, ciphertext, result)
@@ -120,7 +139,8 @@ class BiometricVault(private val activity: FragmentActivity) {
             onCleanup = {
                 dek.fill(0)
                 // Keep only the key that wrapped this DEK; on cancel or failure, only the old one.
-                if (wrapped) deleteKeysExcept(alias) else deleteKeyQuietly(alias)
+                // The answer has gone to Dart, so a key left behind is only logged.
+                if (wrapped) deleteOldKeysQuietly(alias) else deleteKeyQuietly(alias)
             },
         ) { authenticated ->
             val ciphertext = authenticated.doFinal(dek)
@@ -235,13 +255,23 @@ class BiometricVault(private val activity: FragmentActivity) {
             .generateKey()
     }
 
-    /** Deletes every biometric key: turning it off, or a wipe. */
-    fun deleteKeys() = deleteKeysExcept(null)
+    /** Deletes every biometric key: turning it off, or a wipe. Throws if any is left. */
+    fun deleteKeys() {
+        val left = deleteKeysExcept(null)
+        if (left.isNotEmpty()) throw IllegalStateException("${left.size} biometric key(s) left")
+    }
 
-    private fun deleteKeysExcept(keep: String?) {
+    private fun deleteKeysExcept(keep: String?): List<String> {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        for (alias in keyStore.aliases().toList()) {
-            if (isBiometricAlias(alias) && alias != keep) keyStore.deleteEntry(alias)
+        return deleteBiometricAliases(keyStore.aliases().toList(), keep) { keyStore.deleteEntry(it) }
+    }
+
+    private fun deleteOldKeysQuietly(keep: String) {
+        try {
+            val left = deleteKeysExcept(keep)
+            if (left.isNotEmpty()) DiogelLog.w(TAG, "could not delete ${left.size} old biometric key(s)")
+        } catch (e: Exception) {
+            DiogelLog.w(TAG, "could not delete the old biometric keys", e)
         }
     }
 
