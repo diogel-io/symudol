@@ -9,15 +9,16 @@ with the iOS ticket.
 Biometric unlock is opt-in, in Settings → Biometric Unlock. It's a second wrap of the vault's DEK,
 next to the PIN's Argon2id wrap (`pin-protection.md`, "Key Envelope and Migration"):
 
-- **The key.** An AES-256-GCM key in the Android Keystore, alias `symudol_biometric_dek_wrap`
-  (`BiometricVault.kt`). It needs a strong biometric for every use
+- **The key.** An AES-256-GCM key in the Android Keystore, `symudol_biometric_dek_wrap.<time>`
+  (`BiometricVault.kt`). Each turn-on makes a new key and deletes the older ones only once the new
+  wrap succeeds, so a cancelled prompt leaves the existing key and wrap working. It needs a strong biometric for every use
   (`setUserAuthenticationRequired`, and `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`
   on API 30+, per-use auth below it). The screen-lock PIN doesn't count. Adding a fingerprint
   invalidates it (`setInvalidatedByBiometricEnrollment`).
 - **The check is the Keystore's.** `BiometricPrompt` gets the key's cipher as its `CryptoObject`,
   and the cipher only works once the user has authenticated. A yes from a dialog alone can't use
   the key.
-- **The wrap.** The GCM IV and ciphertext are stored as `vault_biometric_wrap` in
+- **The wrap.** The key's alias, the GCM IV and the ciphertext are stored as `vault_biometric_wrap` in
   `flutter_secure_storage`, which is excluded from backup (#15). The GCM tag guarantees that an
   unwrap returns exactly the DEK that was wrapped, and the DEK only changes on a wipe, which deletes
   the wrap.
@@ -51,10 +52,19 @@ PIN does. Android's own biometric lockout, after too many wrong fingers, sends t
 
 ## When the Key Is Lost
 
-Keystore keys can be lost after some OS updates or lock-screen changes, and adding a fingerprint
-invalidates this one by design. Either way the unlock fails with `keyInvalidated`. Symudol then
-deletes the wrap and the key, turns biometric unlock off, and says so on the unlock screen. The PIN
-still works and nothing else is lost.
+Keystore keys can be lost after some OS updates or lock-screen changes, and adding a fingerprint,
+removing every fingerprint, or removing the screen lock invalidates this one by design. Symudol
+then deletes the wrap and the key, turns biometric unlock off, and says so on the unlock screen. The
+PIN still works and nothing else is lost.
+
+- **A fingerprint added:** the next unlock fails with `keyInvalidated`.
+- **No fingerprint left** (all removed, or the screen lock cleared): Android reports none enrolled,
+  and Symudol turns biometric unlock off as soon as it reads that, at the next lock or when the app
+  comes back to the front. Settings then shows it as off, rather than claiming it's on.
+- **The sensor unavailable for now:** biometric unlock stays on. The unlock screen and Settings say
+  the phone can't use it right now, and Settings can still turn it off.
+
+A second unlock while the vault is open zeroes the first DEK before keeping the new one.
 
 That is why this doesn't reverse "No Keystore Binding for the KEK" in `pin-protection.md`. There,
 a lost Keystore key would have locked the vault for good. Here it only loses a convenience.

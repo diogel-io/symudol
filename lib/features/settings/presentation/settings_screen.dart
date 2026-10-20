@@ -45,6 +45,9 @@ String formatWipeAfterFailures(int? attempts) =>
 
 /// The Biometric Unlock tile's subtitle (#23).
 String biometricUnlockSubtitle(BiometricUnlockStatus status) {
+  if (status.enabledButUnavailable) {
+    return "On, but this phone can't use it right now; the PIN still works";
+  }
   if (status.enabled ||
       status.availability == BiometricAvailability.available) {
     return 'Unlock with your fingerprint; the PIN is still needed after a '

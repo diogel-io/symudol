@@ -919,6 +919,55 @@ void main() {
       expect(await fakeStore.getBiometricWrap(), isNull);
     });
 
+    test('with no fingerprint left it turns itself off, and says so', () async {
+      await enabledThenLocked();
+      // Removing every fingerprint invalidates the key, as adding one does.
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+
+      final status = await vaultService.getBiometricUnlockStatus();
+
+      expect(status.turnedOff, isTrue);
+      expect(status.enabled, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
+      expect((await vaultService.getBiometricUnlockStatus()).turnedOff, isFalse);
+    });
+
+    test("it stays on while the phone can't use it for now", () async {
+      await enabledThenLocked();
+      biometric.availabilityValue = BiometricAvailability.unavailable;
+
+      final status = await vaultService.getBiometricUnlockStatus();
+
+      expect(status.enabled, isTrue);
+      expect(status.enabledButUnavailable, isTrue);
+      expect(status.canUnlock, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNotNull);
+      biometric.availabilityValue = BiometricAvailability.available;
+      await vaultService.unlockWithBiometric();
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('a second unlock zeroes the DEK of the first', () async {
+      final crypto = _RecordingCryptoService();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: crypto,
+        biometricVault: biometric,
+      );
+      await enabledThenLocked();
+      await vaultService.unlock('123456');
+      final first = crypto.unwrapped.last;
+      expect(first.any((b) => b != 0), isTrue);
+
+      await vaultService.unlockWithBiometric();
+
+      expect(first.every((b) => b == 0), isTrue);
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await vaultService.getActivePrivateKey(), isNotNull);
+    });
+
     test('with no vault there is nothing to unlock', () async {
       await expectLater(
         vaultService.unlockWithBiometric(),
@@ -1607,5 +1656,17 @@ class _CheapKdfCryptoService extends PointyCastleVaultCryptoService {
   Uint8List unwrapDek(String wrapped, Uint8List kek) {
     if (crashOnUnwrap) throw StateError('killed mid-check');
     return super.unwrapDek(wrapped, kek);
+  }
+}
+
+/// Records each DEK it unwraps, to check that the vault zeroes it (#23).
+class _RecordingCryptoService extends _CheapKdfCryptoService {
+  final unwrapped = <Uint8List>[];
+
+  @override
+  Uint8List unwrapDek(String wrapped, Uint8List kek) {
+    final dek = super.unwrapDek(wrapped, kek);
+    unwrapped.add(dek);
+    return dek;
   }
 }

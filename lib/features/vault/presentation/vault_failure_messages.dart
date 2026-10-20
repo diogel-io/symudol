@@ -96,6 +96,12 @@ String? wipeWarningMessage({
       'erases all keys.';
 }
 
+/// Why the unlock screen offers no fingerprint although biometric unlock is
+/// on: the phone can't use it now (#23).
+const biometricUnavailableMessage =
+    "Biometric unlock isn't available on this phone right now. Unlock with "
+    'your PIN.';
+
 /// Why the unlock screen asks for the PIN although biometric unlock is on
 /// (#23).
 const biometricPinRequiredMessage =

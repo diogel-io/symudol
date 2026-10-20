@@ -12,10 +12,15 @@ class BiometricUnlockStatus {
   /// after the last PIN check.
   final bool pinRequired;
 
+  /// Whether this read turned biometric unlock off, because the phone no
+  /// longer has a fingerprint enrolled and the key went with it.
+  final bool turnedOff;
+
   const BiometricUnlockStatus({
     required this.enabled,
     required this.availability,
     required this.pinRequired,
+    this.turnedOff = false,
   });
 
   static const off = BiometricUnlockStatus(
@@ -30,13 +35,19 @@ class BiometricUnlockStatus {
       availability == BiometricAvailability.available &&
       !pinRequired;
 
+  /// On, but the phone can't use it now (no sensor, or not available).
+  bool get enabledButUnavailable =>
+      enabled && availability != BiometricAvailability.available;
+
   @override
   bool operator ==(Object other) =>
       other is BiometricUnlockStatus &&
       other.enabled == enabled &&
       other.availability == availability &&
-      other.pinRequired == pinRequired;
+      other.pinRequired == pinRequired &&
+      other.turnedOff == turnedOff;
 
   @override
-  int get hashCode => Object.hash(enabled, availability, pinRequired);
+  int get hashCode =>
+      Object.hash(enabled, availability, pinRequired, turnedOff);
 }

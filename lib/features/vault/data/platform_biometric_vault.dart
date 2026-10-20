@@ -36,7 +36,8 @@ class PlatformBiometricVault implements BiometricVault {
       () => _channel.invokeMapMethod<String, Object?>('wrap', {'dek': dek}),
     );
     return BiometricWrap(
-      iv: base64Encode(result!['iv'] as Uint8List),
+      alias: result!['alias'] as String,
+      iv: base64Encode(result['iv'] as Uint8List),
       ciphertext: base64Encode(result['ciphertext'] as Uint8List),
     );
   }
@@ -45,6 +46,7 @@ class PlatformBiometricVault implements BiometricVault {
   Future<Uint8List> unwrap(BiometricWrap wrap) async {
     final dek = await _call(
       () => _channel.invokeMethod<Uint8List>('unwrap', {
+        'alias': wrap.alias,
         'iv': base64Decode(wrap.iv),
         'ciphertext': base64Decode(wrap.ciphertext),
       }),

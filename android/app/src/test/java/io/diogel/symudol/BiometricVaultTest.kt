@@ -3,6 +3,8 @@ package io.diogel.symudol
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -62,6 +64,15 @@ class BiometricVaultTest {
         )) {
             assertEquals("unavailable", BiometricVault.errorCodeFor(code))
         }
+    }
+
+    @Test
+    fun onlyBiometricKeysAreDeleted() {
+        assertTrue(BiometricVault.isBiometricAlias("symudol_biometric_dek_wrap"))
+        assertTrue(BiometricVault.isBiometricAlias("symudol_biometric_dek_wrap.1700000000000"))
+        // flutter_secure_storage's own key, and anything else in the app's Keystore, stay.
+        assertFalse(BiometricVault.isBiometricAlias("symudol_biometric_dek_wrapper"))
+        assertFalse(BiometricVault.isBiometricAlias("FlutterSecureStoragePluginKey"))
     }
 
     @Test

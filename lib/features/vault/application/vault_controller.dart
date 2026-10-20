@@ -181,6 +181,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       vaultState: vaultState,
       identities: identities,
       biometricUnlock: biometricUnlock,
+      failure: _turnedOffFailure(biometricUnlock, vaultState),
       activeIdentity: activeIdentity,
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
@@ -399,8 +400,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
   Future<void> refreshBiometricUnlock() async {
     if (state.vaultState is NoVault) return;
     try {
+      final biometricUnlock = await _vaultService.getBiometricUnlockStatus();
       state = state.copyWith(
-        biometricUnlock: await _vaultService.getBiometricUnlockStatus(),
+        biometricUnlock: biometricUnlock,
+        failure: _turnedOffFailure(biometricUnlock, state.vaultState),
       );
     } catch (e, stack) {
       diogelLog(
@@ -410,6 +413,15 @@ class VaultController extends StateNotifier<VaultControllerState> {
       );
     }
   }
+
+  /// Tells the unlock screen why biometric unlock is gone when a status
+  /// read just turned it off; Settings shows it as off.
+  VaultFailure? _turnedOffFailure(
+    BiometricUnlockStatus status,
+    VaultState vaultState,
+  ) => status.turnedOff && vaultState is! VaultUnlocked
+      ? const BiometricKeyInvalidatedFailure()
+      : null;
 
   Future<void> lock() async {
     state = state.copyWith(isLoading: true, clearFailure: true);

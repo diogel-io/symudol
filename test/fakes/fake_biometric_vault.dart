@@ -34,7 +34,11 @@ class FakeBiometricVault implements BiometricVault {
     _prompt();
     hasKey = true;
     invalidated = false;
-    return BiometricWrap(iv: 'fake-iv', ciphertext: base64Encode(dek));
+    return BiometricWrap(
+      alias: 'fake-key',
+      iv: 'fake-iv',
+      ciphertext: base64Encode(dek),
+    );
   }
 
   @override

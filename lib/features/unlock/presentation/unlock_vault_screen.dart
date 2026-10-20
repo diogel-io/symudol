@@ -276,7 +276,21 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
                       textAlign: TextAlign.center,
                     ),
                   ],
-                  if (biometric.enabled &&
+                  if (biometric.enabledButUnavailable && failure == null) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DiogelSpacing.space6,
+                      ),
+                      child: Text(
+                        biometricUnavailableMessage,
+                        key: const Key('unlockBiometricUnavailable'),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: DiogelColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ] else if (biometric.enabled &&
                       biometric.pinRequired &&
                       failure == null) ...[
                     const SizedBox(height: DiogelSpacing.space2),

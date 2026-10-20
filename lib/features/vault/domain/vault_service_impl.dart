@@ -289,6 +289,8 @@ class VaultServiceImpl implements VaultService {
 
   /// Opens the vault with [dek], from the PIN or a biometric.
   Future<void> _openWith(Uint8List dek) async {
+    // A second unlock must not leave the first DEK in memory.
+    _clearDek();
     _dek = dek;
     _state = const VaultUnlocked();
 
@@ -354,7 +356,7 @@ class VaultServiceImpl implements VaultService {
 
   @override
   Future<BiometricUnlockStatus> getBiometricUnlockStatus() async {
-    final enabled = await _store.getBiometricWrap() != null;
+    var enabled = await _store.getBiometricWrap() != null;
     BiometricAvailability availability;
     try {
       availability = await _biometricVault.availability();
@@ -366,10 +368,19 @@ class VaultServiceImpl implements VaultService {
       );
       availability = BiometricAvailability.unavailable;
     }
+    // With no fingerprint left, Android has invalidated the key for good
+    // (as with a new one): turn it off now rather than claim it's on (#23).
+    var turnedOff = false;
+    if (enabled && availability == BiometricAvailability.noneEnrolled) {
+      await disableBiometricUnlock();
+      enabled = false;
+      turnedOff = true;
+    }
     return BiometricUnlockStatus(
       enabled: enabled,
       availability: availability,
       pinRequired: enabled && await _biometricNeedsPin(),
+      turnedOff: turnedOff,
     );
   }
 

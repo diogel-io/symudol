@@ -35,7 +35,8 @@ class BiometricVault(private val activity: FragmentActivity) {
         const val CHANNEL = "io.diogel.symudol/biometric"
         private const val TAG = "Diogel-BiometricVault"
         private const val KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALIAS = "symudol_biometric_dek_wrap"
+        /** Each wrap gets its own key, `<prefix>.<time>`, so a cancelled turn-on keeps the old one. */
+        private const val KEY_PREFIX = "symudol_biometric_dek_wrap"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_TAG_BITS = 128
 
@@ -46,6 +47,10 @@ class BiometricVault(private val activity: FragmentActivity) {
             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> "noHardware"
             else -> "unavailable"
         }
+
+        /** Whether [alias] is one of the biometric keys, including the unsuffixed first one. */
+        fun isBiometricAlias(alias: String): Boolean =
+            alias == KEY_PREFIX || alias.startsWith("$KEY_PREFIX.")
 
         /** The error code Dart acts on for a [BiometricPrompt] error. */
         fun errorCodeFor(promptError: Int): String = when (promptError) {
@@ -71,16 +76,17 @@ class BiometricVault(private val activity: FragmentActivity) {
                 wrap(dek, result)
             }
             "unwrap" -> {
+                val alias = call.argument<String>("alias")
                 val iv = call.argument<ByteArray>("iv")
                 val ciphertext = call.argument<ByteArray>("ciphertext")
-                if (iv == null || ciphertext == null) {
-                    return result.error("INVALID_ARGS", "iv and ciphertext required", null)
+                if (alias == null || !alias.startsWith(KEY_PREFIX) || iv == null || ciphertext == null) {
+                    return result.error("INVALID_ARGS", "alias, iv and ciphertext required", null)
                 }
-                unwrap(iv, ciphertext, result)
+                unwrap(alias, iv, ciphertext, result)
             }
             "deleteKey" -> {
                 try {
-                    deleteKey()
+                    deleteKeys()
                     result.success(null)
                 } catch (e: Exception) {
                     DiogelLog.w(TAG, "deleteKey failed", e)
@@ -95,30 +101,40 @@ class BiometricVault(private val activity: FragmentActivity) {
         availabilityName(BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG))
 
     private fun wrap(dek: ByteArray, result: MethodChannel.Result) {
+        // A new key beside the old one: the old wrap keeps working until this one succeeds.
+        val alias = "$KEY_PREFIX.${System.currentTimeMillis()}"
         val cipher = try {
-            deleteKey()
-            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, createKey()) }
+            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, createKey(alias)) }
         } catch (e: Exception) {
             dek.fill(0)
+            deleteKeyQuietly(alias)
             DiogelLog.w(TAG, "wrap: could not create the key", e)
             return result.error("failed", "could not create the biometric key", null)
         }
+        var wrapped = false
         authenticate(
             cipher,
             title = "Turn on biometric unlock",
             negative = "Cancel",
             result = result,
-            onCleanup = { dek.fill(0) },
+            onCleanup = {
+                dek.fill(0)
+                // Keep only the key that wrapped this DEK; on cancel or failure, only the old one.
+                if (wrapped) deleteKeysExcept(alias) else deleteKeyQuietly(alias)
+            },
         ) { authenticated ->
             val ciphertext = authenticated.doFinal(dek)
-            result.success(mapOf("iv" to authenticated.iv, "ciphertext" to ciphertext))
+            wrapped = true
+            result.success(
+                mapOf("alias" to alias, "iv" to authenticated.iv, "ciphertext" to ciphertext),
+            )
         }
     }
 
-    private fun unwrap(iv: ByteArray, ciphertext: ByteArray, result: MethodChannel.Result) {
+    private fun unwrap(alias: String, iv: ByteArray, ciphertext: ByteArray, result: MethodChannel.Result) {
         val cipher = try {
             val key = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-                .getKey(KEY_ALIAS, null) as? SecretKey
+                .getKey(alias, null) as? SecretKey
                 ?: return result.error("keyInvalidated", "the biometric key is gone", null)
             Cipher.getInstance(TRANSFORMATION).apply {
                 init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
@@ -197,9 +213,9 @@ class BiometricVault(private val activity: FragmentActivity) {
         }
     }
 
-    private fun createKey(): SecretKey {
+    private fun createKey(alias: String): SecretKey {
         val builder = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
+            alias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -219,8 +235,21 @@ class BiometricVault(private val activity: FragmentActivity) {
             .generateKey()
     }
 
-    fun deleteKey() {
+    /** Deletes every biometric key: turning it off, or a wipe. */
+    fun deleteKeys() = deleteKeysExcept(null)
+
+    private fun deleteKeysExcept(keep: String?) {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        if (keyStore.containsAlias(KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS)
+        for (alias in keyStore.aliases().toList()) {
+            if (isBiometricAlias(alias) && alias != keep) keyStore.deleteEntry(alias)
+        }
+    }
+
+    private fun deleteKeyQuietly(alias: String) {
+        try {
+            KeyStore.getInstance(KEYSTORE).apply { load(null) }.deleteEntry(alias)
+        } catch (e: Exception) {
+            DiogelLog.w(TAG, "could not delete an unused biometric key", e)
+        }
     }
 }

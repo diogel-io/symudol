@@ -175,6 +175,39 @@ void main() {
       expect(find.byType(UnlockVaultScreen), findsNothing);
     });
 
+    testWidgets('with no fingerprint left it says it was turned off', (
+      tester,
+    ) async {
+      await turnOn();
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+      final promptsBefore = biometric.prompts;
+
+      await pumpApp(tester);
+
+      expect(biometric.prompts, promptsBefore);
+      expect(find.textContaining('was turned off'), findsOneWidget);
+      expect(await store.getBiometricWrap(), isNull);
+      await enterPin(tester, '123456');
+      expect(find.byType(UnlockVaultScreen), findsNothing);
+    });
+
+    testWidgets("says when the phone can't use it right now", (tester) async {
+      await turnOn();
+      biometric.availabilityValue = BiometricAvailability.unavailable;
+
+      await pumpApp(tester);
+
+      expect(
+        find.byKey(const Key('unlockBiometricUnavailable')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('unlockBiometricPinRequired')),
+        findsNothing,
+      );
+      expect(await store.getBiometricWrap(), isNotNull);
+    });
+
     testWidgets('off: no prompt, and the fingerprint key does nothing', (
       tester,
     ) async {
@@ -255,6 +288,24 @@ void main() {
       expect(biometric.prompts, promptsBefore);
       expect(biometricSwitch(tester).value, isFalse);
       expect(biometric.hasKey, isFalse);
+    });
+
+    testWidgets("on but unavailable: says so, and can be turned off", (
+      tester,
+    ) async {
+      await turnOn();
+      biometric.availabilityValue = BiometricAvailability.unavailable;
+      await openSettings(tester);
+
+      expect(biometricSwitch(tester).value, isTrue);
+      expect(biometricSwitch(tester).onChanged, isNotNull);
+      expect(
+        find.text("On, but this phone can't use it right now; the PIN still works"),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('biometricUnlockSwitch')));
+      await tester.pumpAndSettle();
+      expect(biometricSwitch(tester).value, isFalse);
     });
 
     testWidgets('with no fingerprint enrolled the switch is disabled', (
