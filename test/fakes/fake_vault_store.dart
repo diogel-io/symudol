@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
+import 'package:symudol/features/vault/domain/vault_lockout.dart';
 import 'package:symudol/features/vault/domain/vault_store.dart';
 
 class FakeVaultStore implements VaultStore {
@@ -10,8 +12,11 @@ class FakeVaultStore implements VaultStore {
   Uint8List? _kdfSalt;
   VaultKdfParams? _kdfParams;
   String? _wrappedDek;
+  VaultKeyEnvelope? _keyEnvelope;
   int _failedUnlockAttempts = 0;
-  DateTime? _lockoutUntil;
+  VaultLockout? _lockout;
+  DateTime? _legacyLockoutUntil;
+  int? _wipeAfterFailures;
   String? _activeIdentityId;
   int? _inactivityTimeout;
   int? _backgroundLockDelayMinutes;
@@ -26,6 +31,12 @@ class FakeVaultStore implements VaultStore {
 
   /// Simulates a storage error from [clearAll] only when set to true.
   bool shouldThrowOnClearAll = false;
+
+  /// Simulates a failed write from [setKeyEnvelope] only when set to true.
+  bool shouldThrowOnSetKeyEnvelope = false;
+
+  /// How many times [setKeyEnvelope] wrote an envelope.
+  int keyEnvelopeWrites = 0;
 
   /// Simulates a duplicate identity error when set to true.
   bool shouldThrowDuplicateIdentityError = false;
@@ -48,43 +59,73 @@ class FakeVaultStore implements VaultStore {
     _version = version;
   }
 
-  @override
+  // The three separate keys vaults used before #16. Not part of VaultStore:
+  // tests use them to set up a legacy vault, or just a vault sentinel.
+
   Future<Uint8List?> getKdfSalt() async {
     _checkError();
     if (simulateMissingVault) return null;
     return _kdfSalt;
   }
 
-  @override
   Future<void> setKdfSalt(Uint8List salt) async {
     _checkError();
     _kdfSalt = salt;
   }
 
-  @override
-  Future<VaultKdfParams?> getKdfParams() async {
-    _checkError();
-    if (simulateMissingVault) return null;
-    return _kdfParams;
-  }
-
-  @override
   Future<void> setKdfParams(VaultKdfParams params) async {
     _checkError();
     _kdfParams = params;
+  }
+
+  Future<void> setWrappedDek(String wrappedDek) async {
+    _checkError();
+    _wrappedDek = wrappedDek;
+  }
+
+  /// Whether the legacy separate keys are still stored.
+  bool get hasLegacyKeyFields =>
+      _kdfSalt != null || _kdfParams != null || _wrappedDek != null;
+
+  /// The envelope as stored, without the legacy fallback.
+  VaultKeyEnvelope? get storedKeyEnvelope => _keyEnvelope;
+
+  Future<void> setLegacyLockoutUntil(DateTime? until) async {
+    _checkError();
+    _legacyLockoutUntil = until;
+  }
+
+  @override
+  Future<VaultKeyEnvelope?> getKeyEnvelope() async {
+    _checkError();
+    if (simulateMissingVault) return null;
+    final envelope = _keyEnvelope;
+    if (envelope != null) return envelope;
+    final salt = _kdfSalt;
+    final params = _kdfParams;
+    final wrappedDek = _wrappedDek;
+    if (salt == null || params == null || wrappedDek == null) return null;
+    return VaultKeyEnvelope(salt: salt, params: params, wrappedDek: wrappedDek);
+  }
+
+  @override
+  Future<void> setKeyEnvelope(VaultKeyEnvelope envelope) async {
+    _checkError();
+    if (shouldThrowOnSetKeyEnvelope) {
+      throw const VaultStorageException('Simulated setKeyEnvelope error');
+    }
+    _keyEnvelope = envelope;
+    keyEnvelopeWrites++;
+    _kdfSalt = null;
+    _kdfParams = null;
+    _wrappedDek = null;
   }
 
   @override
   Future<String?> getWrappedDek() async {
     _checkError();
     if (simulateMissingVault) return null;
-    return _wrappedDek;
-  }
-
-  @override
-  Future<void> setWrappedDek(String wrappedDek) async {
-    _checkError();
-    _wrappedDek = wrappedDek;
+    return _keyEnvelope?.wrappedDek ?? _wrappedDek;
   }
 
   @override
@@ -100,15 +141,39 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
-  Future<DateTime?> getLockoutUntil() async {
+  Future<VaultLockout?> getLockout() async {
     _checkError();
-    return _lockoutUntil;
+    return _lockout;
   }
 
   @override
-  Future<void> setLockoutUntil(DateTime? until) async {
+  Future<void> setLockout(VaultLockout? lockout) async {
     _checkError();
-    _lockoutUntil = until;
+    _lockout = lockout;
+  }
+
+  @override
+  Future<DateTime?> getLegacyLockoutUntil() async {
+    _checkError();
+    return _legacyLockoutUntil;
+  }
+
+  @override
+  Future<void> deleteLegacyLockoutUntil() async {
+    _checkError();
+    _legacyLockoutUntil = null;
+  }
+
+  @override
+  Future<int?> getWipeAfterFailures() async {
+    _checkError();
+    return _wipeAfterFailures;
+  }
+
+  @override
+  Future<void> setWipeAfterFailures(int? attempts) async {
+    _checkError();
+    _wipeAfterFailures = attempts;
   }
 
   @override
@@ -199,8 +264,11 @@ class FakeVaultStore implements VaultStore {
     _kdfSalt = null;
     _kdfParams = null;
     _wrappedDek = null;
+    _keyEnvelope = null;
     _failedUnlockAttempts = 0;
-    _lockoutUntil = null;
+    _lockout = null;
+    _legacyLockoutUntil = null;
+    _wipeAfterFailures = null;
     _activeIdentityId = null;
     _inactivityTimeout = null;
     _backgroundLockDelayMinutes = null;

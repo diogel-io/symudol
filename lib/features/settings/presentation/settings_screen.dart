@@ -37,6 +37,9 @@ String formatApprovalSessionDuration(int minutes) {
   };
 }
 
+String formatWipeAfterFailures(int? attempts) =>
+    attempts == null ? 'Off' : 'After $attempts failed attempts';
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -48,6 +51,7 @@ class SettingsScreen extends ConsumerWidget {
         vaultControllerState.backgroundLockDelayMinutes;
     final approvalSessionDurationMinutes =
         vaultControllerState.approvalSessionDurationMinutes;
+    final wipeAfterFailures = vaultControllerState.wipeAfterFailures;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -72,6 +76,13 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Biometric Unlock',
             subtitle: 'Not available yet — PIN unlock remains required',
             trailing: const Switch(value: false, onChanged: null),
+          ),
+          SettingsTile(
+            key: const Key('wipeAfterFailuresTile'),
+            icon: Icons.phonelink_erase_outlined,
+            title: 'Erase after failed PIN attempts',
+            subtitle: formatWipeAfterFailures(wipeAfterFailures),
+            onTap: () => _pickWipeAfterFailures(context, ref, wipeAfterFailures),
           ),
           SettingsTile(
             icon: Icons.timer_outlined,
@@ -226,6 +237,65 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Off, 10, 15 or 20 failed PIN attempts (#16). Turning it on, or changing
+  /// the count, asks first.
+  Future<void> _pickWipeAfterFailures(
+    BuildContext context,
+    WidgetRef ref,
+    int? current,
+  ) async {
+    // The picker works in ints; 0 stands for Off.
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => _TimeoutPickerDialog(
+        title: 'Erase after failed PIN attempts',
+        initialValue: current ?? 0,
+        options: const [
+          _TimeoutOption(0, 'Off'),
+          _TimeoutOption(10, '10 failed attempts'),
+          _TimeoutOption(15, '15 failed attempts'),
+          _TimeoutOption(20, '20 failed attempts'),
+        ],
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    final attempts = picked == 0 ? null : picked;
+    if (attempts == current) return;
+
+    if (attempts != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Erase after $attempts failed attempts?'),
+          content: Text(
+            'If the wrong PIN is entered $attempts times in a row, Symudol '
+            'permanently erases every identity and key on this phone, with '
+            'every Trusted app permission and NIP-46 connection. It cannot be '
+            'undone, so keep a backup of your keys elsewhere.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: DiogelColors.stateError,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Turn on'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    await ref
+        .read(vaultControllerProvider.notifier)
+        .setWipeAfterFailures(attempts);
   }
 
   Future<void> _confirmAndWipe(BuildContext context, WidgetRef ref) async {

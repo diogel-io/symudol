@@ -9,14 +9,24 @@ import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/signing/domain/nostr_crypto_service.dart';
+import 'package:symudol/features/vault/data/platform_monotonic_clock.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/monotonic_clock.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
+import 'package:symudol/features/vault/domain/vault_lockout.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:symudol/features/vault/domain/vault_store.dart';
 import 'package:dart_nostr/dart_nostr.dart';
+
+/// The last unlock attempt queued on each service (#16).
+///
+/// Kept outside [VaultServiceImpl]: work handed to [ConcurrencyUtils.runTask]
+/// copies the service into another isolate, and a [Future] cannot be copied.
+final Expando<Future<void>> _unlockQueues = Expando('vault unlock queue');
 
 class VaultServiceImpl implements VaultService {
   static const int defaultInactivityTimeoutMinutes = 5;
@@ -41,19 +51,46 @@ class VaultServiceImpl implements VaultService {
   };
   static const Set<int> supportedApprovalSessionDurationMinutes = {0, 1, 5, 15};
 
-  /// Failed-unlock-attempt thresholds and the resulting lockout durations.
+  /// Failed-attempt counts that can erase the vault; `null` (the default)
+  /// never erases it (#16).
+  static const Set<int> supportedWipeAfterFailures = {10, 15, 20};
+
+  /// The longest lockout a run of failed PINs earns.
+  static const Duration maxLockout = Duration(hours: 24);
+
+  /// Marks the key envelope storage format (#16).
+  static const String storeVersion = '2';
+
+  /// The lockout earned by [attempts] consecutive failed PINs (#16).
   ///
-  /// Argon2id already adds per-attempt cost; this provides additional
-  /// throttling on top of that. No automatic wipe is performed.
-  static const Map<int, Duration> lockoutThresholds = {
-    5: Duration(seconds: 30),
-    10: Duration(minutes: 5),
-  };
+  /// Attempts 1-4 are free. Then 5: 30 s, 6: 1 min, 7: 5 min, 8: 15 min,
+  /// 9: 1 h, and from 10 the lockout doubles from 2 h, up to [maxLockout].
+  static Duration lockoutFor(int attempts) {
+    switch (attempts) {
+      case < 5:
+        return Duration.zero;
+      case 5:
+        return const Duration(seconds: 30);
+      case 6:
+        return const Duration(minutes: 1);
+      case 7:
+        return const Duration(minutes: 5);
+      case 8:
+        return const Duration(minutes: 15);
+      case 9:
+        return const Duration(hours: 1);
+    }
+    final doublings = attempts - 10;
+    // 2 h doubled four times is past the cap; stop before the shift overflows.
+    if (doublings >= 4) return maxLockout;
+    final lockout = Duration(hours: 2 << doublings);
+    return lockout > maxLockout ? maxLockout : lockout;
+  }
 
   final VaultStore _store;
   final NostrCryptoService _cryptoService;
   final VaultCryptoService _vaultCryptoService;
-  final DateTime Function() _now;
+  final MonotonicClock _clock;
   final Nip55PermissionStore? _nip55PermissionStore;
   final Nip46SessionStore? _nip46SessionStore;
   final Future<void> Function()? _wipeNativeState;
@@ -65,14 +102,14 @@ class VaultServiceImpl implements VaultService {
     this._store, {
     NostrCryptoService cryptoService = const DartNostrCryptoService(),
     VaultCryptoService? vaultCryptoService,
-    DateTime Function()? now,
+    MonotonicClock clock = const PlatformMonotonicClock(),
     Nip55PermissionStore? nip55PermissionStore,
     Nip46SessionStore? nip46SessionStore,
     Future<void> Function()? wipeNativeState,
   }) : _cryptoService = cryptoService,
        _vaultCryptoService =
            vaultCryptoService ?? const PointyCastleVaultCryptoService(),
-       _now = now ?? DateTime.now,
+       _clock = clock,
        _nip55PermissionStore = nip55PermissionStore,
        _nip46SessionStore = nip46SessionStore,
        _wipeNativeState = wipeNativeState;
@@ -201,50 +238,66 @@ class VaultServiceImpl implements VaultService {
       () => _vaultCryptoService.wrapDek(dek, kek),
     );
 
-    await _store.setKdfSalt(salt);
-    await _store.setKdfParams(params);
-    await _store.setWrappedDek(wrappedDek);
+    await _store.setKeyEnvelope(
+      VaultKeyEnvelope(salt: salt, params: params, wrappedDek: wrappedDek),
+    );
+    await _store.setVersion(storeVersion);
     await _store.setFailedUnlockAttempts(0);
-    await _store.setLockoutUntil(null);
+    await _store.setLockout(null);
 
     _dek = dek;
     _state = const VaultUnlocked();
   }
 
+  /// Unlock attempts run one at a time, so a wrong PIN that erases the vault
+  /// cannot be overtaken by a second attempt still checking its PIN.
   @override
-  Future<void> unlock(String pin) async {
-    final wrappedDek = await _store.getWrappedDek();
-    if (wrappedDek == null) {
+  Future<void> unlock(String pin) {
+    final previous = _unlockQueues[this] ?? Future<void>.value();
+    final attempt = previous.then((_) => _unlock(pin));
+    _unlockQueues[this] = attempt.then<void>((_) {}, onError: (_) {});
+    return attempt;
+  }
+
+  Future<void> _unlock(String pin) async {
+    final envelope = await _store.getKeyEnvelope();
+    if (envelope == null) {
       throw const VaultNotFoundException();
     }
 
-    final lockoutUntil = await _store.getLockoutUntil();
-    if (lockoutUntil != null && _now().isBefore(lockoutUntil)) {
-      throw VaultLockedOutException(lockoutUntil);
+    final now = await _clock.now();
+    final remaining = await _lockoutRemainingAt(now);
+    if (remaining > Duration.zero) {
+      throw VaultLockedOutException(remaining);
     }
 
-    final salt = await _store.getKdfSalt();
-    final params = await _store.getKdfParams();
-    if (salt == null || params == null) {
-      throw const VaultNotFoundException();
-    }
+    // The attempt is charged, and the lockout it would earn set, before the
+    // PIN is checked: killing the app during the check does not save a guess.
+    // A correct PIN clears both below.
+    final attempts = await _store.getFailedUnlockAttempts() + 1;
+    await _store.setFailedUnlockAttempts(attempts);
+    final lockout = lockoutFor(attempts);
+    await _store.setLockout(
+      lockout > Duration.zero ? VaultLockout.startingAt(now, lockout) : null,
+    );
 
     final kek = await ConcurrencyUtils.runTask(
-      () => _vaultCryptoService.deriveKek(pin, salt, params),
+      () => _vaultCryptoService.deriveKek(pin, envelope.salt, envelope.params),
     );
 
     Uint8List dek;
     try {
       dek = await ConcurrencyUtils.runTask(
-        () => _vaultCryptoService.unwrapDek(wrappedDek, kek),
+        () => _vaultCryptoService.unwrapDek(envelope.wrappedDek, kek),
       );
     } on VaultCryptoTamperException {
-      await _recordFailedUnlockAttempt();
+      await _wipeIfTooManyFailures(attempts);
       throw const InvalidPinException();
     }
 
     await _store.setFailedUnlockAttempts(0);
-    await _store.setLockoutUntil(null);
+    await _store.setLockout(null);
+    await _upgradeKeyEnvelope(pin, envelope, dek);
 
     _dek = dek;
     _state = const VaultUnlocked();
@@ -257,18 +310,95 @@ class VaultServiceImpl implements VaultService {
     }
   }
 
-  Future<void> _recordFailedUnlockAttempt() async {
-    final attempts = await _store.getFailedUnlockAttempts() + 1;
-    await _store.setFailedUnlockAttempts(attempts);
+  @override
+  Future<int> getFailedUnlockAttempts() => _store.getFailedUnlockAttempts();
 
-    Duration? lockoutDuration;
-    for (final entry in lockoutThresholds.entries) {
-      if (attempts >= entry.key) {
-        lockoutDuration = entry.value;
-      }
+  @override
+  Future<Duration> getLockoutRemaining() async {
+    if (await _store.getWrappedDek() == null) return Duration.zero;
+    return _lockoutRemainingAt(await _clock.now());
+  }
+
+  /// The lockout left at [now], after moving a pre-#16 wall-clock lockout
+  /// onto the monotonic clock.
+  Future<Duration> _lockoutRemainingAt(MonotonicInstant now) async {
+    await _migrateLegacyLockout(now);
+    final lockout = await _store.getLockout();
+    if (lockout == null) return Duration.zero;
+    final remaining = lockout.remainingAt(now);
+    if (!lockout.isComparableWith(now)) {
+      // A reboot: what was served cannot be measured, so the lockout starts
+      // again, timed from now on this boot's clock.
+      await _store.setLockout(VaultLockout.startingAt(now, remaining));
     }
-    if (lockoutDuration != null) {
-      await _store.setLockoutUntil(_now().add(lockoutDuration));
+    return remaining;
+  }
+
+  Future<void> _migrateLegacyLockout(MonotonicInstant now) async {
+    final until = await _store.getLegacyLockoutUntil();
+    if (until == null) return;
+    final left = until.difference(DateTime.now());
+    if (left > Duration.zero) {
+      await _store.setLockout(
+        VaultLockout.startingAt(now, left > maxLockout ? maxLockout : left),
+      );
+    }
+    await _store.deleteLegacyLockoutUntil();
+  }
+
+  /// Erases the vault once [attempts] failed PINs reach the user's limit.
+  Future<void> _wipeIfTooManyFailures(int attempts) async {
+    final limit = await _store.getWipeAfterFailures();
+    if (limit == null || attempts < limit) return;
+    diogelLog('VaultService: $attempts failed PIN attempts, erasing the vault');
+    try {
+      await wipe();
+    } on VaultWipeIncompleteException catch (e) {
+      // With the vault keys gone the keys are unrecoverable, which is the
+      // point; init() finishes the rest on the next launch.
+      if (_state is! NoVault) rethrow;
+      diogelLog('VaultService: wipe after failed PINs left ${e.failedSteps}');
+    }
+    throw const VaultWipedException();
+  }
+
+  /// After a successful unlock: moves a pre-#16 vault onto the single
+  /// envelope, and re-wraps the same DEK under [VaultKdfParams.defaultParams]
+  /// if the stored parameters are weaker.
+  ///
+  /// The new envelope is one write, so a failure leaves the old one working;
+  /// it is retried on the next unlock.
+  Future<void> _upgradeKeyEnvelope(
+    String pin,
+    VaultKeyEnvelope envelope,
+    Uint8List dek,
+  ) async {
+    try {
+      const params = VaultKdfParams.defaultParams;
+      if (envelope.params.isWeakerThan(params)) {
+        final salt = _vaultCryptoService.generateSalt();
+        final kek = await ConcurrencyUtils.runTask(
+          () => _vaultCryptoService.deriveKek(pin, salt, params),
+        );
+        final wrappedDek = await ConcurrencyUtils.runTask(
+          () => _vaultCryptoService.wrapDek(dek, kek),
+        );
+        await _store.setKeyEnvelope(
+          VaultKeyEnvelope(salt: salt, params: params, wrappedDek: wrappedDek),
+        );
+        diogelLog('VaultService: upgraded the KDF to $params');
+      } else if (await _store.getVersion() != storeVersion) {
+        await _store.setKeyEnvelope(envelope);
+      } else {
+        return;
+      }
+      await _store.setVersion(storeVersion);
+    } catch (e, stack) {
+      diogelLog(
+        'VaultService: could not upgrade the key envelope',
+        error: e,
+        stackTrace: stack,
+      );
     }
   }
 
@@ -630,6 +760,20 @@ class VaultServiceImpl implements VaultService {
       'Unsupported approval session duration',
     );
     await _store.setApprovalSessionDurationMinutes(minutes);
+  }
+
+  @override
+  Future<int?> getWipeAfterFailures() => _store.getWipeAfterFailures();
+
+  @override
+  Future<void> setWipeAfterFailures(int? attempts) async {
+    _checkUnlocked();
+    if (attempts != null && !supportedWipeAfterFailures.contains(attempts)) {
+      throw VaultStorageException(
+        'Unsupported wipe after failed attempts: $attempts',
+      );
+    }
+    await _store.setWipeAfterFailures(attempts);
   }
 
   void _validateSupportedMinutes(

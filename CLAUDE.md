@@ -40,7 +40,7 @@ Providers are composed in `<feature>/application/*_providers.dart` and wired tog
 
 ### Vault (lib/features/vault/)
 
-The vault holds identities and is the gate for everything else. `VaultState` is a sealed-ish union: `NoVault`, `VaultLocked`, `SessionExpired`, `VaultUnlocked`. `VaultController` drives transitions; `VaultServiceImpl` + `SecureStorageVaultStore` (backed by `flutter_secure_storage`) persist identities and PIN-derived material.
+The vault holds identities and is the gate for everything else. `VaultState` is a sealed-ish union: `NoVault`, `VaultLocked`, `SessionExpired`, `VaultUnlocked`. `VaultController` drives transitions; `VaultServiceImpl` + `SecureStorageVaultStore` (backed by `flutter_secure_storage`) persist identities and PIN-derived material. PIN attempts escalate to lockouts timed on Android's monotonic clock, with an optional wipe after N failures, and the Argon2id salt, params and wrapped DEK are stored as one envelope (`documentation/pin-protection.md`, #16).
 
 `DiogelApp` (`lib/app/app.dart`) owns two independent session timers, both set in Settings:
 - **inactivity timeout** — after N minutes with no user interaction while foregrounded, calls `VaultController.expireSession()` (state `SessionExpired`); 0 disables it

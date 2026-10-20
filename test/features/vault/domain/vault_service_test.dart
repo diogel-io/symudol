@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
@@ -5,11 +8,14 @@ import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
+import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../fakes/fake_monotonic_clock.dart';
 import '../../../fakes/fake_nip46_session_store.dart';
 import '../../../fakes/fake_nip55_permission_store.dart';
 import '../../../fakes/fake_vault_store.dart';
@@ -122,54 +128,457 @@ void main() {
     );
   });
 
-  group('VaultServiceImpl Lockout', () {
-    test(
-      'repeated wrong PINs trigger a lockout that blocks further unlock attempts',
-      () async {
-        var now = DateTime(2024, 1, 1);
-        vaultService = VaultServiceImpl(fakeStore, now: () => now);
+  group('VaultServiceImpl on background isolates', () {
+    // The other tests run crypto inline (flutter_test_config.dart). The app
+    // copies the service into an isolate for each task, so nothing it holds
+    // may be unsendable.
+    setUp(() => ConcurrencyUtils.useSynchronousTasks = false);
+    tearDown(() => ConcurrencyUtils.useSynchronousTasks = true);
 
-        await vaultService.createVault('1234');
-        await vaultService.lock();
+    test('create, lock, fail and unlock work across isolates', () async {
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: FakeMonotonicClock(),
+        vaultCryptoService: const _CheapKdfCryptoService(),
+      );
+      await vaultService.createVault('123456');
+      await vaultService.createIdentity(displayName: 'Alice');
+      await vaultService.lock();
 
-        for (var i = 0; i < 5; i++) {
-          await expectLater(
-            () => vaultService.unlock('0000'),
-            throwsA(isA<InvalidPinException>()),
-          );
-        }
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+      await vaultService.unlock('123456');
 
-        // The 5th failure should trigger a lockout, blocking even the
-        // correct PIN until the lockout window passes.
-        await expectLater(
-          () => vaultService.unlock('1234'),
-          throwsA(isA<VaultLockedOutException>()),
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await vaultService.getActivePrivateKey(), isNotNull);
+    });
+  });
+
+  group('VaultServiceImpl lockout schedule (#16)', () {
+    test('attempts 1-4 are free, then the lockout escalates to a cap', () {
+      final expected = {
+        1: Duration.zero,
+        4: Duration.zero,
+        5: const Duration(seconds: 30),
+        6: const Duration(minutes: 1),
+        7: const Duration(minutes: 5),
+        8: const Duration(minutes: 15),
+        9: const Duration(hours: 1),
+        10: const Duration(hours: 2),
+        11: const Duration(hours: 4),
+        12: const Duration(hours: 8),
+        13: const Duration(hours: 16),
+        14: const Duration(hours: 24),
+        15: const Duration(hours: 24),
+        1000: const Duration(hours: 24),
+      };
+      expected.forEach((attempts, lockout) {
+        expect(
+          VaultServiceImpl.lockoutFor(attempts),
+          lockout,
+          reason: 'attempt $attempts',
         );
+      });
+    });
+  });
 
-        // Advance time past the lockout window.
-        now = now.add(const Duration(seconds: 31));
+  group('VaultServiceImpl PIN lockout (#16)', () {
+    late FakeMonotonicClock clock;
 
-        await vaultService.unlock('1234');
-        expect(vaultService.state, isA<VaultUnlocked>());
-      },
-    );
+    setUp(() {
+      clock = FakeMonotonicClock();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+      );
+    });
 
-    test(
-      'a successful unlock resets the failed-attempt counter',
-      () async {
-        await vaultService.createVault('1234');
-        await vaultService.lock();
-
+    Future<void> failTimes(int times) async {
+      for (var i = 0; i < times; i++) {
         await expectLater(
-          () => vaultService.unlock('0000'),
+          vaultService.unlock('000000'),
           throwsA(isA<InvalidPinException>()),
         );
+        // Wait out whatever that attempt earned, so the next one is checked.
+        clock.advance(VaultServiceImpl.lockoutFor(i + 1));
+      }
+    }
 
-        await vaultService.unlock('1234');
-        expect(vaultService.state, isA<VaultUnlocked>());
-        expect(await fakeStore.getFailedUnlockAttempts(), equals(0));
-      },
-    );
+    Future<Duration> lockedOutFor() async {
+      try {
+        await vaultService.unlock('123456');
+      } on VaultLockedOutException catch (e) {
+        return e.remaining;
+      }
+      fail('expected a lockout');
+    }
+
+    test('the 5th wrong PIN locks out even the right one for 30 s', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+
+      for (var i = 0; i < 5; i++) {
+        await expectLater(
+          vaultService.unlock('000000'),
+          throwsA(isA<InvalidPinException>()),
+        );
+      }
+
+      expect(await lockedOutFor(), const Duration(seconds: 30));
+      clock.advance(const Duration(seconds: 29));
+      expect(await lockedOutFor(), const Duration(seconds: 1));
+
+      clock.advance(const Duration(seconds: 1));
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('the lockout is timed on the monotonic clock only', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await failTimes(4);
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+
+      // Nothing the wall clock does reaches the service: with the monotonic
+      // clock standing still, the whole lockout is still there however
+      // long this takes.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await lockedOutFor(), const Duration(seconds: 30));
+      expect(
+        await vaultService.getLockoutRemaining(),
+        const Duration(seconds: 30),
+      );
+    });
+
+    test('a reboot restarts the remaining lockout', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await failTimes(4);
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+      clock.advance(const Duration(seconds: 20));
+      expect(await lockedOutFor(), const Duration(seconds: 10));
+
+      clock.reboot();
+
+      expect(await lockedOutFor(), const Duration(seconds: 30));
+      // Re-based to this boot, so it now runs down.
+      clock.advance(const Duration(seconds: 30));
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('an elapsed clock that went backwards restarts the lockout', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await failTimes(4);
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+
+      clock.elapsedMs -= 60000;
+
+      expect(await lockedOutFor(), const Duration(seconds: 30));
+    });
+
+    test('an attempt is charged even if the check never finishes', () async {
+      final crashing = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(crashOnUnwrap: true),
+      );
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(4);
+
+      // As if the app were killed mid-check: unwrapping never returns.
+      await expectLater(crashing.unlock('123456'), throwsA(isA<StateError>()));
+
+      expect(await fakeStore.getFailedUnlockAttempts(), 5);
+      expect(await lockedOutFor(), const Duration(seconds: 30));
+    });
+
+    test('a successful unlock resets the count and clears the lockout', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await failTimes(5);
+
+      await vaultService.unlock('123456');
+
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await fakeStore.getFailedUnlockAttempts(), 0);
+      expect(await fakeStore.getLockout(), isNull);
+      expect(await vaultService.getLockoutRemaining(), Duration.zero);
+    });
+
+    test('a pre-#16 lockout moves onto the monotonic clock', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await fakeStore.setLegacyLockoutUntil(
+        DateTime.now().add(const Duration(minutes: 10)),
+      );
+
+      final remaining = await lockedOutFor();
+
+      expect(remaining, lessThanOrEqualTo(const Duration(minutes: 10)));
+      expect(remaining, greaterThan(const Duration(minutes: 9)));
+      expect(await fakeStore.getLegacyLockoutUntil(), isNull);
+      clock.advance(remaining);
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('a pre-#16 lockout is capped at 24 h', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await fakeStore.setLegacyLockoutUntil(
+        DateTime.now().add(const Duration(days: 30)),
+      );
+
+      expect(await lockedOutFor(), VaultServiceImpl.maxLockout);
+    });
+
+    test('an expired pre-#16 lockout is just removed', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await fakeStore.setLegacyLockoutUntil(
+        DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+
+      await vaultService.unlock('123456');
+
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await fakeStore.getLegacyLockoutUntil(), isNull);
+    });
+  });
+
+  group('VaultServiceImpl wipe after failed PINs (#16)', () {
+    late FakeMonotonicClock clock;
+    late FakeNip55PermissionStore grantStore;
+    var nativeWipes = 0;
+
+    setUp(() {
+      clock = FakeMonotonicClock();
+      grantStore = FakeNip55PermissionStore()
+        ..grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-1',
+            identityPubkey: 'pubkey',
+            packageName: 'com.example.client',
+            scope: const GetPublicKeyScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime(2026, 10, 1),
+          ),
+        );
+      nativeWipes = 0;
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+        nip55PermissionStore: grantStore,
+        wipeNativeState: () async => nativeWipes++,
+      );
+    });
+
+    test('is off by default', () async {
+      expect(await vaultService.getWipeAfterFailures(), isNull);
+    });
+
+    test('the Nth wrong PIN erases the vault', () async {
+      await vaultService.createVault('123456');
+      await vaultService.createIdentity(displayName: 'Alice');
+      await vaultService.setWipeAfterFailures(10);
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<VaultWipedException>()),
+      );
+
+      expect(vaultService.state, isA<NoVault>());
+      expect(await fakeStore.getWrappedDek(), isNull);
+      expect(await fakeStore.getIdentities(), isEmpty);
+      expect(grantStore.grants, isEmpty);
+      expect(nativeWipes, 1);
+    });
+
+    test('the right PIN at N-1 failures does not erase it', () async {
+      await vaultService.createVault('123456');
+      await vaultService.setWipeAfterFailures(10);
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      await vaultService.unlock('123456');
+
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(await fakeStore.getFailedUnlockAttempts(), 0);
+    });
+
+    test('a right PIN sent alongside the erasing one cannot unlock', () async {
+      await vaultService.createVault('123456');
+      await vaultService.setWipeAfterFailures(10);
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      final wrong = vaultService.unlock('000000');
+      final right = vaultService.unlock('123456');
+
+      await expectLater(wrong, throwsA(isA<VaultWipedException>()));
+      await expectLater(right, throwsA(isA<VaultNotFoundException>()));
+      expect(vaultService.state, isA<NoVault>());
+      expect(await fakeStore.getWrappedDek(), isNull);
+    });
+
+    test('a count already past N still erases on a wrong PIN', () async {
+      await vaultService.createVault('123456');
+      await vaultService.setWipeAfterFailures(10);
+      await vaultService.lock();
+      // An earlier attempt was charged at N, then the app was killed.
+      await fakeStore.setFailedUnlockAttempts(10);
+
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<VaultWipedException>()),
+      );
+      expect(vaultService.state, isA<NoVault>());
+    });
+
+    test('never erases when it is off', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      await fakeStore.setFailedUnlockAttempts(40);
+
+      await expectLater(
+        vaultService.unlock('000000'),
+        throwsA(isA<InvalidPinException>()),
+      );
+      expect(vaultService.state, isA<VaultLocked>());
+      expect(await fakeStore.getWrappedDek(), isNotNull);
+    });
+
+    test('only 10, 15, 20 or off can be set, and only while unlocked', () async {
+      await vaultService.createVault('123456');
+      for (final attempts in [10, 15, 20, null]) {
+        await vaultService.setWipeAfterFailures(attempts);
+        expect(await vaultService.getWipeAfterFailures(), attempts);
+      }
+      await expectLater(
+        vaultService.setWipeAfterFailures(3),
+        throwsA(isA<VaultStorageException>()),
+      );
+
+      await vaultService.lock();
+      await expectLater(
+        vaultService.setWipeAfterFailures(10),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+  });
+
+  group('VaultServiceImpl key envelope migration (#16)', () {
+    const crypto = PointyCastleVaultCryptoService();
+    const weakParams = VaultKdfParams(memory: 8, iterations: 1);
+    late Uint8List dek;
+    late Uint8List salt;
+
+    setUp(() {
+      vaultService = VaultServiceImpl(fakeStore, clock: FakeMonotonicClock());
+      dek = crypto.generateDek();
+      salt = crypto.generateSalt();
+    });
+
+    /// A vault as stored before #16: three separate keys.
+    Future<void> storeLegacyVault(VaultKdfParams params) async {
+      final kek = crypto.deriveKek('123456', salt, params);
+      await fakeStore.setKdfSalt(salt);
+      await fakeStore.setKdfParams(params);
+      await fakeStore.setWrappedDek(crypto.wrapDek(dek, kek));
+    }
+
+    Uint8List unwrapStored() {
+      final envelope = fakeStore.storedKeyEnvelope!;
+      final kek = crypto.deriveKek('123456', envelope.salt, envelope.params);
+      return crypto.unwrapDek(envelope.wrappedDek, kek);
+    }
+
+    test('createVault writes one envelope with the default params', () async {
+      await vaultService.createVault('123456');
+
+      expect(fakeStore.storedKeyEnvelope?.params, VaultKdfParams.defaultParams);
+      expect(fakeStore.hasLegacyKeyFields, isFalse);
+      expect(await fakeStore.getVersion(), VaultServiceImpl.storeVersion);
+    });
+
+    test('a legacy vault moves onto the envelope on unlock', () async {
+      await storeLegacyVault(VaultKdfParams.defaultParams);
+      await vaultService.init();
+
+      await vaultService.unlock('123456');
+
+      expect(fakeStore.storedKeyEnvelope, isNotNull);
+      expect(fakeStore.hasLegacyKeyFields, isFalse);
+      expect(await fakeStore.getVersion(), VaultServiceImpl.storeVersion);
+      expect(unwrapStored(), dek);
+      await vaultService.lock();
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('weaker params are upgraded, re-wrapping the same DEK', () async {
+      await storeLegacyVault(weakParams);
+      await vaultService.init();
+
+      await vaultService.unlock('123456');
+
+      final envelope = fakeStore.storedKeyEnvelope!;
+      expect(envelope.params, VaultKdfParams.defaultParams);
+      expect(envelope.salt, isNot(salt));
+      expect(unwrapStored(), dek);
+      await vaultService.lock();
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+    });
+
+    test('an envelope already on the default params is left alone', () async {
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+      final writes = fakeStore.keyEnvelopeWrites;
+
+      await vaultService.unlock('123456');
+
+      expect(fakeStore.keyEnvelopeWrites, writes);
+    });
+
+    test('a failed upgrade write leaves the old PIN working', () async {
+      await storeLegacyVault(weakParams);
+      await vaultService.init();
+      fakeStore.shouldThrowOnSetKeyEnvelope = true;
+
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+      expect(fakeStore.storedKeyEnvelope, isNull);
+      expect(fakeStore.hasLegacyKeyFields, isTrue);
+
+      await vaultService.lock();
+      await vaultService.unlock('123456');
+      expect(vaultService.state, isA<VaultUnlocked>());
+
+      // Retried, and done, on a later unlock.
+      fakeStore.shouldThrowOnSetKeyEnvelope = false;
+      await vaultService.lock();
+      await vaultService.unlock('123456');
+      expect(fakeStore.storedKeyEnvelope?.params, VaultKdfParams.defaultParams);
+    });
   });
 
   group('VaultServiceImpl Identity operations while locked', () {
@@ -736,4 +1145,25 @@ void main() {
       expect(nativeWipes, 0);
     });
   });
+}
+
+/// The real AES-GCM wrapping over a trivially cheap Argon2id, so tests can
+/// make many attempts. [crashOnUnwrap] stands in for the app being killed
+/// mid-check.
+class _CheapKdfCryptoService extends PointyCastleVaultCryptoService {
+  static const _cheap = VaultKdfParams(memory: 8, iterations: 1);
+
+  final bool crashOnUnwrap;
+
+  const _CheapKdfCryptoService({this.crashOnUnwrap = false});
+
+  @override
+  Uint8List deriveKek(String pin, Uint8List salt, VaultKdfParams params) =>
+      super.deriveKek(pin, salt, _cheap);
+
+  @override
+  Uint8List unwrapDek(String wrapped, Uint8List kek) {
+    if (crashOnUnwrap) throw StateError('killed mid-check');
+    return super.unwrapDek(wrapped, kek);
+  }
 }

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
+import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/domain/vault_failure.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
@@ -10,14 +14,78 @@ import 'widgets/pin_button.dart';
 class UnlockVaultScreen extends ConsumerStatefulWidget {
   const UnlockVaultScreen({super.key});
 
+  /// Makes the stopwatch the lockout countdown runs on. A real [Stopwatch]
+  /// is monotonic; tests swap in one driven by fake time.
+  @visibleForTesting
+  static Stopwatch Function() stopwatchFactory = Stopwatch.new;
+
   @override
   ConsumerState<UnlockVaultScreen> createState() => _UnlockVaultScreenState();
 }
 
-class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
+class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
+    with WidgetsBindingObserver {
   String _pin = '';
 
+  // The PIN lockout countdown (#16). The service enforces the lockout; this
+  // only shows it, timed on a Stopwatch so it does not follow the wall clock.
+  Duration _lockout = Duration.zero;
+  final Stopwatch _lockoutWatch = UnlockVaultScreen.stopwatchFactory();
+  Timer? _lockoutTimer;
+
+  Duration get _lockoutLeft {
+    final left = _lockout - _lockoutWatch.elapsed;
+    return left > Duration.zero ? left : Duration.zero;
+  }
+
+  bool get _isLockedOut => _lockoutLeft > Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startLockout(ref.read(vaultControllerProvider).lockoutRemaining);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _lockoutTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The Stopwatch stops while the phone sleeps; the service's clock does
+    // not, so take the time left from it again.
+    if (state == AppLifecycleState.resumed && _isLockedOut) {
+      ref.read(vaultControllerProvider.notifier).refreshLockout();
+    }
+  }
+
+  void _startLockout(Duration remaining) {
+    _lockoutTimer?.cancel();
+    _lockoutTimer = null;
+    _lockout = remaining;
+    _lockoutWatch
+      ..reset()
+      ..start();
+    if (remaining <= Duration.zero) return;
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (!_isLockedOut) {
+        timer.cancel();
+        if (ref.read(vaultControllerProvider).failure
+            is VaultLockedOutFailure) {
+          ref.read(vaultControllerProvider.notifier).clearFailure();
+        }
+      }
+      setState(() {});
+    });
+  }
+
   Future<void> _unlockVault() async {
+    if (_isLockedOut) return;
     final notifier = ref.read(vaultControllerProvider.notifier);
     await notifier.unlock(_pin);
 
@@ -27,11 +95,13 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
     if (state.failure != null) {
       setState(() {
         _pin = '';
+        _startLockout(state.lockoutRemaining);
       });
     }
   }
 
   void _onNumberPressed(String number) {
+    if (_isLockedOut) return;
     if (_pin.length < 6) {
       setState(() {
         _pin += number;
@@ -56,6 +126,18 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
     final controllerState = ref.watch(vaultControllerProvider);
     final nip55State = ref.watch(nip55ControllerProvider);
     final failure = controllerState.failure;
+    // The lockout can also arrive after this screen opened, once the vault
+    // state has been read.
+    ref.listen<VaultControllerState>(vaultControllerProvider, (previous, next) {
+      if (previous?.lockoutRemaining != next.lockoutRemaining) {
+        setState(() => _startLockout(next.lockoutRemaining));
+      }
+    });
+    final lockedOut = _isLockedOut;
+    final wipeWarning = wipeWarningMessage(
+      failedAttempts: controllerState.failedUnlockAttempts,
+      wipeAfterFailures: controllerState.wipeAfterFailures,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -139,7 +221,22 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                       label: const Text('Cancel external request'),
                     ),
                   ],
-                  if (failure != null) ...[
+                  if (lockedOut) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Text(
+                      lockoutMessage(_lockoutLeft),
+                      key: const Key('unlockLockoutMessage'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    Text(
+                      formatLockoutCountdown(_lockoutLeft),
+                      key: const Key('unlockLockoutCountdown'),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ] else if (failure != null) ...[
                     const SizedBox(height: DiogelSpacing.space2),
                     Text(
                       vaultFailureMessage(failure),
@@ -147,6 +244,21 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                         color: Theme.of(context).colorScheme.error,
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                  ],
+                  if (wipeWarning != null) ...[
+                    const SizedBox(height: DiogelSpacing.space2),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DiogelSpacing.space6,
+                      ),
+                      child: Text(
+                        wipeWarning,
+                        key: const Key('unlockWipeWarning'),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: DiogelColors.stateWarning),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ],
                   const SizedBox(height: DiogelSpacing.space1),
@@ -211,12 +323,20 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     ...['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(
                       (number) => PinButton(
                         number,
-                        onPressed: () => _onNumberPressed(number),
+                        onPressed: lockedOut
+                            ? null
+                            : () => _onNumberPressed(number),
                       ),
                     ),
                     const PinButtonIcon(Icons.fingerprint, onPressed: null),
-                    PinButton('0', onPressed: () => _onNumberPressed('0')),
-                    PinButtonIcon(Icons.backspace, onPressed: _onBackspace),
+                    PinButton(
+                      '0',
+                      onPressed: lockedOut ? null : () => _onNumberPressed('0'),
+                    ),
+                    PinButtonIcon(
+                      Icons.backspace,
+                      onPressed: lockedOut ? null : _onBackspace,
+                    ),
                   ],
                 ),
               ),
@@ -228,7 +348,9 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: _pin.length == 6 ? _unlockVault : null,
+                        onPressed: _pin.length == 6 && !lockedOut
+                            ? _unlockVault
+                            : null,
                         icon: const Icon(Icons.lock_open),
                         label: const Text('Unlock Vault'),
                       ),

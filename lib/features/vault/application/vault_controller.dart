@@ -13,6 +13,15 @@ class VaultControllerState {
   final int inactivityTimeoutMinutes;
   final int backgroundLockDelayMinutes;
   final int approvalSessionDurationMinutes;
+
+  /// Consecutive failed PIN attempts, read while locked (#16).
+  final int failedUnlockAttempts;
+
+  /// Failed PIN attempts that erase the vault, or `null` for never.
+  final int? wipeAfterFailures;
+
+  /// The lockout left when the state was read; [Duration.zero] for none.
+  final Duration lockoutRemaining;
   final bool isLoading;
   final VaultFailure? failure;
 
@@ -23,6 +32,9 @@ class VaultControllerState {
     this.inactivityTimeoutMinutes = 5,
     this.backgroundLockDelayMinutes = 5,
     this.approvalSessionDurationMinutes = 0,
+    this.failedUnlockAttempts = 0,
+    this.wipeAfterFailures,
+    this.lockoutRemaining = Duration.zero,
     this.isLoading = true,
     this.failure,
   });
@@ -34,6 +46,10 @@ class VaultControllerState {
     int? inactivityTimeoutMinutes,
     int? backgroundLockDelayMinutes,
     int? approvalSessionDurationMinutes,
+    int? failedUnlockAttempts,
+    int? wipeAfterFailures,
+    bool clearWipeAfterFailures = false,
+    Duration? lockoutRemaining,
     bool? isLoading,
     VaultFailure? failure,
     bool clearFailure = false,
@@ -51,6 +67,11 @@ class VaultControllerState {
           backgroundLockDelayMinutes ?? this.backgroundLockDelayMinutes,
       approvalSessionDurationMinutes:
           approvalSessionDurationMinutes ?? this.approvalSessionDurationMinutes,
+      failedUnlockAttempts: failedUnlockAttempts ?? this.failedUnlockAttempts,
+      wipeAfterFailures: clearWipeAfterFailures
+          ? null
+          : (wipeAfterFailures ?? this.wipeAfterFailures),
+      lockoutRemaining: lockoutRemaining ?? this.lockoutRemaining,
       isLoading: isLoading ?? this.isLoading,
       failure: clearFailure ? null : (failure ?? this.failure),
     );
@@ -101,6 +122,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
     int timeout = 5;
     int backgroundLockDelay = 5;
     int approvalSessionDuration = 0;
+    int failedUnlockAttempts = 0;
+    int? wipeAfterFailures;
+    Duration lockoutRemaining = Duration.zero;
 
     if (vaultState is VaultUnlocked) {
       identities = await _vaultService.listIdentities();
@@ -109,6 +133,7 @@ class VaultController extends StateNotifier<VaultControllerState> {
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
       approvalSessionDuration = await _vaultService
           .getApprovalSessionDurationMinutes();
+      wipeAfterFailures = await _vaultService.getWipeAfterFailures();
     } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
       identities = [];
       activeIdentity = null;
@@ -118,6 +143,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
       approvalSessionDuration = await _vaultService
           .getApprovalSessionDurationMinutes();
+      // For the unlock screen's countdown and erase warning (#16).
+      failedUnlockAttempts = await _vaultService.getFailedUnlockAttempts();
+      wipeAfterFailures = await _vaultService.getWipeAfterFailures();
+      lockoutRemaining = await _vaultService.getLockoutRemaining();
     } else if (vaultState is NoVault) {
       // Ensure everything is cleared
       identities = [];
@@ -132,7 +161,26 @@ class VaultController extends StateNotifier<VaultControllerState> {
       inactivityTimeoutMinutes: timeout,
       backgroundLockDelayMinutes: backgroundLockDelay,
       approvalSessionDurationMinutes: approvalSessionDuration,
+      failedUnlockAttempts: failedUnlockAttempts,
+      wipeAfterFailures: wipeAfterFailures,
+      clearWipeAfterFailures: wipeAfterFailures == null,
+      lockoutRemaining: lockoutRemaining,
     );
+  }
+
+  /// Re-reads the PIN lockout, for the unlock screen's countdown (#16).
+  Future<void> refreshLockout() async {
+    try {
+      state = state.copyWith(
+        lockoutRemaining: await _vaultService.getLockoutRemaining(),
+      );
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: could not read the lockout',
+        error: e,
+        stackTrace: stack,
+      );
+    }
   }
 
   void clearFailure() {
@@ -175,6 +223,18 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
   }
 
+  Future<void> setWipeAfterFailures(int? attempts) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      await _vaultService.setWipeAfterFailures(attempts);
+      await _refreshState();
+    } catch (e) {
+      state = state.copyWith(failure: _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
   Future<void> createVault(String pin) async {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
@@ -193,7 +253,19 @@ class VaultController extends StateNotifier<VaultControllerState> {
       await _vaultService.unlock(pin);
       await _refreshState();
     } catch (e) {
-      state = state.copyWith(failure: _mapExceptionToFailure(e));
+      final failure = _mapExceptionToFailure(e);
+      // The attempt count, lockout or (after an erase) the vault itself
+      // changed with the failure.
+      try {
+        await _refreshState();
+      } catch (refreshError, stack) {
+        diogelLog(
+          'VaultController: refresh after a failed unlock failed',
+          error: refreshError,
+          stackTrace: stack,
+        );
+      }
+      state = state.copyWith(failure: failure);
     } finally {
       state = state.copyWith(isLoading: false);
     }
@@ -307,7 +379,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
       return const InvalidPinFailure();
     }
     if (e is VaultLockedOutException) {
-      return const VaultLockedOutFailure();
+      return VaultLockedOutFailure(e.remaining);
+    }
+    if (e is VaultWipedException) {
+      return const VaultWipedFailure();
     }
     if (e is VaultWipeIncompleteException) {
       return const VaultWipeIncompleteFailure();
