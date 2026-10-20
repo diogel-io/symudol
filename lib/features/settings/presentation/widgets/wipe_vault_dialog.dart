@@ -1,6 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../theme/tokens.dart';
+import '../../../nip46/application/nip46_providers.dart';
+import '../../../nip55/application/nip55_providers.dart';
+import '../../../vault/application/vault_providers.dart';
+import '../../../vault/presentation/vault_failure_messages.dart';
+
+/// Asks for confirmation, then erases the vault (#20). The one wipe flow for
+/// Settings → Wipe Vault and the unlock screen's Forgot PIN (#22).
+///
+/// Works locked or unlocked: the counts come from the stored identity and
+/// session records, which hold no secrets. Afterwards the app shows setup.
+Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
+  final identities = await ref.read(vaultStoreProvider).getIdentities();
+  // Read from the store: the NIP-46 controller starts relays when created.
+  final sessions = await ref.read(nip46SessionStoreProvider).listSessions();
+  if (!context.mounted) return;
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (_) => WipeVaultDialog(
+      identityCount: identities.length,
+      connectionCount: sessions.length,
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final messenger = ScaffoldMessenger.of(context);
+  final controller = ref.read(vaultControllerProvider.notifier);
+  final nip55 = ref.read(nip55ControllerProvider.notifier);
+  Navigator.of(context).popUntil((route) => route.isFirst);
+  // A client waiting for an unlock gets its answer now, not a timeout.
+  if (ref.read(nip55ControllerProvider).isWaitingForUnlock) {
+    await nip55.cancelPendingExternalRequest(
+      error: 'The Symudol vault was erased',
+      rejected: false,
+    );
+  }
+  // The app switches to setup once the vault is gone.
+  final failure = await controller.wipe();
+  if (failure != null) {
+    messenger.showSnackBar(
+      SnackBar(content: Text(vaultFailureMessage(failure))),
+    );
+  }
+}
 
 /// Asks the user to confirm a vault wipe (#20). Names what is lost and only
 /// enables the wipe once [confirmationWord] is typed.
