@@ -134,6 +134,10 @@ class VaultController extends StateNotifier<VaultControllerState> {
       approvalSessionDuration = await _vaultService
           .getApprovalSessionDurationMinutes();
       wipeAfterFailures = await _vaultService.getWipeAfterFailures();
+      // Change PIN checks the current PIN against the same count and
+      // lockout as unlocking (#21).
+      failedUnlockAttempts = await _vaultService.getFailedUnlockAttempts();
+      lockoutRemaining = await _vaultService.getLockoutRemaining();
     } else if (vaultState is VaultLocked || vaultState is SessionExpired) {
       identities = [];
       activeIdentity = null;
@@ -221,6 +225,29 @@ class VaultController extends StateNotifier<VaultControllerState> {
     } finally {
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  /// Changes the PIN (#21). Returns the failure, if any, for the Change PIN
+  /// screen; a wrong current PIN also updates the count and lockout here.
+  Future<VaultFailure?> changePin(String currentPin, String newPin) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    VaultFailure? failure;
+    try {
+      await _vaultService.changePin(currentPin, newPin);
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a PIN change failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    state = state.copyWith(isLoading: false, failure: failure);
+    return failure;
   }
 
   Future<void> setWipeAfterFailures(int? attempts) async {

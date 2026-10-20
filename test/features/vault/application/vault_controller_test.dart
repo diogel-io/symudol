@@ -252,4 +252,37 @@ void backgroundLockDelayControllerTests() {
       expect(controller.state.failure, isA<SecureStorageFailure>());
     });
   });
+
+  group('VaultController.changePin (#21)', () {
+    late VaultController controller;
+
+    setUp(() async {
+      final service = VaultServiceImpl(FakeVaultStore());
+      await service.init();
+      controller = VaultController(service);
+    });
+
+    test('returns null and the new PIN unlocks', () async {
+      await controller.createVault('123456');
+
+      expect(await controller.changePin('123456', '654321'), isNull);
+      expect(controller.state.failure, isNull);
+      expect(controller.state.isLoading, isFalse);
+
+      await controller.lock();
+      await controller.unlock('654321');
+      expect(controller.state.vaultState, isA<VaultUnlocked>());
+    });
+
+    test('a wrong current PIN returns InvalidPinFailure and is counted', () async {
+      await controller.createVault('123456');
+
+      final failure = await controller.changePin('000000', '654321');
+
+      expect(failure, isA<InvalidPinFailure>());
+      expect(controller.state.failure, isA<InvalidPinFailure>());
+      expect(controller.state.failedUnlockAttempts, 1);
+      expect(controller.state.vaultState, isA<VaultUnlocked>());
+    });
+  });
 }
