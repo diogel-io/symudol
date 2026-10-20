@@ -1,3 +1,5 @@
+import 'package:symudol/features/nip46/application/nip46_providers.dart';
+import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/data/secure_storage_vault_store.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
@@ -18,9 +20,18 @@ final vaultStoreProvider = Provider<VaultStore>((ref) {
 });
 
 /// Provider for the [VaultService] implementation.
+///
+/// It gets the NIP-55 and NIP-46 stores so a wipe can erase them too (#20).
+/// None of those providers depends on the vault.
 final vaultServiceProvider = Provider<VaultService>((ref) {
   final store = ref.watch(vaultStoreProvider);
-  return VaultServiceImpl(store);
+  final nativeSync = ref.watch(nip55NativeSyncProvider);
+  return VaultServiceImpl(
+    store,
+    nip55PermissionStore: ref.watch(nip55PermissionStoreProvider),
+    nip46SessionStore: ref.watch(nip46SessionStoreProvider),
+    wipeNativeState: nativeSync.wipeNativeState,
+  );
 });
 
 /// Provider for the [VaultController].

@@ -34,6 +34,17 @@ abstract interface class VaultService {
   /// Expires the session due to inactivity.
   Future<void> expireSession();
 
+  /// Permanently erases the vault and everything tied to it: every identity
+  /// and key, NIP-55 grants (including the native mirror), and NIP-46
+  /// sessions. Afterwards [state] is [NoVault], or [VaultLocked] if the vault
+  /// itself could not be erased.
+  ///
+  /// Works whether the vault is locked or unlocked, and is safe to repeat.
+  ///
+  /// Throws [VaultWipeIncompleteException] if any part could not be erased.
+  /// Every part is still attempted.
+  Future<void> wipe();
+
   /// Creates a new identity in the vault.
   ///
   /// [displayName] is an optional name for the identity.
