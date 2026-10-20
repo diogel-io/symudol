@@ -24,6 +24,7 @@ import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:crypto/crypto.dart' as crypto_hash;
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +54,10 @@ class FakeNip55Gateway implements Nip55Gateway {
   final rejectedTokens = <String>[];
   final rejectedErrorsByToken = <String, String?>{};
   final rejectedFlagsByToken = <String, bool>{};
+
+  /// Runs as a rejection is sent, before [throwOnReject] applies.
+  Future<void> Function()? onReject;
+  bool throwOnReject = false;
   void Function(Map<String, Object?> raw)? handler;
   Future<Map<String, Object?>?> Function(Map<String, Object?> raw)?
   providerQueryHandler;
@@ -107,6 +112,8 @@ class FakeNip55Gateway implements Nip55Gateway {
     rejectedTokens.add(requestToken);
     rejectedErrorsByToken[requestToken] = error;
     rejectedFlagsByToken[requestToken] = rejected;
+    await onReject?.call();
+    if (throwOnReject) throw StateError('the client could not be answered');
   }
 
   @override
@@ -2008,6 +2015,28 @@ void main() {
       expect(controller.state.pendingIncoming, isNull);
     });
 
+    test(
+      'a cancel the client cannot receive still ends the request (#104)',
+      () async {
+        await vaultController.lock();
+        await controller.handleRawIntent({
+          'requestToken': 'token-cancel-fails',
+          'type': 'sign_message',
+          'content': 'hello',
+        });
+        gateway.throwOnReject = true;
+
+        await expectLater(
+          controller.cancelPendingExternalRequest(),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(gateway.rejectedTokens, ['token-cancel-fails']);
+        expect(controller.state.pendingIncoming, isNull);
+        expect(controller.state.hasPendingExternalRequest, isFalse);
+      },
+    );
+
     // -------------------------------------------------------------------------
     // Timeframe-based approval tests
     // -------------------------------------------------------------------------
@@ -2496,6 +2525,110 @@ void main() {
         mirror.publicKey,
         gatedVaultController.state.activeIdentity!.publicKey,
       );
+    });
+  });
+
+  group('a wipe answers a request waiting for unlock (#104)', () {
+    Map<String, Object?> waitingRaw(String token) => {
+      'requestToken': token,
+      'type': 'sign_message',
+      'content': 'hello',
+    };
+
+    test('answers it once the vault has been erased', () async {
+      await vaultController.lock();
+      await controller.handleRawIntent(waitingRaw('token-wipe'));
+      expect(controller.state.isWaitingForUnlock, isTrue);
+      bool? vaultGoneWhenAnswered;
+      gateway.onReject = () async =>
+          vaultGoneWhenAnswered = await store.getWrappedDek() == null;
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, ['token-wipe']);
+      expect(gateway.rejectedFlagsByToken['token-wipe'], isFalse);
+      expect(
+        gateway.rejectedErrorsByToken['token-wipe'],
+        'The Symudol vault was erased',
+      );
+      expect(vaultGoneWhenAnswered, isTrue);
+      expect(controller.state.isWaitingForUnlock, isFalse);
+    });
+
+    test('answers it when too many failed PINs erase the vault', () async {
+      await vaultService.setWipeAfterFailures(10);
+      await vaultController.lock();
+      await store.setFailedUnlockAttempts(9);
+      await controller.handleRawIntent(waitingRaw('token-failed-pins'));
+      expect(controller.state.isWaitingForUnlock, isTrue);
+
+      await vaultController.unlock('0000');
+      await pumpEventQueue();
+
+      expect(vaultController.state.vaultState, isA<NoVault>());
+      expect(gateway.rejectedTokens, ['token-failed-pins']);
+      expect(gateway.rejectedFlagsByToken['token-failed-pins'], isFalse);
+      expect(controller.state.isWaitingForUnlock, isFalse);
+    });
+
+    test('keeps a request that arrived before any vault existed', () async {
+      final noVaultService = VaultServiceImpl(FakeVaultStore());
+      final noVaultController = VaultController(noVaultService);
+      await pumpEventQueue();
+      final noVaultNip55 = Nip55Controller(
+        gateway: gateway,
+        vaultController: noVaultController,
+        vaultService: noVaultService,
+        requestController: RequestController(
+          noVaultController,
+          RealSignerService(noVaultService),
+        ),
+      );
+      await noVaultNip55.handleRawIntent({
+        'requestToken': 'token-before-setup',
+        'type': 'get_public_key',
+      });
+      expect(noVaultNip55.state.isWaitingForUnlock, isTrue);
+
+      // More NoVault states, as setup emits while loading.
+      await noVaultController.initialize();
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, isEmpty);
+      expect(noVaultNip55.state.isWaitingForUnlock, isTrue);
+      noVaultNip55.dispose();
+      noVaultController.dispose();
+    });
+
+    test('a client that cannot be answered leaves the wipe done', () async {
+      await vaultController.lock();
+      await controller.handleRawIntent(waitingRaw('token-unanswerable'));
+      gateway.throwOnReject = true;
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, ['token-unanswerable']);
+      expect(vaultController.state.vaultState, isA<NoVault>());
+      expect(await store.getWrappedDek(), isNull);
+      // The request ends anyway: kept, it would refuse every later request
+      // as busy and be resumed against the next vault.
+      expect(controller.state.pendingIncoming, isNull);
+      expect(controller.state.hasPendingExternalRequest, isFalse);
+    });
+
+    test('a failed wipe that leaves the vault keeps the request', () async {
+      await vaultController.lock();
+      await controller.handleRawIntent(waitingRaw('token-kept'));
+      store.shouldThrowOnClearAll = true;
+
+      expect(await vaultController.wipe(), isNotNull);
+      await pumpEventQueue();
+
+      expect(vaultController.state.vaultState, isNot(isA<NoVault>()));
+      expect(gateway.rejectedTokens, isEmpty);
+      expect(controller.state.isWaitingForUnlock, isTrue);
     });
   });
 }

@@ -4,7 +4,6 @@ import 'package:symudol/app/diogel_log.dart';
 
 import '../../../../theme/tokens.dart';
 import '../../../nip46/application/nip46_providers.dart';
-import '../../../nip55/application/nip55_providers.dart';
 import '../../../vault/application/vault_providers.dart';
 import '../../../vault/presentation/vault_failure_messages.dart';
 
@@ -12,7 +11,9 @@ import '../../../vault/presentation/vault_failure_messages.dart';
 /// Settings → Wipe Vault and the unlock screen's Forgot PIN (#22).
 ///
 /// Works locked or unlocked: the counts come from the stored identity and
-/// session records, which hold no secrets. Afterwards the app shows setup.
+/// session records, which hold no secrets. Afterwards the app shows setup,
+/// and the NIP-55 controller answers any client waiting for an unlock
+/// (#104).
 Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
   // The counts only inform the confirmation: a store that can't be read
   // must still be erasable, so the dialog names what is lost without them.
@@ -39,7 +40,6 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
 
   final messenger = ScaffoldMessenger.of(context);
   final controller = ref.read(vaultControllerProvider.notifier);
-  final nip55 = ref.read(nip55ControllerProvider.notifier);
   Navigator.of(context).popUntil((route) => route.isFirst);
   // The app switches to setup once the vault is gone.
   final failure = await controller.wipe();
@@ -47,25 +47,6 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
     messenger.showSnackBar(
       SnackBar(content: Text(vaultFailureMessage(failure))),
     );
-  }
-  // A client waiting for an unlock gets its answer now, not a timeout. Only
-  // after the wipe: answering hands the user back to the client, and a
-  // failure to answer must not stop the erase they confirmed.
-  if (ref.read(nip55ControllerProvider).isWaitingForUnlock) {
-    try {
-      await nip55.cancelPendingExternalRequest(
-        error: failure == null
-            ? 'The Symudol vault was erased'
-            : 'The Symudol vault could not be erased',
-        rejected: false,
-      );
-    } catch (e, stack) {
-      diogelLog(
-        'confirmAndWipeVault: could not answer the waiting NIP-55 request',
-        error: e,
-        stackTrace: stack,
-      );
-    }
   }
 }
 

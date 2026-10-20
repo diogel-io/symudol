@@ -129,6 +129,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   StreamSubscription<VaultControllerState>? _vaultStateSubscription;
   Future<void> _keySync = Future<void>.value();
   (bool, String?, String?)? _lastKeySyncTarget;
+  VaultState? _lastVaultState;
 
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
@@ -240,6 +241,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         this.state.approvalSessionExpiresAt != null) {
       this.state = this.state.copyWith(clearApprovalSession: true);
     }
+    final previousVaultState = _lastVaultState;
+    _lastVaultState = state.vaultState;
+    if (previousVaultState != null &&
+        previousVaultState is! NoVault &&
+        state.vaultState is NoVault) {
+      _answerWaitingRequestAfterWipe();
+    }
     final target = (
       state.vaultState is VaultUnlocked,
       state.activeIdentity?.localId,
@@ -256,6 +264,30 @@ class Nip55Controller extends StateNotifier<Nip55State> {
             error: e,
           ),
         );
+  }
+
+  /// A client waiting for an unlock gets its answer once the vault is wiped,
+  /// however it was wiped (#104): Settings, Forgot PIN, or too many failed
+  /// PINs. Only on the change from a vault to none: a request that arrives
+  /// before any vault exists waits through setup.
+  ///
+  /// The vault controller reports the wipe once it has finished, so the
+  /// answer, which hands the user back to the client, comes after it. A
+  /// failure to answer leaves the wipe alone.
+  void _answerWaitingRequestAfterWipe() {
+    if (!state.isWaitingForUnlock) return;
+    unawaited(
+      cancelPendingExternalRequest(
+        error: 'The Symudol vault was erased',
+        rejected: false,
+      ).catchError(
+        (Object e, StackTrace stack) => diogelLog(
+          'Nip55Controller: could not answer the waiting request after a wipe',
+          error: e,
+          stackTrace: stack,
+        ),
+      ),
+    );
   }
 
   /// Whether the vault is still unlocked as [identity].
@@ -1152,6 +1184,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   /// Ends the pending request without a result. A user cancel is a NIP-55
   /// rejection; pass [rejected] false when Symudol gave up on it instead (a
   /// timeout), which the client sees as a signer failure.
+  ///
+  /// The request ends even when the client can't be answered, and the error
+  /// is rethrown: kept pending with its timer cancelled, it would refuse every
+  /// later request as busy and be resumed after the next unlock (#104).
   Future<void> cancelPendingExternalRequest({
     String error = 'User cancelled NIP-55 request',
     bool rejected = true,
@@ -1159,18 +1195,21 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final incoming = state.pendingIncoming;
     if (incoming == null) return;
     _pendingUnlockTimer?.cancel();
-    await _gateway.rejectNip55Intent(
-      requestToken: incoming.requestToken,
-      error: error,
-      rejected: rejected,
-    );
-    state = state.copyWith(
-      clearPendingIncoming: true,
-      clearPendingSigningRequestId: true,
-      clearPendingPublicKeyRequest: true,
-      clearPendingCryptoRequest: true,
-      isLoading: false,
-    );
+    try {
+      await _gateway.rejectNip55Intent(
+        requestToken: incoming.requestToken,
+        error: error,
+        rejected: rejected,
+      );
+    } finally {
+      state = state.copyWith(
+        clearPendingIncoming: true,
+        clearPendingSigningRequestId: true,
+        clearPendingPublicKeyRequest: true,
+        clearPendingCryptoRequest: true,
+        isLoading: false,
+      );
+    }
   }
 
   void clearMessages() {
