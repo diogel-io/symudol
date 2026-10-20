@@ -70,7 +70,9 @@ Settings → "Erase after failed PIN attempts": Off (the default), 10, 15 or 20.
 changing the count, asks for confirmation, and it can only be changed while the vault is unlocked.
 When a wrong PIN brings the count to N, `unlock` calls `VaultService.wipe()` (#20), which erases
 every identity and key, the NIP-55 grants and their native mirror, and the NIP-46 sessions. The app
-then returns to setup.
+then returns to setup. A NIP-55 request that was waiting for the vault to unlock is answered as soon
+as the erase finishes (#104), so the client hears at once instead of after its 5-minute unlock
+timeout.
 
 From 3 attempts before the limit, the unlock screen warns: "3 attempts left before Symudol erases
 all keys."
@@ -160,7 +162,10 @@ A forgotten PIN can't be recovered or reset, by design: the keys are encrypted w
 Symudol keeps no copy. "Forgot PIN?" on the unlock screen (diogel-io/symudol#22) says so and
 offers one way forward, erasing the vault and starting again, through the same confirmation as
 Settings → Wipe Vault (#20): it names what is lost and needs `WIPE` typed. It works while locked
-and during a lockout, and answers any NIP-55 request that was waiting for the vault to unlock.
+and during a lockout. Any NIP-55 request that was waiting for the vault to unlock is answered once
+the erase has finished: `Nip55Controller` answers it when the vault goes from existing to none,
+whichever way it was erased (#104). A wipe that fails and leaves the vault answers nothing, since
+the request can still be unlocked.
 
 Anyone holding the phone can therefore erase the vault from the lock screen. That exposes no key,
 and the typed confirmation guards against accidents; someone with the phone could already clear

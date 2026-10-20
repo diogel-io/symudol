@@ -129,6 +129,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   StreamSubscription<VaultControllerState>? _vaultStateSubscription;
   Future<void> _keySync = Future<void>.value();
   (bool, String?, String?)? _lastKeySyncTarget;
+  VaultState? _lastVaultState;
 
   // Track concurrency synchronously to avoid races in async flows
   bool _isParsingIntent = false;
@@ -240,6 +241,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         this.state.approvalSessionExpiresAt != null) {
       this.state = this.state.copyWith(clearApprovalSession: true);
     }
+    final previousVaultState = _lastVaultState;
+    _lastVaultState = state.vaultState;
+    if (previousVaultState != null &&
+        previousVaultState is! NoVault &&
+        state.vaultState is NoVault) {
+      _answerWaitingRequestAfterWipe();
+    }
     final target = (
       state.vaultState is VaultUnlocked,
       state.activeIdentity?.localId,
@@ -256,6 +264,30 @@ class Nip55Controller extends StateNotifier<Nip55State> {
             error: e,
           ),
         );
+  }
+
+  /// A client waiting for an unlock gets its answer once the vault is wiped,
+  /// however it was wiped (#104): Settings, Forgot PIN, or too many failed
+  /// PINs. Only on the change from a vault to none: a request that arrives
+  /// before any vault exists waits through setup.
+  ///
+  /// The vault controller reports the wipe once it has finished, so the
+  /// answer, which hands the user back to the client, comes after it. A
+  /// failure to answer leaves the wipe alone.
+  void _answerWaitingRequestAfterWipe() {
+    if (!state.isWaitingForUnlock) return;
+    unawaited(
+      cancelPendingExternalRequest(
+        error: 'The Symudol vault was erased',
+        rejected: false,
+      ).catchError(
+        (Object e, StackTrace stack) => diogelLog(
+          'Nip55Controller: could not answer the waiting request after a wipe',
+          error: e,
+          stackTrace: stack,
+        ),
+      ),
+    );
   }
 
   /// Whether the vault is still unlocked as [identity].
