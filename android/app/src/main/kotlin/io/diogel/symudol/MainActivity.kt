@@ -80,6 +80,11 @@ class MainActivity : FlutterActivity() {
             }
             result.success(null)
         }
+        // PIN lockouts are timed on this, not the wall clock (#16).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MonotonicClock.CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method != "now") return@setMethodCallHandler result.notImplemented()
+            result.success(MonotonicClock.now(applicationContext))
+        }
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.let { Nip55ProviderBridge.attach(it) }
         channel?.setMethodCallHandler { call, result ->
