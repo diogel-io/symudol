@@ -154,6 +154,19 @@ Settings → Change PIN (diogel-io/symudol#21) asks for the current PIN, then th
 
 A change runs Argon2id twice (check, then re-wrap): about 2 s on the reference emulator.
 
+## A Forgotten PIN
+
+A forgotten PIN can't be recovered or reset, by design: the keys are encrypted with it and
+Symudol keeps no copy. "Forgot PIN?" on the unlock screen (diogel-io/symudol#22) says so and
+offers one way forward, erasing the vault and starting again, through the same confirmation as
+Settings → Wipe Vault (#20): it names what is lost and needs `WIPE` typed. It works while locked
+and during a lockout, and answers any NIP-55 request that was waiting for the vault to unlock.
+
+Anyone holding the phone can therefore erase the vault from the lock screen. That exposes no key,
+and the typed confirmation guards against accidents; someone with the phone could already clear
+the app's data from Android's settings. Restoring from a backup joins this dialog once backups
+exist (#25).
+
 ## No Keystore Binding for the KEK
 
 Binding the KEK to an Android Keystore key, so that offline guessing needs the device, was
