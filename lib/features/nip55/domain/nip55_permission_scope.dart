@@ -197,6 +197,23 @@ final class UnsupportedScope extends Nip55PermissionScope {
   Map<String, Object?> toJson() => {'type': 'unsupported', 'wire': value};
 }
 
+/// Normalizes a relay URL for storing and matching kind 22242 grants: trims,
+/// lowercases and strips a trailing slash. The Kotlin
+/// `Nip55PermissionMirror.normalizeRelayUrl` does the same.
+String? normalizeNip55RelayUrl(String? url) {
+  if (url == null) return null;
+  var normalized = url.trim().toLowerCase();
+  if (normalized.endsWith('/')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+  return normalized.isEmpty ? null : normalized;
+}
+
+/// Whether a grant's scope covers a requested scope.
+///
+/// The shared case table `test/features/nip55/fixtures/permission_matching_cases.json`
+/// is the source of truth for these rules; the Kotlin Nip55PermissionMirror runs
+/// the same cases (diogel-io/symudol#17).
 extension Nip55PermissionScopeMatching on Nip55PermissionScope {
   bool matches(Nip55PermissionScope requested) {
     final grant = this;
@@ -204,7 +221,9 @@ extension Nip55PermissionScopeMatching on Nip55PermissionScope {
       if (grant.kind != null && grant.kind != requested.kind) return false;
       // Relay URL matching for kind 22242 (NIP-42 relay auth):
       // A relay-specific grant only covers that relay; a null relay is a wildcard.
-      if (grant.relayUrl != null && grant.relayUrl != requested.relayUrl) {
+      final grantRelay = normalizeNip55RelayUrl(grant.relayUrl);
+      if (grantRelay != null &&
+          grantRelay != normalizeNip55RelayUrl(requested.relayUrl)) {
         return false;
       }
       return true;
@@ -221,16 +240,19 @@ extension Nip55PermissionScopeMatching on Nip55PermissionScope {
     if (grant is Nip04DecryptScope && requested is Nip04DecryptScope) {
       return grant.peerPubkey == null || grant.peerPubkey == requested.peerPubkey;
     }
-    // Cross-scope: nip04_decrypt/nip44_decrypt grants satisfy decrypt_zap_event.
-    // NIP-57 zap receipts are NIP-04 encrypted to the recipient, so if the
-    // user trusts an app to decrypt DMs, they trust it to decrypt zaps too.
-    // This mirrors Nip55PermissionMirror.scopeMatches on the Kotlin side.
+    // Cross-scope: nip04_decrypt/nip44_decrypt grants for any peer satisfy
+    // decrypt_zap_event. NIP-57 zap receipts are NIP-04 encrypted to the
+    // recipient, so if the user trusts an app to decrypt all DMs, they trust
+    // it to decrypt zaps too. The zap's peer is not known when matching, so a
+    // grant for one peer does not cover it, as on the Kotlin side (#17).
     if (grant is Nip04DecryptScope && requested is DecryptZapEventScope) {
-      return true;
+      return grant.peerPubkey == null;
     }
     if (grant is Nip44DecryptScope && requested is DecryptZapEventScope) {
-      return true;
+      return grant.peerPubkey == null;
     }
+    // Neither names a request a grant could answer.
+    if (grant is UnsupportedScope || grant is ConnectScope) return false;
     return runtimeType == requested.runtimeType;
   }
 }

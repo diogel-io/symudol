@@ -1,6 +1,11 @@
 import 'nip55_permission_decision.dart';
 import 'nip55_permission_scope.dart';
 
+/// A grant's certificate when the caller's could not be read: matches no
+/// caller. The Kotlin `Nip55PermissionMirror.UNRESOLVED_CERTIFICATE` is the
+/// same value (REQ-NIP55-010, #17).
+const nip55UnresolvedCertificate = 'unresolved';
+
 class Nip55PermissionGrant {
   final String id;
   final String identityPubkey;
@@ -76,7 +81,11 @@ class Nip55PermissionGrant {
       id: json['id'] as String,
       identityPubkey: json['identityPubkey'] as String,
       packageName: json['packageName'] as String?,
-      certificateSha256: json['certificateSha256'] as String?,
+      // A missing key is a grant from before certificates were recorded: any
+      // caller. A null means the certificate could not be read: no caller.
+      certificateSha256: json.containsKey('certificateSha256')
+          ? json['certificateSha256'] as String? ?? nip55UnresolvedCertificate
+          : null,
       scope: Nip55PermissionScope.fromJson(
         (json['scope'] as Map).cast<String, Object?>(),
       ),

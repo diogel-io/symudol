@@ -1,0 +1,1640 @@
+{
+  "description": "NIP-55 remembered-permission cases, run against both the Dart Nip55ApprovalPolicy (test/features/nip55/domain/nip55_permission_parity_test.dart) and the Kotlin Nip55PermissionMirror (android/app/src/test/java/io/diogel/symudol/Nip55PermissionParityTest.kt). The source of truth for matching (diogel-io/symudol#17). expected: allow, reject, or none (no remembered decision: review).",
+  "activeIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "ownPackage": "io.diogel.symudol",
+  "cases": [
+    {
+      "id": "get_public_key/allow",
+      "grants": [
+        {
+          "id": "g1",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "get_public_key/reject",
+      "grants": [
+        {
+          "id": "g2",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "get_public_key/no-grant",
+      "grants": [],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_message/allow",
+      "grants": [
+        {
+          "id": "g3",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_message"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_message",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "sign_message/other-scope",
+      "grants": [
+        {
+          "id": "g4",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_message",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_event/kind/same",
+      "grants": [
+        {
+          "id": "g5",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 1,
+            "relayUrl": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 1,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "sign_event/kind/other",
+      "grants": [
+        {
+          "id": "g6",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 1,
+            "relayUrl": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 7,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_event/kind/reject",
+      "grants": [
+        {
+          "id": "g7",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 1,
+            "relayUrl": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 1,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "sign_event/broad/allow",
+      "note": "An allow for any kind is never used: every such signature is reviewed (#5).",
+      "grants": [
+        {
+          "id": "g8",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": null,
+            "relayUrl": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 1,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_event/broad/reject",
+      "note": "A remembered refusal for any kind covers every kind.",
+      "grants": [
+        {
+          "id": "g9",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": null,
+            "relayUrl": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 1,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "sign_event/22242/same-relay",
+      "grants": [
+        {
+          "id": "g10",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": "wss://relay.example"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [
+            [
+              "relay",
+              "wss://relay.example"
+            ]
+          ],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "sign_event/22242/request-relay-normalised",
+      "grants": [
+        {
+          "id": "g11",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": "wss://relay.example"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [
+            [
+              "relay",
+              " WSS://Relay.Example/ "
+            ]
+          ],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "sign_event/22242/grant-relay-normalised",
+      "note": "The grant's relay is normalised too.",
+      "grants": [
+        {
+          "id": "g12",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": "WSS://Relay.Example/"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [
+            [
+              "relay",
+              "wss://relay.example"
+            ]
+          ],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "sign_event/22242/other-relay",
+      "grants": [
+        {
+          "id": "g13",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": "wss://relay.example"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [
+            [
+              "relay",
+              "wss://other.example"
+            ]
+          ],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_event/22242/no-relay-tag",
+      "grants": [
+        {
+          "id": "g14",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": "wss://relay.example"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "none"
+    },
+    {
+      "id": "sign_event/22242/any-relay",
+      "grants": [
+        {
+          "id": "g15",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 22242,
+            "relayUrl": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 22242,
+          "content": "",
+          "tags": [
+            [
+              "relay",
+              "wss://relay.example"
+            ]
+          ],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip04_encrypt/any-peer",
+      "grants": [
+        {
+          "id": "g16",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip04_encrypt/same-peer",
+      "grants": [
+        {
+          "id": "g17",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_encrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip04_encrypt/other-peer",
+      "grants": [
+        {
+          "id": "g18",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_encrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "nip04_encrypt/reject",
+      "grants": [
+        {
+          "id": "g19",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "nip04_decrypt/any-peer",
+      "grants": [
+        {
+          "id": "g20",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip04_decrypt/same-peer",
+      "grants": [
+        {
+          "id": "g21",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip04_decrypt/other-peer",
+      "grants": [
+        {
+          "id": "g22",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "nip04_decrypt/reject",
+      "grants": [
+        {
+          "id": "g23",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "nip44_encrypt/any-peer",
+      "grants": [
+        {
+          "id": "g24",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip44_encrypt/same-peer",
+      "grants": [
+        {
+          "id": "g25",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_encrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip44_encrypt/other-peer",
+      "grants": [
+        {
+          "id": "g26",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_encrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "nip44_encrypt/reject",
+      "grants": [
+        {
+          "id": "g27",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_encrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "nip44_decrypt/any-peer",
+      "grants": [
+        {
+          "id": "g28",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip44_decrypt/same-peer",
+      "grants": [
+        {
+          "id": "g29",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "nip44_decrypt/other-peer",
+      "grants": [
+        {
+          "id": "g30",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "nip44_decrypt/reject",
+      "grants": [
+        {
+          "id": "g31",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "nip44_decrypt/encrypt-grant",
+      "grants": [
+        {
+          "id": "g32",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip44_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "nip04_decrypt/nip44-grant",
+      "grants": [
+        {
+          "id": "g33",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "nip04_decrypt",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "decrypt_zap_event/direct",
+      "grants": [
+        {
+          "id": "g34",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "decrypt_zap_event"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "decrypt_zap_event/reject",
+      "grants": [
+        {
+          "id": "g35",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "decrypt_zap_event"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "decrypt_zap_event/via-nip04_decrypt/any-peer",
+      "note": "Trusting an app to decrypt DMs covers zap receipts.",
+      "grants": [
+        {
+          "id": "g36",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "decrypt_zap_event/via-nip04_decrypt/one-peer",
+      "note": "The zap's peer is not known when matching, so a grant for one peer does not cover it (#17).",
+      "grants": [
+        {
+          "id": "g37",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "decrypt_zap_event/via-nip44_decrypt/any-peer",
+      "note": "Trusting an app to decrypt DMs covers zap receipts.",
+      "grants": [
+        {
+          "id": "g38",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "decrypt_zap_event/via-nip44_decrypt/one-peer",
+      "note": "The zap's peer is not known when matching, so a grant for one peer does not cover it (#17).",
+      "grants": [
+        {
+          "id": "g39",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip44_decrypt",
+            "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "decrypt_zap_event/via-encrypt",
+      "grants": [
+        {
+          "id": "g40",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "nip04_encrypt",
+            "peerPubkey": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "decrypt_zap_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "peerPubkey": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "unsupported/never",
+      "grants": [
+        {
+          "id": "g41",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "unsupported",
+            "wire": "unsupported"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "unsupported",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "connect/never",
+      "grants": [
+        {
+          "id": "g42",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "connect"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "expiry/past",
+      "grants": [
+        {
+          "id": "g43",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": "2000-01-01T00:00:00.000Z",
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "expiry/future",
+      "grants": [
+        {
+          "id": "g44",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": "2999-01-01T00:00:00.000Z",
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "package/other",
+      "grants": [
+        {
+          "id": "g45",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.other.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "package/unknown-caller",
+      "grants": [
+        {
+          "id": "g46",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": null,
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "package/own",
+      "note": "A grant for Symudol itself would serve any caller (#11).",
+      "grants": [
+        {
+          "id": "g47",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "io.diogel.symudol",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "io.diogel.symudol",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "identity/other",
+      "grants": [
+        {
+          "id": "g48",
+          "identityPubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/same",
+      "grants": [
+        {
+          "id": "g49",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "certificate/other",
+      "grants": [
+        {
+          "id": "g50",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "DD:EE:FF"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/unknown-caller",
+      "grants": [
+        {
+          "id": "g51",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": null
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/absent-from-grant",
+      "note": "A grant from before certificates were recorded matches any caller.",
+      "grants": [
+        {
+          "id": "g52",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "DD:EE:FF"
+      },
+      "expected": "allow"
+    },
+    {
+      "id": "certificate/null-in-grant",
+      "note": "The certificate could not be read when the grant was made, so it matches no caller (REQ-NIP55-010).",
+      "grants": [
+        {
+          "id": "g53",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": null,
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "DD:EE:FF"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "precedence/reject-beats-allow",
+      "grants": [
+        {
+          "id": "g54",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        },
+        {
+          "id": "g55",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "precedence/broad-reject-beats-kind-allow",
+      "grants": [
+        {
+          "id": "g56",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": 1,
+            "relayUrl": null
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        },
+        {
+          "id": "g57",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "sign_event",
+            "kind": null,
+            "relayUrl": null
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "sign_event",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC",
+        "eventJson": {
+          "kind": 1,
+          "content": "",
+          "tags": [],
+          "created_at": 1777618800
+        }
+      },
+      "expected": "reject"
+    },
+    {
+      "id": "precedence/expired-reject-ignored",
+      "grants": [
+        {
+          "id": "g58",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        },
+        {
+          "id": "g59",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "AA:BB:CC",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": "2000-01-01T00:00:00.000Z",
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "AA:BB:CC"
+      },
+      "expected": "allow"
+    }
+  ]
+}

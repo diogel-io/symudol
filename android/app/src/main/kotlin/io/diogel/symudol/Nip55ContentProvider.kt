@@ -85,44 +85,17 @@ class Nip55ContentProvider : ContentProvider() {
                 Nip55RequestCodec.eventJsonFromProjection(projection)
             } else null
 
-            val eventKind = Nip55RequestCodec.integerKind(eventJson)
+            // Kind, relay (kind 22242) and peer, as the shared case table checks them (#17).
+            val inputs = Nip55PermissionMirror.scopeInputs(
+                method, eventJson, Nip55RequestCodec.peerPubkeyFromProjection(projection),
+            )
+            // A remembered reject wins over an allow.
+            val remembered = permissionMirror.rememberedDecision(
+                callerPackage, method, activePubkey, inputs, callerCertSha256,
+            )
 
-            // Extract relay URL for kind 22242 (NIP-42 relay auth) — needed for
-            // relay-specific grant matching. Normalized to match the Dart side.
-            val relayUrl = if (eventKind == 22242) {
-                eventJson?.let { json ->
-                    try {
-                        val tagsArray = org.json.JSONObject(json).optJSONArray("tags")
-                        var relay: String? = null
-                        if (tagsArray != null) {
-                            for (i in 0 until tagsArray.length()) {
-                                val tag = tagsArray.optJSONArray(i)
-                                if (tag != null && tag.length() >= 2 && tag.optString(0) == "relay") {
-                                    relay = Nip55PermissionMirror.normalizeRelayUrl(tag.optString(1))
-                                    break
-                                }
-                            }
-                        }
-                        relay
-                    } catch (_: Exception) { null }
-                }
-            } else null
-
-            val peerPubkey = when (method) {
-                "nip04_encrypt", "nip04_decrypt", "nip44_encrypt", "nip44_decrypt" ->
-                    Nip55RequestCodec.peerPubkeyFromProjection(projection)
-                else -> null
-            }
-
-            // Check remembered REJECT first — immediate hard no
-            if (permissionMirror.hasRememberedReject(
-                    callerPackage, method, activePubkey,
-                    eventKind = eventKind,
-                    peerPubkey = peerPubkey,
-                    relayUrl = relayUrl,
-                    callerCertSha256 = callerCertSha256,
-                )
-            ) {
+            // Remembered REJECT — immediate hard no
+            if (remembered == "reject") {
                 DiogelLog.d(TAG) { "query: remembered reject for $callerPackage/$method" }
                 return Nip55RequestCodec.rejectedCursor()
             }
@@ -131,14 +104,7 @@ class Nip55ContentProvider : ContentProvider() {
             // If native crypto returns null (signing, which is never native, or a failed
             // self-test), fall through to the Flutter bridge path rather than returning null
             // (which causes the client to send an Intent).
-            if (permissionMirror.hasRememberedAllow(
-                    callerPackage, method, activePubkey,
-                    eventKind = eventKind,
-                    peerPubkey = peerPubkey,
-                    relayUrl = relayUrl,
-                    callerCertSha256 = callerCertSha256,
-                )
-            ) {
+            if (remembered == "allow") {
                 // The pubkey needs no private key: answer from the persisted identity even
                 // while the vault is locked, rather than waiting on the Flutter bridge.
                 if (method == "get_public_key") return publicKeyCursor(activePubkey)

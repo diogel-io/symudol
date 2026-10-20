@@ -75,6 +75,9 @@ class Nip55ApprovalPolicy {
     final scope = _scopeFor(request);
     final matching = grants.where(
       (grant) =>
+          // An allow for any kind is never used: every such signature is
+          // reviewed (#5), and the Kotlin mirror never matches one either.
+          grant.isRememberable &&
           !_isExpired(grant) &&
           grant.identityPubkey == activeIdentityPubkey &&
           _matchesClient(grant, request.clientIdentity) &&
@@ -95,7 +98,7 @@ class Nip55ApprovalPolicy {
 
     return RequireReview(
       _reviewReasonFor(scope, request.clientIdentity),
-      canRemember: request.clientIdentity.packageName != null,
+      canRemember: request.clientIdentity.canBeRemembered,
     );
   }
 
@@ -115,7 +118,7 @@ class Nip55ApprovalPolicy {
             if (tag is List && tag.length >= 2 && tag[0] == 'relay') {
               final url = tag[1];
               if (url is String) {
-                relayUrl = _normalizeRelayUrl(url);
+                relayUrl = normalizeNip55RelayUrl(url);
                 break;
               }
             }
@@ -173,15 +176,5 @@ class Nip55ApprovalPolicy {
   bool _isExpired(Nip55PermissionGrant grant) {
     final expiry = grant.expiresAt;
     return expiry != null && !expiry.isAfter(DateTime.now());
-  }
-
-  /// Normalizes a relay URL for consistent comparison when storing and matching
-  /// kind 22242 permission grants. Trims whitespace, lowercases, strips trailing slash.
-  String? _normalizeRelayUrl(String url) {
-    var normalized = url.trim().toLowerCase();
-    if (normalized.endsWith('/')) {
-      normalized = normalized.substring(0, normalized.length - 1);
-    }
-    return normalized.isEmpty ? null : normalized;
   }
 }

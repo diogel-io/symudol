@@ -141,9 +141,11 @@ void main() {
     // Kind 22242 must NOT be auto-signed without a grant
     expect(provider, isNot(contains('kind 22242 client auth for')));
     expect(provider, isNot(contains('isKind22242')));
-    // Relay URL extraction and relay-aware grant matching must be present
-    expect(provider, contains('relayUrl'));
-    expect(provider, contains('normalizeRelayUrl'));
+    // Relay URL extraction and relay-aware grant matching must be present.
+    // The provider takes its scope inputs from the mirror, which the shared
+    // case table tests (#17).
+    expect(provider, contains('Nip55PermissionMirror.scopeInputs('));
+    expect(mirror, contains('normalizeRelayUrl(tag.optString(1))'));
     expect(mirror, contains('scopeRelayUrl'));
     // Relay URL is normalized during matching (BUG #2 fix: case-insensitive comparison)
     expect(mirror, contains('normalizeRelayUrl(grant.scopeRelayUrl) != normalizeRelayUrl(relayUrl)'));
@@ -166,7 +168,8 @@ void main() {
     });
 
     test('explicit remembered reject returns rejected cursor, not null', () {
-      expect(provider, contains('hasRememberedReject('));
+      expect(provider, contains('rememberedDecision('));
+      expect(provider, contains('if (remembered == "reject")'));
       expect(provider, contains('return Nip55RequestCodec.rejectedCursor()'));
     });
 
