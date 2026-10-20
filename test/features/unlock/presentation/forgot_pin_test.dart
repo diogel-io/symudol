@@ -1,5 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/app/app.dart';
@@ -11,6 +12,7 @@ import 'package:symudol/features/unlock/presentation/pin_lockout_countdown.dart'
 import 'package:symudol/features/unlock/presentation/unlock_vault_screen.dart';
 import 'package:symudol/features/unlock/presentation/widgets/forgot_pin_dialog.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:symudol/features/vault/domain/vault_lockout.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/presentation/setup_vault_screen.dart';
@@ -50,17 +52,53 @@ class _QuietNativeSync extends Nip55NativeMirrorSync {
   Future<void> clearLockDeadline() async {}
 }
 
+/// Identity records that can't be read, as after a Keystore failure.
+class _UnreadableIdentitiesStore extends FakeVaultStore {
+  bool failIdentityReads = false;
+
+  @override
+  Future<List<VaultIdentityRecord>> getIdentities() {
+    if (failIdentityReads) throw PlatformException(code: 'read_failed');
+    return super.getIdentities();
+  }
+}
+
+/// Records whether the vault was already gone when a request was answered,
+/// and can fail the answer as the method channel might.
+class _AnsweringGateway extends FakeNip55Gateway {
+  _AnsweringGateway(this.store);
+
+  final FakeVaultStore store;
+  bool failRejects = false;
+  bool? vaultGoneWhenAnswered;
+
+  @override
+  Future<void> rejectNip55Intent({
+    required String requestToken,
+    String? error,
+    bool rejected = false,
+  }) async {
+    vaultGoneWhenAnswered = await store.getWrappedDek() == null;
+    if (failRejects) throw PlatformException(code: 'reject_failed');
+    return super.rejectNip55Intent(
+      requestToken: requestToken,
+      error: error,
+      rejected: rejected,
+    );
+  }
+}
+
 /// The unlock screen's "Forgot PIN?" (#22): an explanation, then the same
 /// erase as Settings → Wipe Vault, while the vault is locked.
 void main() {
-  late FakeVaultStore store;
-  late FakeNip55Gateway gateway;
+  late _UnreadableIdentitiesStore store;
+  late _AnsweringGateway gateway;
   late String pubkey;
 
   setUp(() async {
     PinLockoutCountdown.stopwatchFactory = () => clock.stopwatch();
-    store = FakeVaultStore();
-    gateway = FakeNip55Gateway();
+    store = _UnreadableIdentitiesStore();
+    gateway = _AnsweringGateway(store);
     // An existing vault with two identities, left locked.
     final setup = VaultServiceImpl(store);
     await setup.createVault('123456');
@@ -192,5 +230,71 @@ void main() {
     expect(gateway.rejectedTokens, contains('token-waiting'));
     expect(gateway.rejectedFlagsByToken['token-waiting'], isFalse);
     expect(container.read(nip55ControllerProvider).isWaitingForUnlock, isFalse);
+  });
+
+  testWidgets('answers the waiting NIP-55 request only after the wipe', (
+    tester,
+  ) async {
+    gateway.initial = {
+      'requestToken': 'token-waiting',
+      'type': 'sign_message',
+      'content': 'hello',
+      'currentUser': pubkey,
+    };
+    await pumpApp(tester);
+
+    await openForgotPin(tester);
+    await eraseThroughDialogs(tester);
+
+    expect(gateway.vaultGoneWhenAnswered, isTrue);
+    expect(
+      gateway.rejectedErrorsByToken['token-waiting'],
+      'The Symudol vault was erased',
+    );
+  });
+
+  testWidgets('still erases when the waiting request cannot be answered', (
+    tester,
+  ) async {
+    gateway
+      ..failRejects = true
+      ..initial = {
+        'requestToken': 'token-waiting',
+        'type': 'sign_message',
+        'content': 'hello',
+        'currentUser': pubkey,
+      };
+    await pumpApp(tester);
+
+    await openForgotPin(tester);
+    await eraseThroughDialogs(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SetupVaultScreen), findsOneWidget);
+    expect(await store.getWrappedDek(), isNull);
+  });
+
+  testWidgets('still erases when the identity records cannot be read', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    store.failIdentityReads = true;
+
+    await openForgotPin(tester);
+    await tester.tap(find.text('Erase and start again'));
+    await tester.pumpAndSettle();
+    expect(find.text('• Every identity and its private key'), findsOneWidget);
+    expect(find.text('• 0 NIP-46 connections'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('wipeVaultConfirmationField')),
+      'WIPE',
+    );
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Wipe vault'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SetupVaultScreen), findsOneWidget);
+    expect(await store.getWrappedDek(), isNull);
   });
 }

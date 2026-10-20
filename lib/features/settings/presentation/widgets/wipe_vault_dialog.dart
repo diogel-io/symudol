@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/diogel_log.dart';
 
 import '../../../../theme/tokens.dart';
 import '../../../nip46/application/nip46_providers.dart';
@@ -13,16 +14,25 @@ import '../../../vault/presentation/vault_failure_messages.dart';
 /// Works locked or unlocked: the counts come from the stored identity and
 /// session records, which hold no secrets. Afterwards the app shows setup.
 Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
-  final identities = await ref.read(vaultStoreProvider).getIdentities();
+  // The counts only inform the confirmation: a store that can't be read
+  // must still be erasable, so the dialog names what is lost without them.
+  final identityCount = await _countOrNull(
+    'identities',
+    () async => (await ref.read(vaultStoreProvider).getIdentities()).length,
+  );
   // Read from the store: the NIP-46 controller starts relays when created.
-  final sessions = await ref.read(nip46SessionStoreProvider).listSessions();
+  final connectionCount = await _countOrNull(
+    'NIP-46 sessions',
+    () async =>
+        (await ref.read(nip46SessionStoreProvider).listSessions()).length,
+  );
   if (!context.mounted) return;
 
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => WipeVaultDialog(
-      identityCount: identities.length,
-      connectionCount: sessions.length,
+      identityCount: identityCount,
+      connectionCount: connectionCount,
     ),
   );
   if (confirmed != true || !context.mounted) return;
@@ -31,19 +41,44 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
   final controller = ref.read(vaultControllerProvider.notifier);
   final nip55 = ref.read(nip55ControllerProvider.notifier);
   Navigator.of(context).popUntil((route) => route.isFirst);
-  // A client waiting for an unlock gets its answer now, not a timeout.
-  if (ref.read(nip55ControllerProvider).isWaitingForUnlock) {
-    await nip55.cancelPendingExternalRequest(
-      error: 'The Symudol vault was erased',
-      rejected: false,
-    );
-  }
   // The app switches to setup once the vault is gone.
   final failure = await controller.wipe();
   if (failure != null) {
     messenger.showSnackBar(
       SnackBar(content: Text(vaultFailureMessage(failure))),
     );
+  }
+  // A client waiting for an unlock gets its answer now, not a timeout. Only
+  // after the wipe: answering hands the user back to the client, and a
+  // failure to answer must not stop the erase they confirmed.
+  if (ref.read(nip55ControllerProvider).isWaitingForUnlock) {
+    try {
+      await nip55.cancelPendingExternalRequest(
+        error: failure == null
+            ? 'The Symudol vault was erased'
+            : 'The Symudol vault could not be erased',
+        rejected: false,
+      );
+    } catch (e, stack) {
+      diogelLog(
+        'confirmAndWipeVault: could not answer the waiting NIP-55 request',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+  }
+}
+
+Future<int?> _countOrNull(String name, Future<int> Function() count) async {
+  try {
+    return await count();
+  } catch (e, stack) {
+    diogelLog(
+      'confirmAndWipeVault: could not count $name',
+      error: e,
+      stackTrace: stack,
+    );
+    return null;
   }
 }
 
@@ -54,8 +89,10 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
 class WipeVaultDialog extends StatefulWidget {
   static const String confirmationWord = 'WIPE';
 
-  final int identityCount;
-  final int connectionCount;
+  /// Null when the stored records could not be read: the dialog then names
+  /// every identity and connection without a count.
+  final int? identityCount;
+  final int? connectionCount;
 
   const WipeVaultDialog({
     super.key,
@@ -85,11 +122,17 @@ class _WipeVaultDialogState extends State<WipeVaultDialog> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final identityCount = widget.identityCount;
+    final connectionCount = widget.connectionCount;
     final lost = [
-      '${_plural(widget.identityCount, 'identity', 'identities')} and '
-          '${widget.identityCount == 1 ? 'its private key' : 'their private keys'}',
+      identityCount == null
+          ? 'Every identity and its private key'
+          : '${_plural(identityCount, 'identity', 'identities')} and '
+                '${identityCount == 1 ? 'its private key' : 'their private keys'}',
       'Every Trusted app permission',
-      _plural(widget.connectionCount, 'NIP-46 connection', 'NIP-46 connections'),
+      connectionCount == null
+          ? 'Every NIP-46 connection'
+          : _plural(connectionCount, 'NIP-46 connection', 'NIP-46 connections'),
     ];
 
     return AlertDialog(
