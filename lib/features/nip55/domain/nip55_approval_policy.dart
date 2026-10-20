@@ -98,7 +98,7 @@ class Nip55ApprovalPolicy {
 
     return RequireReview(
       _reviewReasonFor(scope, request.clientIdentity),
-      canRemember: request.clientIdentity.packageName != null,
+      canRemember: request.clientIdentity.canBeRemembered,
     );
   }
 

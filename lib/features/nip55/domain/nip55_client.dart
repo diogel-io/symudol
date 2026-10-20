@@ -13,6 +13,11 @@ class Nip55ClientIdentity {
     this.provenanceVerified = false,
   });
 
+  /// Whether a decision for this caller can be remembered: it needs the
+  /// package and the signing certificate, since a grant without the
+  /// certificate would match no caller (REQ-NIP55-010, #17).
+  bool get canBeRemembered => packageName != null && certificateSha256 != null;
+
   String get displayName {
     final label = appLabel?.trim();
     if (label != null && label.isNotEmpty) return label;

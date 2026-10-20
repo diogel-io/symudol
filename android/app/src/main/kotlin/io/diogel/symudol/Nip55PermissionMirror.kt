@@ -50,10 +50,8 @@ class Nip55PermissionMirror(private val context: Context) {
          * What the ContentProvider extracts from a request for scope matching: the integer
          * event kind, the normalized relay of a kind 22242 auth event, and the peer, which only
          * nip04/nip44 methods use. Pure, so the shared case table runs what the provider passes
-         * (diogel-io/symudol#17).
+         * (diogel-io/symudol#17). See [ScopeInputs].
          */
-        data class ScopeInputs(val eventKind: Int?, val peerPubkey: String?, val relayUrl: String?)
-
         internal fun scopeInputs(method: String, eventJson: String?, projectedPeer: String?): ScopeInputs {
             val eventKind = if (method == "sign_event") Nip55RequestCodec.integerKind(eventJson) else null
             val relayUrl = if (eventKind == 22242) relayTag(eventJson) else null
@@ -289,6 +287,9 @@ class Nip55PermissionMirror(private val context: Context) {
 
     // ── Grant model ──────────────────────────────────────────────────────
 
+    /** What a request carries for scope matching: see [scopeInputs]. */
+    data class ScopeInputs(val eventKind: Int?, val peerPubkey: String?, val relayUrl: String?)
+
     data class Grant(
         val id: String,
         val identityPubkey: String,
@@ -327,53 +328,6 @@ class Nip55PermissionMirror(private val context: Context) {
     ): String? = decide(
         listGrants(), context.packageName, callerPackage, method, identityPubkey, inputs, callerCertSha256,
     )
-
-    /**
-     * Check whether a remembered [allow] grant exists for the given
-     * (caller, method, identity) combination.
-     *
-     * Matching rules (must match the Dart [Nip55ApprovalPolicy]):
-     * - packageName must match exactly
-     * - identityPubkey must match the active identity
-     * - scope must match (see [scopeMatches] for wildcard rules)
-     * - decision must be "allow"
-     * - grant must not be expired
-     */
-    fun hasRememberedAllow(
-        callerPackage: String?,
-        method: String,
-        identityPubkey: String,
-        eventKind: Int? = null,
-        peerPubkey: String? = null,
-        relayUrl: String? = null,
-        callerCertSha256: String? = null,
-    ): Boolean {
-        if (callerPackage == context.packageName) return false
-        return matches(
-            listGrants(), "allow", callerPackage, method, identityPubkey,
-            eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
-        )
-    }
-
-    /**
-     * Check whether a remembered [reject] grant exists for the given
-     * (caller, method, identity) combination.
-     */
-    fun hasRememberedReject(
-        callerPackage: String?,
-        method: String,
-        identityPubkey: String,
-        eventKind: Int? = null,
-        peerPubkey: String? = null,
-        relayUrl: String? = null,
-        callerCertSha256: String? = null,
-    ): Boolean {
-        if (callerPackage == context.packageName) return false
-        return matches(
-            listGrants(), "reject", callerPackage, method, identityPubkey,
-            eventKind, peerPubkey, relayUrl, callerCertSha256, System.currentTimeMillis(),
-        )
-    }
 
     // ── Active identity ──────────────────────────────────────────────────
 

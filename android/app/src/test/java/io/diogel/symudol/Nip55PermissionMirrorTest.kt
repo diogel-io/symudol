@@ -355,7 +355,7 @@ class Nip55PermissionMirrorTest {
     // ════════════════════════════════════════════════════════════════════
 
     /**
-     * Simulates hasRememberedAllow logic without Android SharedPreferences.
+     * A remembered allow through the pure matcher, without Android SharedPreferences.
      */
     private fun hasRememberedAllow(
         grants: List<Grant>,

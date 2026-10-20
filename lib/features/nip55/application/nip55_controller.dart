@@ -455,7 +455,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return {'rejected': decision.reason};
     }
     if (decision is! AutoAllow ||
-        !_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+        !_canUseRememberedGrantWithoutReview(decision.grant)) {
       return null;
     }
 
@@ -559,7 +559,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
     if (decision is AutoAllow) {
-      if (!_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+      if (!_canUseRememberedGrantWithoutReview(decision.grant)) {
         state = state.copyWith(
           isLoading: false,
           pendingIncoming: incoming,
@@ -622,7 +622,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
 
     if (decision is AutoAllow &&
-        _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+        _canUseRememberedGrantWithoutReview(decision.grant)) {
       await _completeRememberedSignEvent(
         incoming: incoming,
         activeIdentity: activeIdentity,
@@ -692,7 +692,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
     if (decision is AutoAllow &&
-        _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+        _canUseRememberedGrantWithoutReview(decision.grant)) {
       await _markGrantUsed(decision.grant);
       await _completeCryptoOperation(incoming);
       return;
@@ -1051,7 +1051,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return true;
     }
     if (decision is! AutoAllow ||
-        !_canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+        !_canUseRememberedGrantWithoutReview(decision.grant)) {
       return false;
     }
 
@@ -1182,13 +1182,14 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // offers no timeframe (#10). Such a request is rejected before review.
     return state.pendingSigningRequestId == requestId &&
         state.pendingIncoming?.eventJson?['kind'] is int &&
-        state.pendingIncoming?.clientIdentity.packageName != null &&
+        state.pendingIncoming?.clientIdentity.canBeRemembered == true &&
         state.pendingIncoming?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
 
   bool canSelectTimeframeForPendingPublicKeyRequest() {
-    return state.pendingPublicKeyRequest?.clientIdentity.packageName != null &&
+    return state.pendingPublicKeyRequest?.clientIdentity.canBeRemembered ==
+            true &&
         state.pendingPublicKeyRequest?.webReturnOptions.isBrowserFlow != true &&
         _permissionStore != null;
   }
@@ -1237,9 +1238,12 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   }) async {
     final store = _permissionStore;
     final packageName = incoming.clientIdentity.packageName;
+    final certificate = incoming.clientIdentity.certificateSha256;
     // Never for Symudol itself: such a grant would serve any caller (#11).
+    // Never without the certificate either: it would match no caller (#17).
     if (store == null ||
         packageName == null ||
+        certificate == null ||
         packageName == symudolPackageName) {
       return;
     }
@@ -1247,9 +1251,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
       identityPubkey: identityPubkey,
       packageName: packageName,
-      // Unreadable: the grant then matches no caller, here and natively (#17).
-      certificateSha256:
-          incoming.clientIdentity.certificateSha256 ?? nip55UnresolvedCertificate,
+      certificateSha256: certificate,
       scope: scope,
       decision: decision,
       createdAt: _now(),
@@ -1380,62 +1382,19 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return expiresAt != null && expiresAt.isAfter(_now());
   }
 
-  bool _canUseRememberedGrantWithoutReview(
-    Nip55IncomingRequest incoming,
-    Nip55PermissionGrant grant,
-  ) {
-    if (_isRememberedClientAuthentication(incoming, grant)) return true;
-    if (_isRememberedScopedDecrypt(incoming, grant)) return true;
-    // Any explicitly saved non-broad grant can auto-approve without a live
-    // approval session. The policy's _isExpired check already filtered out
-    // expired grants before returning AutoAllow, so no extra check is needed.
+  bool _canUseRememberedGrantWithoutReview(Nip55PermissionGrant grant) {
+    // The policy already matched [grant] to [incoming] (expiry, client,
+    // identity and scope, the rules the shared case table checks against the
+    // Kotlin mirror, #17), so any non-broad grant can auto-approve without a
+    // live approval session.
     if (!grant.scope.isBroad) return true;
     // Broad scopes (wildcard sign_event with null kind) still require the
     // approval session as a safety gate.
     return _canUseApprovalSession(grant);
   }
 
-  bool _isRememberedClientAuthentication(
-    Nip55IncomingRequest incoming,
-    Nip55PermissionGrant grant,
-  ) {
-    if (!_isClientAuthenticationRequest(incoming)) return false;
-    final grantScope = grant.scope;
-    return grantScope is SignEventScope && grantScope.kind == 22242;
-  }
-
-  bool _isRememberedScopedDecrypt(
-    Nip55IncomingRequest incoming,
-    Nip55PermissionGrant grant,
-  ) {
-    // Build the requested scope using the actual peer pubkey from the
-    // incoming request — NOT the controller's _scopeFor which always
-    // uses null/wildcard for decrypt.  The wildcard _scopeFor is correct
-    // for *saving* grants (trust-all-DMs policy) but breaks *matching*
-    // peer-scoped grants because it strips the peer.  This must match
-    // Nip55ApprovalPolicy._scopeFor which preserves the peer.
-    //
-    // decrypt_zap_event is also matched here: a nip04_decrypt/nip44_decrypt
-    // grant for any peer covers zap receipts, which are NIP-04 encrypted to
-    // the recipient. Matching is Nip55PermissionScope.matches, the rule the
-    // shared case table checks against the Kotlin mirror (#17).
-    final requested = switch (incoming.method) {
-      Nip55Method.nip04Decrypt => Nip04DecryptScope(incoming.pubkey),
-      Nip55Method.nip44Decrypt => Nip44DecryptScope(incoming.pubkey),
-      Nip55Method.decryptZapEvent => const DecryptZapEventScope(),
-      _ => null,
-    };
-    if (requested == null) return false;
-    final grantScope = grant.scope;
-    return switch (grantScope) {
-      Nip04DecryptScope() || Nip44DecryptScope() || DecryptZapEventScope() =>
-        grantScope.matches(requested),
-      _ => false,
-    };
-  }
-
   bool _canRememberCryptoRequest(Nip55IncomingRequest request) {
-    if (request.clientIdentity.packageName == null ||
+    if (!request.clientIdentity.canBeRemembered ||
         request.webReturnOptions.isBrowserFlow == true ||
         _permissionStore == null) {
       return false;
@@ -1564,7 +1523,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       }
       final decision = await _decide(incoming, activeIdentity.publicKey);
       if (decision is AutoAllow &&
-          _canUseRememberedGrantWithoutReview(incoming, decision.grant)) {
+          _canUseRememberedGrantWithoutReview(decision.grant)) {
         // Dispatch to the appropriate completion handler
         if (incoming.method == Nip55Method.signEvent) {
           await _completeRememberedSignEvent(

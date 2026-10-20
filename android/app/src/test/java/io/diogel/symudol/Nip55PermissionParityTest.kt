@@ -14,14 +14,15 @@ import java.io.File
  * one matcher without the other fails one of the two (diogel-io/symudol#17).
  */
 class Nip55PermissionParityTest {
-    private val table: JSONObject by lazy { JSONObject(fixture().readText()) }
+    private val table: JSONObject by lazy {
+        JSONObject(File(projectRoot(), "test/features/nip55/fixtures/permission_matching_cases.json").readText())
+    }
 
     /** Gradle runs unit tests from android/app; the fixture lives beside the Dart tests. */
-    private fun fixture(): File {
+    private fun projectRoot(): File {
         var dir: File? = File(System.getProperty("user.dir")).absoluteFile
         while (dir != null && !File(dir, "pubspec.yaml").exists()) dir = dir.parentFile
-        checkNotNull(dir) { "no pubspec.yaml above ${System.getProperty("user.dir")}" }
-        return File(dir, "test/features/nip55/fixtures/permission_matching_cases.json")
+        return checkNotNull(dir) { "no pubspec.yaml above ${System.getProperty("user.dir")}" }
     }
 
     private fun JSONObject.stringOrNull(key: String): String? =
@@ -65,13 +66,20 @@ class Nip55PermissionParityTest {
         }
     }
 
-    /** A new scope type needs cases before either matcher can claim to handle it. */
+    /**
+     * A new scope type needs cases before either matcher can claim to handle it. The types are
+     * the ones Dart's Nip55PermissionScope.fromJson reads, taken from its source, plus the
+     * "unsupported" fallback, since Dart writes every grant this side reads.
+     */
     @Test
     fun everyScopeTypeHasACase() {
-        val scopeTypes = setOf(
-            "get_public_key", "sign_event", "sign_message", "nip04_encrypt", "nip04_decrypt",
-            "nip44_encrypt", "nip44_decrypt", "decrypt_zap_event", "connect", "unsupported",
+        val source = File(projectRoot(), "lib/features/nip55/domain/nip55_permission_scope.dart").readText()
+        val fromJson = source.substring(
+            source.indexOf("static Nip55PermissionScope fromJson"),
+            source.indexOf("_ => UnsupportedScope("),
         )
+        val scopeTypes = Regex("'([a-z0-9_]+)' =>").findAll(fromJson).map { it.groupValues[1] }.toSet() + "unsupported"
+        assertTrue("found the scope types in fromJson", scopeTypes.size > 5)
         val cases = table.getJSONArray("cases")
         val covered = mutableSetOf<String>()
         for (i in 0 until cases.length()) {

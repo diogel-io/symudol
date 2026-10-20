@@ -222,7 +222,7 @@ void main() {
     );
 
     test(
-      'a grant remembered without the caller certificate matches no caller',
+      'a caller without a certificate is never remembered (#17)',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         final permissionController = Nip55Controller(
@@ -239,16 +239,19 @@ void main() {
         });
         final request = requestController.state.requests.single;
 
+        // A grant without the certificate would match no caller, so no
+        // timeframe is offered and "Always" saves nothing.
+        expect(
+          permissionController.canRememberPendingSigningRequest(request.id),
+          isFalse,
+        );
         await permissionController.approveSigningRequest(
           request.id,
           timeframe: Nip55ApprovalTimeframe.always,
         );
 
-        // As the Kotlin mirror reads a null certificate (#17).
-        expect(
-          permissionStore.grants.single.certificateSha256,
-          nip55UnresolvedCertificate,
-        );
+        expect(permissionStore.grants, isEmpty);
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
       },
     );
 
@@ -267,6 +270,7 @@ void main() {
         await permissionController.handleRawIntent({
           ...signEventRaw(),
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
         });
         final request = requestController.state.requests.single;
 
@@ -304,6 +308,7 @@ void main() {
           'id': 'fail',
           'currentUser': vaultController.state.activeIdentity!.publicKey,
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
         });
         final request = requestController.state.requests.single;
 
@@ -862,6 +867,7 @@ void main() {
         'requestToken': 'pk-token',
         'type': 'get_public_key',
         'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
       });
 
       await permissionController.approvePublicKeyRequest(
@@ -901,6 +907,7 @@ void main() {
               'requestToken': 'pk-token',
               'type': 'get_public_key',
               'callingPackage': 'com.example.app',
+              'callerCertificateSha256': 'AA:BB',
               'permissions': permissions,
             });
 
@@ -928,6 +935,7 @@ void main() {
             ...signEventRaw(),
             'content': '{"content":"hello","tags":[]}',
             'callingPackage': 'com.example.app',
+            'callerCertificateSha256': 'AA:BB',
           });
 
           expect(requestController.state.requests, isEmpty);
@@ -945,6 +953,7 @@ void main() {
               ...signEventRaw(),
               'content': content,
               'callingPackage': 'com.example.app',
+              'callerCertificateSha256': 'AA:BB',
             });
 
         controller.state = controller.state.copyWith(
@@ -1103,6 +1112,7 @@ void main() {
           'requestToken': 'pk-token',
           'type': 'get_public_key',
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
         });
         final before = DateTime.now();
 
@@ -1135,6 +1145,7 @@ void main() {
         await controller.handleRawIntent({
           ...signEventRaw(),
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
         });
         final request = requestController.state.requests.single;
         await requestController.rejectRequest(request.id);
@@ -1160,6 +1171,7 @@ void main() {
           'requestToken': 'pk-token',
           'type': 'get_public_key',
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
         });
 
         await controller.rejectPublicKeyRequest(
@@ -2272,6 +2284,7 @@ void main() {
           'requestToken': 'token-connect-once',
           'type': 'get_public_key',
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
           'permissions': '[{"type":"sign_event","kind":1}]',
         });
 
@@ -2334,6 +2347,7 @@ void main() {
           'requestToken': 'token-ping',
           'type': 'get_public_key',
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
           'permissions': 'ping get_public_key',
         });
 
@@ -2363,6 +2377,7 @@ void main() {
           'requestToken': 'token-unknown',
           'type': 'get_public_key',
           'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
           'permissions': 'unknown_token get_public_key',
         });
 

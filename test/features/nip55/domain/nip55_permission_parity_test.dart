@@ -43,18 +43,23 @@ void main() {
         for (final g in (c['grants'] as List).cast<Map<String, Object?>>())
           (g['scope'] as Map)['type'],
     };
-    expect(covered, {
-      'get_public_key',
-      'sign_event',
-      'sign_message',
-      'nip04_encrypt',
-      'nip04_decrypt',
-      'nip44_encrypt',
-      'nip44_decrypt',
-      'decrypt_zap_event',
-      'connect',
+    // Every type Nip55PermissionScope.fromJson reads, from its source, so a
+    // new scope fails here until the table has cases for it. Anything else is
+    // read as unsupported.
+    final source = File(
+      'lib/features/nip55/domain/nip55_permission_scope.dart',
+    ).readAsStringSync();
+    final fromJson = source.substring(
+      source.indexOf('static Nip55PermissionScope fromJson'),
+      source.indexOf('_ => UnsupportedScope('),
+    );
+    final types = {
+      for (final m in RegExp(r"'([a-z0-9_]+)' =>").allMatches(fromJson))
+        m.group(1),
       'unsupported',
-    });
+    };
+    expect(types, hasLength(greaterThan(5)));
+    expect(covered, types);
   });
 
   group('certificate in stored grants', () {

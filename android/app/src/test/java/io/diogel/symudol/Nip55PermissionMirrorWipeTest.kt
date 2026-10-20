@@ -19,6 +19,7 @@ import org.robolectric.RobolectricTestRunner
 class Nip55PermissionMirrorWipeTest {
     private val identity = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
     private val client = "com.example.client"
+    private val noInputs = Nip55PermissionMirror.ScopeInputs(null, null, null)
 
     private lateinit var context: Context
     private lateinit var mirror: Nip55PermissionMirror
@@ -48,12 +49,12 @@ class Nip55PermissionMirrorWipeTest {
 
     @Test
     fun wipe_clearsGrantsActivePubkeyAndLegacyRejects() {
-        assertTrue(mirror.hasRememberedAllow(client, "get_public_key", identity))
+        assertTrue(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
 
         assertTrue(mirror.wipe())
 
         assertTrue(mirror.listGrants().isEmpty())
-        assertFalse(mirror.hasRememberedAllow(client, "get_public_key", identity))
+        assertFalse(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
         assertNull(mirror.getActiveIdentityPubkey())
         assertTrue(legacyPrefs().all.isEmpty())
     }

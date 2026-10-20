@@ -455,7 +455,11 @@ class Nip55ContentProviderTest {
         val mirror = Nip55PermissionMirror(context)
 
         assertEquals(listOf(client), mirror.listGrants().map { it.packageName })
-        assertFalse(mirror.hasRememberedAllow(appId, "sign_event", pubKey, eventKind = 1, callerCertSha256 = cert()))
+        assertNull(
+            mirror.rememberedDecision(
+                appId, "sign_event", pubKey, Nip55PermissionMirror.ScopeInputs(1, null, null), cert(),
+            ),
+        )
     }
 
     @Test
