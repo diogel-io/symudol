@@ -5,7 +5,7 @@ import android.content.Intent
 /**
  * Which NIP-55 requests [MainActivity] is handling, and where their answers go.
  *
- * Moved out of MainActivity (a FlutterActivity, which can't run in a JVM test with its engine) so
+ * Moved out of MainActivity (a FlutterFragmentActivity, which can't run in a JVM test with its engine) so
  * the security-relevant part is tested directly (diogel-io/symudol#68):
  * - a request is only what [Nip55BridgeActivity] registered in [Nip55Handoff]; nothing in the
  *   intent but its token is read (#7);

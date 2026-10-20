@@ -8,6 +8,17 @@ class MonotonicInstant {
 
   const MonotonicInstant({required this.elapsedMs, required this.bootCount});
 
+  Map<String, dynamic> toJson() => {
+    'elapsedMs': elapsedMs,
+    'bootCount': bootCount,
+  };
+
+  factory MonotonicInstant.fromJson(Map<String, dynamic> json) =>
+      MonotonicInstant(
+        elapsedMs: json['elapsedMs'] as int,
+        bootCount: json['bootCount'] as int,
+      );
+
   @override
   String toString() =>
       'MonotonicInstant(elapsedMs: $elapsedMs, bootCount: $bootCount)';

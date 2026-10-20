@@ -14,14 +14,15 @@ import android.os.Looper
 import android.view.WindowManager
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentHashMap
 import java.lang.ref.WeakReference
 
-class MainActivity : FlutterActivity() {
+// A FragmentActivity, for BiometricPrompt (#23).
+class MainActivity : FlutterFragmentActivity() {
     private val TAG = "Diogel-MainActivity"
     private enum class CompletionAction { NONE, FINISH, BACKGROUND }
 
@@ -80,6 +81,10 @@ class MainActivity : FlutterActivity() {
             }
             result.success(null)
         }
+        // Biometric unlock: the Keystore key that wraps the DEK, and its prompt (#23).
+        val biometricVault = BiometricVault(this)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BiometricVault.CHANNEL)
+            .setMethodCallHandler(biometricVault::handle)
         // PIN lockouts are timed on this, not the wall clock (#16).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MonotonicClock.CHANNEL).setMethodCallHandler { call, result ->
             if (call.method != "now") return@setMethodCallHandler result.notImplemented()

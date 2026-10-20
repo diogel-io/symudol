@@ -203,6 +203,11 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       _inBackground = false;
       _backgroundLockTimer?.cancel();
       unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
+      // A fingerprint may have been added in Android settings meanwhile, so
+      // Settings and the unlock screen show what the phone can do now (#23).
+      unawaited(
+        ref.read(vaultControllerProvider.notifier).refreshBiometricUnlock(),
+      );
       // Force reset on resume regardless of throttle
       _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
       _resetInactivityTimer();

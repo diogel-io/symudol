@@ -9,9 +9,12 @@ import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/signing/domain/nostr_crypto_service.dart';
+import 'package:symudol/features/vault/data/platform_biometric_vault.dart';
 import 'package:symudol/features/vault/data/platform_monotonic_clock.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
+import 'package:symudol/features/vault/domain/biometric_unlock_status.dart';
+import 'package:symudol/features/vault/domain/biometric_vault.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/monotonic_clock.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
@@ -60,6 +63,10 @@ class VaultServiceImpl implements VaultService {
   /// The longest lockout a run of failed PINs earns.
   static const Duration maxLockout = Duration(hours: 24);
 
+  /// How long biometric unlock works after the last PIN check (#23). A
+  /// restart also asks for the PIN.
+  static const Duration biometricPinInterval = Duration(hours: 72);
+
   /// Marks the key envelope storage format (#16).
   static const String storeVersion = '2';
 
@@ -93,6 +100,7 @@ class VaultServiceImpl implements VaultService {
   final NostrCryptoService _cryptoService;
   final VaultCryptoService _vaultCryptoService;
   final MonotonicClock _clock;
+  final BiometricVault _biometricVault;
   final Nip55PermissionStore? _nip55PermissionStore;
   final Nip46SessionStore? _nip46SessionStore;
   final Future<void> Function()? _wipeNativeState;
@@ -105,6 +113,7 @@ class VaultServiceImpl implements VaultService {
     NostrCryptoService cryptoService = const DartNostrCryptoService(),
     VaultCryptoService? vaultCryptoService,
     MonotonicClock clock = const PlatformMonotonicClock(),
+    BiometricVault biometricVault = const PlatformBiometricVault(),
     Nip55PermissionStore? nip55PermissionStore,
     Nip46SessionStore? nip46SessionStore,
     Future<void> Function()? wipeNativeState,
@@ -112,6 +121,7 @@ class VaultServiceImpl implements VaultService {
        _vaultCryptoService =
            vaultCryptoService ?? const PointyCastleVaultCryptoService(),
        _clock = clock,
+       _biometricVault = biometricVault,
        _nip55PermissionStore = nip55PermissionStore,
        _nip46SessionStore = nip46SessionStore,
        _wipeNativeState = wipeNativeState;
@@ -188,6 +198,11 @@ class VaultServiceImpl implements VaultService {
     if (wipeNativeState != null) {
       await _attemptWipeStep('native NIP-55 state', wipeNativeState, failed);
     }
+    await _attemptWipeStep(
+      'biometric key',
+      _biometricVault.deleteKey,
+      failed,
+    );
     if (nip46SessionStore != null) {
       await _attemptWipeStep(
         'NIP-46 sessions',
@@ -246,6 +261,7 @@ class VaultServiceImpl implements VaultService {
     await _store.setVersion(storeVersion);
     await _store.setFailedUnlockAttempts(0);
     await _store.setLockout(null);
+    await _store.setPinVerifiedAt(await _clock.now());
 
     _dek = dek;
     _state = const VaultUnlocked();
@@ -268,7 +284,11 @@ class VaultServiceImpl implements VaultService {
   Future<void> _unlock(String pin) async {
     final (:envelope, :dek) = await _checkPin(pin);
     await _upgradeKeyEnvelope(pin, envelope, dek);
+    await _openWith(dek);
+  }
 
+  /// Opens the vault with [dek], from the PIN or a biometric.
+  Future<void> _openWith(Uint8List dek) async {
     _dek = dek;
     _state = const VaultUnlocked();
 
@@ -327,8 +347,121 @@ class VaultServiceImpl implements VaultService {
 
     await _store.setFailedUnlockAttempts(0);
     await _store.setLockout(null);
+    // Biometric unlock works for 72 hours from here, on this boot (#23).
+    await _store.setPinVerifiedAt(now);
     return (envelope: envelope, dek: dek);
   }
+
+  @override
+  Future<BiometricUnlockStatus> getBiometricUnlockStatus() async {
+    final enabled = await _store.getBiometricWrap() != null;
+    BiometricAvailability availability;
+    try {
+      availability = await _biometricVault.availability();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultService: could not read biometric availability',
+        error: e,
+        stackTrace: stack,
+      );
+      availability = BiometricAvailability.unavailable;
+    }
+    return BiometricUnlockStatus(
+      enabled: enabled,
+      availability: availability,
+      pinRequired: enabled && await _biometricNeedsPin(),
+    );
+  }
+
+  /// Whether the PIN must be entered before a biometric unlock: on a new
+  /// boot, if the clock went back, or [biometricPinInterval] after the last
+  /// PIN check.
+  Future<bool> _biometricNeedsPin() async {
+    final verifiedAt = await _store.getPinVerifiedAt();
+    if (verifiedAt == null) return true;
+    final now = await _clock.now();
+    if (now.bootCount != verifiedAt.bootCount) return true;
+    final sinceMs = now.elapsedMs - verifiedAt.elapsedMs;
+    return sinceMs < 0 || sinceMs >= biometricPinInterval.inMilliseconds;
+  }
+
+  @override
+  Future<void> enableBiometricUnlock(String pin) async {
+    _checkUnlocked();
+    if (await _biometricVault.availability() !=
+        BiometricAvailability.available) {
+      throw const BiometricUnavailableException();
+    }
+    await _queued(() async {
+      final (envelope: _, :dek) = await _checkPin(pin);
+      try {
+        final wrap = await _biometricVault.wrap(dek);
+        try {
+          await _store.setBiometricWrap(wrap);
+        } catch (e, stack) {
+          diogelLog(
+            'VaultService: could not save the biometric wrap',
+            error: e,
+            stackTrace: stack,
+          );
+          await _deleteBiometricKey();
+          throw const VaultStorageException(
+            'Could not turn on biometric unlock',
+          );
+        }
+      } finally {
+        // A copy from the envelope; the session keeps its own.
+        dek.fillRange(0, dek.length, 0);
+      }
+    });
+  }
+
+  @override
+  Future<void> disableBiometricUnlock() async {
+    await _store.setBiometricWrap(null);
+    await _deleteBiometricKey();
+  }
+
+  Future<void> _deleteBiometricKey() async {
+    try {
+      await _biometricVault.deleteKey();
+    } catch (e, stack) {
+      // The wrap is gone, so a key left behind opens nothing.
+      diogelLog(
+        'VaultService: could not delete the biometric key',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+  }
+
+  @override
+  Future<void> unlockWithBiometric() => _queued(() async {
+    if (await _store.getKeyEnvelope() == null) {
+      throw const VaultNotFoundException();
+    }
+    final wrap = await _store.getBiometricWrap();
+    if (wrap == null) throw const BiometricUnavailableException();
+    if (await _biometricNeedsPin()) {
+      throw const BiometricPinRequiredException();
+    }
+
+    final Uint8List dek;
+    try {
+      dek = await _biometricVault.unwrap(wrap);
+    } on BiometricKeyInvalidatedException {
+      // A fingerprint was added, or the screen lock removed: the key is gone
+      // for good, and the PIN still works.
+      await disableBiometricUnlock();
+      rethrow;
+    }
+
+    // The owner is proven: the PIN guesses before this are forgiven, as a
+    // correct PIN would forgive them (#23).
+    await _store.setFailedUnlockAttempts(0);
+    await _store.setLockout(null);
+    await _openWith(dek);
+  });
 
   /// Changing the PIN re-wraps the same DEK, so identities, NIP-55 grants and
   /// NIP-46 sessions are untouched. The new envelope is one write: an
