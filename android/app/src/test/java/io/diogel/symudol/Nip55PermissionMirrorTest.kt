@@ -220,15 +220,12 @@ class Nip55PermissionMirrorTest {
     }
 
     @Test
-    fun testDecryptZapEvent_specificPeerNip04DecryptSatisfiesOnlyThatPeer() {
-        // The shipped matcher keeps a decrypt grant's peer for zap receipts.
-        // The copy this test used to exercise ignored it, so it asserted
-        // behaviour the ContentProvider never had. (Dart ignores the peer here;
-        // Kotlin is the stricter side. Symudol saves decrypt grants with no
-        // peer, so the two agree in practice.)
+    fun testDecryptZapEvent_specificPeerNip04DecryptDoesNotSatisfy() {
+        // The provider passes no peer for a zap, so a decrypt grant for one peer never covers
+        // one, whatever peer is given here; Dart applies the same rule (#17).
         val grant = makeGrant(scopeType = "nip04_decrypt", scopePeerPubkey = peerA)
-        assertTrue(scopeMatches(grant, "decrypt_zap_event", null, peerA))
-        assertFalse(scopeMatches(grant, "decrypt_zap_event", null, peerB))
+        assertFalse(scopeMatches(grant, "decrypt_zap_event", null, null))
+        assertFalse(scopeMatches(grant, "decrypt_zap_event", null, peerA))
     }
 
     @Test

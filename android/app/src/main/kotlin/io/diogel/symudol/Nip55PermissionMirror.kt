@@ -37,13 +37,78 @@ class Nip55PermissionMirror(private val context: Context) {
         /**
          * Normalizes a relay URL for consistent storage and matching.
          * Trims whitespace, lowercases, strips trailing slash.
-         * Must match [Nip55ApprovalPolicy._normalizeRelayUrl] on the Dart side.
+         * Must match `normalizeNip55RelayUrl` on the Dart side.
          */
         fun normalizeRelayUrl(url: String?): String? {
             if (url.isNullOrBlank()) return null
             var normalized = url.trim().lowercase()
             if (normalized.endsWith("/")) normalized = normalized.dropLast(1)
             return normalized.ifEmpty { null }
+        }
+
+        /**
+         * What the ContentProvider extracts from a request for scope matching: the integer
+         * event kind, the normalized relay of a kind 22242 auth event, and the peer, which only
+         * nip04/nip44 methods use. Pure, so the shared case table runs what the provider passes
+         * (diogel-io/symudol#17).
+         */
+        data class ScopeInputs(val eventKind: Int?, val peerPubkey: String?, val relayUrl: String?)
+
+        internal fun scopeInputs(method: String, eventJson: String?, projectedPeer: String?): ScopeInputs {
+            val eventKind = if (method == "sign_event") Nip55RequestCodec.integerKind(eventJson) else null
+            val relayUrl = if (eventKind == 22242) relayTag(eventJson) else null
+            val peerPubkey = when (method) {
+                "nip04_encrypt", "nip04_decrypt", "nip44_encrypt", "nip44_decrypt" -> projectedPeer
+                else -> null
+            }
+            return ScopeInputs(eventKind, peerPubkey, relayUrl)
+        }
+
+        private fun relayTag(eventJson: String?): String? {
+            if (eventJson == null) return null
+            return try {
+                val tags = JSONObject(eventJson).optJSONArray("tags") ?: return null
+                for (i in 0 until tags.length()) {
+                    val tag = tags.optJSONArray(i)
+                    if (tag != null && tag.length() >= 2 && tag.optString(0) == "relay") {
+                        return normalizeRelayUrl(tag.optString(1))
+                    }
+                }
+                null
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /**
+         * The remembered decision for this request: "reject" if any reject matches (it wins, as
+         * in the Dart policy), else "allow" if an allow matches, else null. Grants for
+         * [ownPackage] (this app) never match: they would serve any caller (#11).
+         *
+         * The shared case table `test/features/nip55/fixtures/permission_matching_cases.json`
+         * is the source of truth for these rules; the Dart Nip55ApprovalPolicy runs the same
+         * cases (diogel-io/symudol#17).
+         */
+        internal fun decide(
+            grants: List<Grant>,
+            ownPackage: String,
+            callerPackage: String?,
+            method: String,
+            identityPubkey: String,
+            inputs: ScopeInputs,
+            callerCertSha256: String?,
+            nowMs: Long = System.currentTimeMillis(),
+        ): String? {
+            if (callerPackage == ownPackage) return null
+            val usable = grants.filter { it.packageName != ownPackage }
+            for (decision in listOf("reject", "allow")) {
+                if (matches(
+                        usable, decision, callerPackage, method, identityPubkey,
+                        inputs.eventKind, inputs.peerPubkey, inputs.relayUrl, callerCertSha256, nowMs,
+                    )
+                ) return decision
+            }
+            return null
         }
 
         /**
@@ -79,7 +144,8 @@ class Nip55PermissionMirror(private val context: Context) {
         /**
          * Matches grant scope to the requested method/kind/peerPubkey.
          *
-         * Rules (must match Dart Nip55PermissionScope.matches and Nip55ApprovalPolicy):
+         * Rules (the shared case table, permission_matching_cases.json, checks these against
+         * Dart's Nip55PermissionScope.matches and Nip55ApprovalPolicy, #17):
          * - SignEventScope with kind=null (broad, "any kind") never matches an
          *   allow: every such signature is reviewed in the app. It still matches a
          *   reject, so a remembered refusal covers every kind. Matching a broad
@@ -140,15 +206,70 @@ class Nip55PermissionMirror(private val context: Context) {
                     // NIP-57 zap receipts are NIP-04 encrypted to the recipient's pubkey.
                     // If the user trusts an app to decrypt their DMs, they trust it
                     // to decrypt zap receipts too. So nip04_decrypt/nip44_decrypt grants
-                    // also satisfy decrypt_zap_event — but the scopePeerPubkey constraint
-                    // from the decrypt grant still applies for cross-scope matches.
+                    // also satisfy decrypt_zap_event. The provider passes no peer for a zap, so
+                    // only a decrypt grant for any peer covers one (the shared table checks this
+                    // against Dart, #17).
                     grantScope == "decrypt_zap_event" -> true
-                    grantScope == "nip04_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
-                    grantScope == "nip44_decrypt" -> grant.scopePeerPubkey == null || grant.scopePeerPubkey == peerPubkey
+                    grantScope == "nip04_decrypt" -> grant.scopePeerPubkey == null
+                    grantScope == "nip44_decrypt" -> grant.scopePeerPubkey == null
                     else -> false
                 }
                 else -> false
             }
+        }
+
+        internal fun parseGrants(json: String): List<Grant> {
+            val array = JSONArray(json)
+            val result = mutableListOf<Grant>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                try {
+                    result.add(parseGrant(obj))
+                } catch (e: Exception) {
+                    DiogelLog.w(TAG, "parseGrants: skipping malformed grant at index $i", e)
+                }
+            }
+            return result
+        }
+
+        /**
+         * The string at [key], or null when it is missing or JSON null. Android's
+         * `optString(key, null)` returns the string "null" for a JSON null, which Dart writes for
+         * every unset field; read that way, no remembered sign_event or any-peer decrypt grant ever
+         * matched (diogel-io/symudol#19).
+         */
+        private fun JSONObject.stringOrNull(key: String): String? =
+            if (isNull(key)) null else getString(key)
+
+        private fun parseGrant(obj: JSONObject): Grant {
+            val scopeObj = obj.getJSONObject("scope")
+            return Grant(
+                id = obj.getString("id"),
+                identityPubkey = obj.getString("identityPubkey"),
+                packageName = obj.stringOrNull("packageName"),
+                // Dart writes a JSON null when it could not read the caller's certificate. A null
+                // here would match every certificate (certificateMatches), letting another app with
+                // the same package name use the grant, so it stays a value no caller has
+                // (REQ-NIP55-010).
+                certificateSha256 = if (obj.has("certificateSha256")) {
+                    obj.stringOrNull("certificateSha256") ?: UNRESOLVED_CERTIFICATE
+                } else {
+                    null
+                },
+                scopeType = scopeObj.getString("type"),
+                scopeKind = scopeObj.optInt("kind", -1).let { if (it == -1) null else it },
+                scopePeerPubkey = scopeObj.stringOrNull("peerPubkey"),
+                scopeRelayUrl = scopeObj.stringOrNull("relayUrl"),
+                decision = obj.getString("decision"),
+                expiresAtMillis = obj.stringOrNull("expiresAt")?.let {
+                    // Parse ISO 8601 date to epoch millis
+                    try {
+                        java.time.Instant.parse(it).toEpochMilli()
+                    } catch (_: Exception) {
+                        null
+                    }
+                },
+            )
         }
 
         internal fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
@@ -192,6 +313,20 @@ class Nip55PermissionMirror(private val context: Context) {
         val raw = prefs.getString(KEY_GRANTS, null) ?: return emptyList()
         return parseGrants(raw).filter { it.packageName != context.packageName }
     }
+
+    /**
+     * The remembered decision ("reject", "allow" or null) for a ContentProvider request; see
+     * [decide].
+     */
+    fun rememberedDecision(
+        callerPackage: String?,
+        method: String,
+        identityPubkey: String,
+        inputs: ScopeInputs,
+        callerCertSha256: String?,
+    ): String? = decide(
+        listGrants(), context.packageName, callerPackage, method, identityPubkey, inputs, callerCertSha256,
+    )
 
     /**
      * Check whether a remembered [allow] grant exists for the given
@@ -308,60 +443,6 @@ class Nip55PermissionMirror(private val context: Context) {
     }
 
     // ── Serialization ────────────────────────────────────────────────────
-
-    private fun parseGrants(json: String): List<Grant> {
-        val array = JSONArray(json)
-        val result = mutableListOf<Grant>()
-        for (i in 0 until array.length()) {
-            val obj = array.getJSONObject(i)
-            try {
-                result.add(parseGrant(obj))
-            } catch (e: Exception) {
-                DiogelLog.w(TAG, "parseGrants: skipping malformed grant at index $i", e)
-            }
-        }
-        return result
-    }
-
-    /**
-     * The string at [key], or null when it is missing or JSON null. Android's
-     * `optString(key, null)` returns the string "null" for a JSON null, which Dart writes for
-     * every unset field; read that way, no remembered sign_event or any-peer decrypt grant ever
-     * matched (diogel-io/symudol#19).
-     */
-    private fun JSONObject.stringOrNull(key: String): String? =
-        if (isNull(key)) null else getString(key)
-
-    private fun parseGrant(obj: JSONObject): Grant {
-        val scopeObj = obj.getJSONObject("scope")
-        return Grant(
-            id = obj.getString("id"),
-            identityPubkey = obj.getString("identityPubkey"),
-            packageName = obj.stringOrNull("packageName"),
-            // Dart writes a JSON null when it could not read the caller's certificate. A null
-            // here would match every certificate (certificateMatches), letting another app with
-            // the same package name use the grant, so it stays a value no caller has
-            // (REQ-NIP55-010).
-            certificateSha256 = if (obj.has("certificateSha256")) {
-                obj.stringOrNull("certificateSha256") ?: UNRESOLVED_CERTIFICATE
-            } else {
-                null
-            },
-            scopeType = scopeObj.getString("type"),
-            scopeKind = scopeObj.optInt("kind", -1).let { if (it == -1) null else it },
-            scopePeerPubkey = scopeObj.stringOrNull("peerPubkey"),
-            scopeRelayUrl = scopeObj.stringOrNull("relayUrl"),
-            decision = obj.getString("decision"),
-            expiresAtMillis = obj.stringOrNull("expiresAt")?.let {
-                // Parse ISO 8601 date to epoch millis
-                try {
-                    java.time.Instant.parse(it).toEpochMilli()
-                } catch (_: Exception) {
-                    null
-                }
-            },
-        )
-    }
 
     private fun serializeGrants(grants: List<Grant>): String {
         val array = JSONArray()
