@@ -1,7 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
-import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
+import 'package:symudol/features/vault/domain/vault_lockout.dart';
 
 abstract class VaultStore {
   /// Returns the current version of the storage schema.
@@ -10,24 +9,21 @@ abstract class VaultStore {
   /// Sets the storage schema version.
   Future<void> setVersion(String version);
 
-  /// Reads the Argon2id salt used to derive the key-encryption key (KEK)
-  /// from the user's PIN. A non-null value indicates a vault exists.
-  Future<Uint8List?> getKdfSalt();
+  /// Reads the key envelope: the Argon2id salt and parameters and the
+  /// wrapped DEK.
+  ///
+  /// Prefers the single envelope value and falls back to the three separate
+  /// keys that vaults made before #16 used. Returns `null` when there is no
+  /// complete set.
+  Future<VaultKeyEnvelope?> getKeyEnvelope();
 
-  /// Sets the Argon2id salt.
-  Future<void> setKdfSalt(Uint8List salt);
+  /// Writes the key envelope in a single write, then deletes any legacy
+  /// separate keys. A failed write leaves the previous envelope in place.
+  Future<void> setKeyEnvelope(VaultKeyEnvelope envelope);
 
-  /// Reads the Argon2id parameters used to derive the KEK.
-  Future<VaultKdfParams?> getKdfParams();
-
-  /// Sets the Argon2id parameters.
-  Future<void> setKdfParams(VaultKdfParams params);
-
-  /// Reads the wrapped (encrypted) data-encryption key (DEK).
+  /// Reads the wrapped (encrypted) data-encryption key (DEK), from the
+  /// envelope or the legacy key. A non-null value means a vault exists.
   Future<String?> getWrappedDek();
-
-  /// Sets the wrapped data-encryption key.
-  Future<void> setWrappedDek(String wrappedDek);
 
   /// Reads the number of consecutive failed unlock attempts.
   Future<int> getFailedUnlockAttempts();
@@ -35,13 +31,25 @@ abstract class VaultStore {
   /// Sets the number of consecutive failed unlock attempts.
   Future<void> setFailedUnlockAttempts(int attempts);
 
-  /// Reads the timestamp until which unlocking is locked out, if any.
-  Future<DateTime?> getLockoutUntil();
+  /// Reads the current PIN lockout, if any.
+  Future<VaultLockout?> getLockout();
 
-  /// Sets the timestamp until which unlocking is locked out.
-  ///
-  /// Pass `null` to clear the lockout.
-  Future<void> setLockoutUntil(DateTime? until);
+  /// Sets the PIN lockout. Pass `null` to clear it.
+  Future<void> setLockout(VaultLockout? lockout);
+
+  /// Reads the wall-clock lockout end that vaults made before #16 stored.
+  Future<DateTime?> getLegacyLockoutUntil();
+
+  /// Deletes the legacy wall-clock lockout end.
+  Future<void> deleteLegacyLockoutUntil();
+
+  /// Reads how many failed PIN attempts erase the vault, or `null` when the
+  /// vault is never erased for failed attempts.
+  Future<int?> getWipeAfterFailures();
+
+  /// Sets how many failed PIN attempts erase the vault. Pass `null` to turn
+  /// it off.
+  Future<void> setWipeAfterFailures(int? attempts);
 
   /// Reads the active identity ID.
   Future<String?> getActiveIdentityId();

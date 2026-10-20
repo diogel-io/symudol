@@ -20,10 +20,18 @@ class InvalidPinException extends VaultException {
 }
 
 class VaultLockedOutException extends VaultException {
-  final DateTime lockoutUntil;
+  /// How long until the next attempt is allowed.
+  final Duration remaining;
 
-  VaultLockedOutException(this.lockoutUntil)
+  VaultLockedOutException(this.remaining)
     : super('Too many failed attempts. Try again later.');
+}
+
+/// A wrong PIN reached the failed-attempt limit and the vault was erased
+/// (#16).
+class VaultWipedException extends VaultException {
+  const VaultWipedException()
+    : super('Too many failed attempts. The vault was erased.');
 }
 
 /// A wipe ran every step, but [failedSteps] could not be erased.

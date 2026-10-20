@@ -26,10 +26,31 @@ abstract interface class VaultService {
   ///
   /// Throws [VaultNotFoundException] if no vault exists.
   /// Throws [InvalidPinException] if the PIN is incorrect.
+  /// Throws [VaultLockedOutException] while too many failed attempts lock
+  /// unlocking out.
+  /// Throws [VaultWipedException] if this failed attempt reached the limit
+  /// set with [setWipeAfterFailures] and the vault was erased.
   Future<void> unlock(String pin);
 
   /// Locks the vault.
   Future<void> lock();
+
+  /// The number of consecutive failed PIN attempts.
+  Future<int> getFailedUnlockAttempts();
+
+  /// How long until the next PIN attempt is allowed; [Duration.zero] when it
+  /// is allowed now.
+  Future<Duration> getLockoutRemaining();
+
+  /// How many failed PIN attempts erase the vault, or `null` (the default)
+  /// when they never do.
+  Future<int?> getWipeAfterFailures();
+
+  /// Sets how many failed PIN attempts erase the vault: 10, 15, 20, or
+  /// `null` for never.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked.
+  Future<void> setWipeAfterFailures(int? attempts);
 
   /// Expires the session due to inactivity.
   Future<void> expireSession();

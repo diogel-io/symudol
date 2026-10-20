@@ -32,8 +32,16 @@ class InvalidPinFailure extends VaultFailure {
 }
 
 class VaultLockedOutFailure extends VaultFailure {
-  const VaultLockedOutFailure()
+  /// How long until the next attempt is allowed, when the failure was raised.
+  final Duration remaining;
+
+  const VaultLockedOutFailure(this.remaining)
     : super('Too many failed attempts. Try again later.');
+}
+
+class VaultWipedFailure extends VaultFailure {
+  const VaultWipedFailure()
+    : super('Too many failed attempts. The vault was erased.');
 }
 
 class VaultWipeIncompleteFailure extends VaultFailure {

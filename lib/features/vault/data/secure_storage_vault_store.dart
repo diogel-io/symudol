@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
+import 'package:symudol/features/vault/domain/vault_key_envelope.dart';
+import 'package:symudol/features/vault/domain/vault_lockout.dart';
 import 'package:symudol/features/vault/domain/vault_store.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -10,11 +11,15 @@ class SecureStorageVaultStore implements VaultStore {
   final FlutterSecureStorage _storage;
 
   static const String _keyVersion = 'vault_version';
-  static const String _keyKdfSalt = 'vault_kdf_salt';
-  static const String _keyKdfParams = 'vault_kdf_params';
-  static const String _keyWrappedDek = 'vault_wrapped_dek';
+  static const String _keyKeyEnvelope = 'vault_key_envelope';
+  // Before #16 the envelope was three separate keys.
+  static const String _keyLegacyKdfSalt = 'vault_kdf_salt';
+  static const String _keyLegacyKdfParams = 'vault_kdf_params';
+  static const String _keyLegacyWrappedDek = 'vault_wrapped_dek';
   static const String _keyFailedUnlockAttempts = 'vault_failed_attempts';
-  static const String _keyLockoutUntil = 'vault_lockout_until';
+  static const String _keyLockout = 'vault_lockout';
+  static const String _keyLegacyLockoutUntil = 'vault_lockout_until';
+  static const String _keyWipeAfterFailures = 'vault_wipe_after_failures';
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
   static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
@@ -35,9 +40,16 @@ class SecureStorageVaultStore implements VaultStore {
     return value;
   }
 
+  /// Caches [value] only once it is written, so a failed write is not read
+  /// back as if it had worked.
   Future<void> _writeCached(String key, String value) async {
-    _cache[key] = value;
     await _storage.write(key: key, value: value);
+    _cache[key] = value;
+  }
+
+  Future<void> _deleteCached(String key) async {
+    await _storage.delete(key: key);
+    _cache[key] = null;
   }
 
   @override
@@ -47,32 +59,49 @@ class SecureStorageVaultStore implements VaultStore {
   Future<void> setVersion(String version) => _writeCached(_keyVersion, version);
 
   @override
-  Future<Uint8List?> getKdfSalt() async {
-    final value = await _readCached(_keyKdfSalt);
-    return value != null ? base64Decode(value) : null;
+  Future<VaultKeyEnvelope?> getKeyEnvelope() async {
+    final value = await _readCached(_keyKeyEnvelope);
+    if (value != null) {
+      return VaultKeyEnvelope.fromJson(
+        jsonDecode(value) as Map<String, dynamic>,
+      );
+    }
+    final salt = await _readCached(_keyLegacyKdfSalt);
+    final params = await _readCached(_keyLegacyKdfParams);
+    final wrappedDek = await _readCached(_keyLegacyWrappedDek);
+    if (salt == null || params == null || wrappedDek == null) return null;
+    return VaultKeyEnvelope(
+      salt: base64Decode(salt),
+      params: VaultKdfParams.fromJson(
+        jsonDecode(params) as Map<String, dynamic>,
+      ),
+      wrappedDek: wrappedDek,
+    );
   }
 
   @override
-  Future<void> setKdfSalt(Uint8List salt) =>
-      _writeCached(_keyKdfSalt, base64Encode(salt));
-
-  @override
-  Future<VaultKdfParams?> getKdfParams() async {
-    final value = await _readCached(_keyKdfParams);
-    if (value == null) return null;
-    return VaultKdfParams.fromJson(jsonDecode(value) as Map<String, dynamic>);
+  Future<void> setKeyEnvelope(VaultKeyEnvelope envelope) async {
+    await _writeCached(_keyKeyEnvelope, jsonEncode(envelope.toJson()));
+    // Only once the envelope is safely written: reads prefer it, so a delete
+    // cut short leaves nothing that is read.
+    for (final key in const [
+      _keyLegacyKdfSalt,
+      _keyLegacyKdfParams,
+      _keyLegacyWrappedDek,
+    ]) {
+      if (await _readCached(key) != null) await _deleteCached(key);
+    }
   }
 
   @override
-  Future<void> setKdfParams(VaultKdfParams params) =>
-      _writeCached(_keyKdfParams, jsonEncode(params.toJson()));
-
-  @override
-  Future<String?> getWrappedDek() => _readCached(_keyWrappedDek);
-
-  @override
-  Future<void> setWrappedDek(String wrappedDek) =>
-      _writeCached(_keyWrappedDek, wrappedDek);
+  Future<String?> getWrappedDek() async {
+    final value = await _readCached(_keyKeyEnvelope);
+    if (value != null) {
+      return (jsonDecode(value) as Map<String, dynamic>)['wrappedDek']
+          as String?;
+    }
+    return _readCached(_keyLegacyWrappedDek);
+  }
 
   @override
   Future<int> getFailedUnlockAttempts() async {
@@ -85,15 +114,38 @@ class SecureStorageVaultStore implements VaultStore {
       _writeCached(_keyFailedUnlockAttempts, attempts.toString());
 
   @override
-  Future<DateTime?> getLockoutUntil() async {
-    final value = await _readCached(_keyLockoutUntil);
+  Future<VaultLockout?> getLockout() async {
+    final value = await _readCached(_keyLockout);
     if (value == null || value.isEmpty) return null;
-    return DateTime.parse(value);
+    return VaultLockout.fromJson(jsonDecode(value) as Map<String, dynamic>);
   }
 
   @override
-  Future<void> setLockoutUntil(DateTime? until) =>
-      _writeCached(_keyLockoutUntil, until?.toIso8601String() ?? '');
+  Future<void> setLockout(VaultLockout? lockout) => _writeCached(
+    _keyLockout,
+    lockout == null ? '' : jsonEncode(lockout.toJson()),
+  );
+
+  @override
+  Future<DateTime?> getLegacyLockoutUntil() async {
+    final value = await _readCached(_keyLegacyLockoutUntil);
+    if (value == null || value.isEmpty) return null;
+    return DateTime.tryParse(value);
+  }
+
+  @override
+  Future<void> deleteLegacyLockoutUntil() =>
+      _deleteCached(_keyLegacyLockoutUntil);
+
+  @override
+  Future<int?> getWipeAfterFailures() async {
+    final value = await _readCached(_keyWipeAfterFailures);
+    return value != null ? int.tryParse(value) : null;
+  }
+
+  @override
+  Future<void> setWipeAfterFailures(int? attempts) =>
+      _writeCached(_keyWipeAfterFailures, attempts?.toString() ?? '');
 
   @override
   Future<String?> getActiveIdentityId() => _readCached(_keyActiveIdentityId);

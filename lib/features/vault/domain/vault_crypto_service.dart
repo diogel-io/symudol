@@ -18,7 +18,23 @@ class VaultKdfParams {
     this.parallelism = 1,
   });
 
-  static const VaultKdfParams defaultParams = VaultKdfParams();
+  /// The parameters new vaults use, and weaker vaults are upgraded to: 64 MiB,
+  /// 3 passes. The strongest setting that derived within 1.5 s on a 2-core,
+  /// 2 GB emulator (#16; figures in `documentation/pin-protection.md`). The
+  /// constructor's defaults stay those of vaults made before #16, the OWASP
+  /// minimum.
+  static const VaultKdfParams defaultParams = VaultKdfParams(
+    memory: 65536,
+    iterations: 3,
+  );
+
+  /// Whether these parameters cost less to guess against than [other] in
+  /// memory or in passes. A vault on weaker parameters is upgraded to
+  /// [defaultParams] on its next successful unlock (#16).
+  bool isWeakerThan(VaultKdfParams other) =>
+      algorithm != other.algorithm ||
+      memory < other.memory ||
+      iterations < other.iterations;
 
   Map<String, dynamic> toJson() => {
     'algorithm': algorithm,
@@ -33,6 +49,21 @@ class VaultKdfParams {
     iterations: json['iterations'] as int,
     parallelism: json['parallelism'] as int,
   );
+
+  @override
+  bool operator ==(Object other) =>
+      other is VaultKdfParams &&
+      other.algorithm == algorithm &&
+      other.memory == memory &&
+      other.iterations == iterations &&
+      other.parallelism == parallelism;
+
+  @override
+  int get hashCode => Object.hash(algorithm, memory, iterations, parallelism);
+
+  @override
+  String toString() =>
+      'VaultKdfParams($algorithm, ${memory ~/ 1024} MiB, t=$iterations, p=$parallelism)';
 }
 
 /// Implements the PIN-derived key hierarchy used to protect identity secrets.

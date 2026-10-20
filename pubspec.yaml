@@ -45,7 +45,12 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # The Argon2id benchmark (#16): integration_test/argon2_bench_test.dart.
+  integration_test:
+    sdk: flutter
   mocktail: ^1.0.4
+  # Fake time for the unlock screen's lockout countdown in tests (#16).
+  clock: ^1.1.2
   flutter_launcher_icons: ^0.14.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
