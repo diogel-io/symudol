@@ -8,6 +8,8 @@ import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
 import 'pin_lockout_countdown.dart';
+import '../../settings/presentation/widgets/wipe_vault_dialog.dart';
+import 'widgets/forgot_pin_dialog.dart';
 import 'widgets/pin_button.dart';
 
 class UnlockVaultScreen extends ConsumerStatefulWidget {
@@ -89,6 +91,15 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
         _unlockVault();
       }
     }
+  }
+
+  Future<void> _forgotPin() async {
+    final erase = await showDialog<bool>(
+      context: context,
+      builder: (_) => const ForgotPinDialog(),
+    );
+    if (erase != true || !mounted) return;
+    await confirmAndWipeVault(context, ref);
   }
 
   void _onBackspace() {
@@ -334,8 +345,11 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
                         label: const Text('Unlock Vault'),
                       ),
                     ),
+                    // Also during a lockout: someone who can't remember the
+                    // PIN may well be locked out (#22).
                     TextButton(
-                      onPressed: _noop,
+                      key: const Key('forgotPinButton'),
+                      onPressed: _forgotPin,
                       child: const Text(
                         'Forgot PIN?',
                         style: TextStyle(color: DiogelColors.actionPrimary),
@@ -352,4 +366,3 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
   }
 }
 
-void _noop() {}
