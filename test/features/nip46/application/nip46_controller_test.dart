@@ -3,7 +3,6 @@ import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:symudol/features/nip46/domain/nip46_connection_token.dart';
 import 'package:symudol/features/nip46/domain/nip46_relay_event.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
-import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
@@ -11,37 +10,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';
 import '../data/fake_nip46_relay_service.dart';
-
-class _FakeSessionStore implements Nip46SessionStore {
-  final List<Nip46Session> _sessions = [];
-
-  @override
-  Future<List<Nip46Session>> listSessions() async => List.of(_sessions);
-
-  @override
-  Future<void> saveSession(Nip46Session session) async {
-    final idx = _sessions.indexWhere((s) => s.id == session.id);
-    if (idx == -1) {
-      _sessions.add(session);
-    } else {
-      _sessions[idx] = session;
-    }
-  }
-
-  @override
-  Future<void> deleteSession(String id) async {
-    _sessions.removeWhere((s) => s.id == id);
-  }
-
-  @override
-  Future<void> clearAll() async => _sessions.clear();
-}
+import '../../../fakes/fake_nip46_session_store.dart';
 
 void main() {
   late FakeVaultStore vaultStore;
   late VaultController vaultController;
   late FakeNip46RelayService relayService;
-  late _FakeSessionStore sessionStore;
+  late FakeNip46SessionStore sessionStore;
   late Nip46Controller controller;
 
   setUp(() async {
@@ -50,7 +25,7 @@ void main() {
     await vaultService.init();
     vaultController = VaultController(vaultService);
     relayService = FakeNip46RelayService();
-    sessionStore = _FakeSessionStore();
+    sessionStore = FakeNip46SessionStore();
     final crypto = DartNip46Crypto(const DartNostrCryptoService());
     controller = Nip46Controller(
       sessionStore: sessionStore,
@@ -258,6 +233,33 @@ void main() {
       // No relay publishes from the controller (junk content fails decryption),
       // and importantly no exception thrown for the duplicate.
       expect(relayService.capturedPublishes, isEmpty);
+    });
+  });
+
+  group('vault wipe', () {
+    test('stops every relay session and forgets them', () async {
+      await vaultController.createVault('1234');
+      await controller.initiateBunkerSession();
+      expect(controller.state.sessions, hasLength(1));
+      expect(relayService.connectedSessions, hasLength(1));
+
+      await vaultController.wipe();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.sessions, isEmpty);
+      expect(controller.state.pendingApproval, isNull);
+      expect(relayService.connectedSessions, isEmpty);
+    });
+
+    test('locking keeps sessions running', () async {
+      await vaultController.createVault('1234');
+      await controller.initiateBunkerSession();
+
+      await vaultController.lock();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.sessions, hasLength(1));
+      expect(relayService.connectedSessions, hasLength(1));
     });
   });
 }

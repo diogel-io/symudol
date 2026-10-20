@@ -26,6 +26,14 @@ class VaultLockedOutException extends VaultException {
     : super('Too many failed attempts. Try again later.');
 }
 
+/// A wipe ran every step, but [failedSteps] could not be erased.
+class VaultWipeIncompleteException extends VaultException {
+  final List<String> failedSteps;
+
+  VaultWipeIncompleteException(this.failedSteps)
+    : super('Wipe did not finish: ${failedSteps.join(', ')}');
+}
+
 class IdentityNotFoundException extends VaultException {
   const IdentityNotFoundException() : super('Identity not found');
 }

@@ -8,6 +8,7 @@ import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
+import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
 
 import '../data/dart_nip46_crypto.dart';
@@ -106,6 +107,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   StreamSubscription<Nip46InboundRelayEvent>? _inboundSub;
   StreamSubscription<VaultControllerState>? _vaultSub;
+  VaultState? _lastVaultState;
 
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
@@ -366,6 +368,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       }
 
       _inboundSub = _relayService.inboundEvents.listen(_onInboundEvent);
+      _lastVaultState = _vaultController.state.vaultState;
       _vaultSub = _vaultController.stream.listen(_onVaultStateChanged);
     } catch (e) {
       state = state.copyWith(isLoading: false, failure: e.toString());
@@ -373,9 +376,43 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   }
 
   void _onVaultStateChanged(VaultControllerState vaultState) {
-    // Nothing specific to do on lock/unlock beyond what the approval policy handles.
-    // Relay connections stay alive; signing will fail at the method handler level
-    // if the vault is locked when a request comes in.
+    // Lock and unlock need nothing here: relay connections stay alive, and
+    // signing fails at the method handler if the vault is locked.
+    final previous = _lastVaultState;
+    _lastVaultState = vaultState.vaultState;
+    if (vaultState.vaultState is NoVault &&
+        previous != null &&
+        previous is! NoVault) {
+      // The vault was wiped (#20): no session may keep answering.
+      unawaited(_dropAllSessions());
+    }
+  }
+
+  /// Stops every relay subscription and forgets every session in memory.
+  /// The wipe has already cleared the store.
+  Future<void> _dropAllSessions() async {
+    _methodRequestTimer?.cancel();
+    _methodRequestTimer = null;
+    _connectApprovalTimer?.cancel();
+    _connectApprovalTimer = null;
+    _pendingConnectRequestId = null;
+
+    final ids = {
+      for (final session in state.sessions) session.id,
+      if (state.pendingApproval != null) state.pendingApproval!.id,
+    };
+    state = state.copyWith(
+      sessions: const [],
+      pendingApproval: null,
+      pendingMethodRequest: null,
+    );
+    for (final id in ids) {
+      try {
+        await _relayService.stopSession(id);
+      } catch (e) {
+        diogelLog('Nip46Controller: could not stop session $id', error: e);
+      }
+    }
   }
 
   void _onInboundEvent(Nip46InboundRelayEvent event) {

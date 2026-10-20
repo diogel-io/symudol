@@ -177,6 +177,40 @@ void main() {
     );
   });
 
+  group('VaultController wipe', () {
+    test('wipe returns to NoVault with no failure', () async {
+      await controller.createVault('1234');
+      await controller.createIdentity(displayName: 'Test');
+
+      final failure = await controller.wipe();
+
+      expect(failure, isNull);
+      expect(controller.state.vaultState, isA<NoVault>());
+      expect(controller.state.identities, isEmpty);
+      expect(controller.state.activeIdentity, isNull);
+      expect(controller.state.isLoading, isFalse);
+      expect(await store.getWrappedDek(), isNull);
+    });
+
+    test('an incomplete wipe reports a failure', () async {
+      final wiping = VaultServiceImpl(
+        store,
+        wipeNativeState: () async => throw Exception('native failed'),
+      );
+      await wiping.createVault('1234');
+      final wipingController = VaultController(wiping);
+      addTearDown(wipingController.dispose);
+      // Let the constructor's initialize() finish first.
+      await Future<void>.delayed(Duration.zero);
+
+      final failure = await wipingController.wipe();
+
+      expect(failure, isA<VaultWipeIncompleteFailure>());
+      expect(wipingController.state.failure, isA<VaultWipeIncompleteFailure>());
+      expect(wipingController.state.vaultState, isA<NoVault>());
+    });
+  });
+
   backgroundLockDelayControllerTests();
 }
 

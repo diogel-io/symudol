@@ -141,6 +141,13 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     final previousWasUnlocked = previous?.vaultState is VaultUnlocked;
     final isUnlocked = next.vaultState is VaultUnlocked;
 
+    // The vault was wiped (#20): Trusted apps must not show stale grants.
+    if (next.vaultState is NoVault &&
+        previous != null &&
+        previous.vaultState is! NoVault) {
+      ref.invalidate(nip55PermissionControllerProvider);
+    }
+
     if (!isUnlocked) {
       _cancelLockTimers();
       return;

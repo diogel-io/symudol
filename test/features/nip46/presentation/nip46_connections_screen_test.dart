@@ -2,7 +2,6 @@ import 'package:symudol/features/nip46/application/nip46_controller.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
-import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
 import 'package:symudol/features/nip46/presentation/nip46_connections_screen.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
@@ -13,26 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_vault_store.dart';
 import '../data/fake_nip46_relay_service.dart';
-
-class _FakeSessionStore implements Nip46SessionStore {
-  final List<Nip46Session> _sessions;
-  _FakeSessionStore([List<Nip46Session>? sessions])
-    : _sessions = sessions ?? [];
-
-  @override
-  Future<List<Nip46Session>> listSessions() async => List.of(_sessions);
-
-  @override
-  Future<void> saveSession(Nip46Session session) async {}
-
-  @override
-  Future<void> deleteSession(String id) async {
-    _sessions.removeWhere((s) => s.id == id);
-  }
-
-  @override
-  Future<void> clearAll() async => _sessions.clear();
-}
+import '../../../fakes/fake_nip46_session_store.dart';
 
 Nip46Controller _buildController({List<Nip46Session> sessions = const []}) {
   final vaultStore = FakeVaultStore();
@@ -41,7 +21,7 @@ Nip46Controller _buildController({List<Nip46Session> sessions = const []}) {
   final relayService = FakeNip46RelayService();
   final crypto = DartNip46Crypto(const DartNostrCryptoService());
   return Nip46Controller(
-    sessionStore: _FakeSessionStore(List.of(sessions)),
+    sessionStore: FakeNip46SessionStore(List.of(sessions)),
     vaultService: vaultService,
     vaultController: vaultController,
     relayService: relayService,

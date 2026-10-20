@@ -36,6 +36,11 @@ class VaultLockedOutFailure extends VaultFailure {
     : super('Too many failed attempts. Try again later.');
 }
 
+class VaultWipeIncompleteFailure extends VaultFailure {
+  const VaultWipeIncompleteFailure()
+    : super('The vault was not completely wiped.');
+}
+
 class IdentityNotFoundFailure extends VaultFailure {
   const IdentityNotFoundFailure() : super('Identity not found');
 }

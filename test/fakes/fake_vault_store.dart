@@ -24,6 +24,9 @@ class FakeVaultStore implements VaultStore {
   /// Simulates a missing vault (no wrapped DEK) when set to true.
   bool simulateMissingVault = false;
 
+  /// Simulates a storage error from [clearAll] only when set to true.
+  bool shouldThrowOnClearAll = false;
+
   /// Simulates a duplicate identity error when set to true.
   bool shouldThrowDuplicateIdentityError = false;
 
@@ -189,6 +192,9 @@ class FakeVaultStore implements VaultStore {
   @override
   Future<void> clearAll() async {
     _checkError();
+    if (shouldThrowOnClearAll) {
+      throw const VaultStorageException('Simulated clearAll error');
+    }
     _version = null;
     _kdfSalt = null;
     _kdfParams = null;

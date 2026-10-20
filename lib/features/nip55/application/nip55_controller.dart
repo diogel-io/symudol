@@ -235,6 +235,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   /// always lands after the unlock before it and the native key can't be put
   /// back once cleared (#13).
   void _onVaultStateChanged(VaultControllerState state) {
+    // A wiped vault (#20) leaves no approval session behind for a new one.
+    if (state.vaultState is NoVault &&
+        this.state.approvalSessionExpiresAt != null) {
+      this.state = this.state.copyWith(clearApprovalSession: true);
+    }
     final target = (
       state.vaultState is VaultUnlocked,
       state.activeIdentity?.localId,

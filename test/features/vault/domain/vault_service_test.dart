@@ -1,4 +1,8 @@
 import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/nip46/domain/nip46_session.dart';
+import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
@@ -6,6 +10,8 @@ import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../fakes/fake_nip46_session_store.dart';
+import '../../../fakes/fake_nip55_permission_store.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 void main() {
@@ -578,6 +584,156 @@ void main() {
         ),
         throwsA(isA<IdentityMismatchException>()),
       );
+    });
+  });
+
+  group('VaultServiceImpl wipe', () {
+    late FakeNip55PermissionStore grantStore;
+    late FakeNip46SessionStore sessionStore;
+    late int nativeWipes;
+    late VaultServiceImpl wipingService;
+
+    VaultServiceImpl build({
+      Future<void> Function()? wipeNativeState,
+      FakeNip46SessionStore? sessions,
+    }) => VaultServiceImpl(
+      fakeStore,
+      nip55PermissionStore: grantStore,
+      nip46SessionStore: sessions ?? sessionStore,
+      wipeNativeState:
+          wipeNativeState ??
+          () async {
+            nativeWipes++;
+          },
+    );
+
+    setUp(() {
+      grantStore = FakeNip55PermissionStore()
+        ..grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-1',
+            identityPubkey: 'pubkey',
+            packageName: 'com.example.client',
+            scope: const GetPublicKeyScope(),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime(2026, 10, 1),
+          ),
+        );
+      sessionStore = FakeNip46SessionStore([
+        Nip46Session(
+          id: 'session-1',
+          clientPubkey: 'client',
+          remoteSignerPubkey: 'remote',
+          remoteSignerPrivkey: 'secret',
+          relays: const ['wss://relay.example'],
+          grantedScopes: const [],
+          status: Nip46SessionStatus.active,
+          createdAt: DateTime(2026, 10, 1),
+        ),
+      ]);
+      nativeWipes = 0;
+      wipingService = build();
+    });
+
+    Future<void> expectEverythingErased(VaultServiceImpl service) async {
+      expect(service.state, isA<NoVault>());
+      expect(service.activeIdentity, isNull);
+      expect(await fakeStore.getWrappedDek(), isNull);
+      expect(await fakeStore.getIdentities(), isEmpty);
+      expect(grantStore.grants, isEmpty);
+      expect(sessionStore.sessions, isEmpty);
+      expect(nativeWipes, greaterThanOrEqualTo(1));
+    }
+
+    test('erases everything while unlocked', () async {
+      await wipingService.createVault('123456');
+      await wipingService.createIdentity(displayName: 'Alice');
+
+      await wipingService.wipe();
+
+      await expectEverythingErased(wipingService);
+      await expectLater(
+        wipingService.getActivePrivateKey(),
+        completion(isNull),
+      );
+    });
+
+    test('erases everything while locked', () async {
+      await wipingService.createVault('123456');
+      await wipingService.createIdentity(displayName: 'Alice');
+      await wipingService.lock();
+
+      await wipingService.wipe();
+
+      await expectEverythingErased(wipingService);
+    });
+
+    test('a new vault can be created after a wipe', () async {
+      await wipingService.createVault('123456');
+      await wipingService.wipe();
+
+      await wipingService.createVault('654321');
+
+      expect(wipingService.state, isA<VaultUnlocked>());
+      expect(await wipingService.listIdentities(), isEmpty);
+    });
+
+    test('a failing step still runs the others and is reported', () async {
+      await wipingService.createVault('123456');
+      final service = build(
+        wipeNativeState: () async => throw Exception('native failed'),
+      );
+      await service.init();
+
+      await expectLater(
+        service.wipe(),
+        throwsA(
+          isA<VaultWipeIncompleteException>().having(
+            (e) => e.failedSteps,
+            'failedSteps',
+            ['native NIP-55 state'],
+          ),
+        ),
+      );
+      expect(service.state, isA<NoVault>());
+      expect(await fakeStore.getWrappedDek(), isNull);
+      expect(grantStore.grants, isEmpty);
+      expect(sessionStore.sessions, isEmpty);
+    });
+
+    test('a vault that survives a failed wipe stays locked', () async {
+      await wipingService.createVault('123456');
+      fakeStore.shouldThrowOnClearAll = true;
+
+      await expectLater(
+        wipingService.wipe(),
+        throwsA(isA<VaultWipeIncompleteException>()),
+      );
+      expect(wipingService.state, isA<VaultLocked>());
+      expect(await wipingService.getActivePrivateKey(), isNull);
+      expect(grantStore.grants, isEmpty);
+    });
+
+    test('init with no vault clears what an interrupted wipe left', () async {
+      await wipingService.init();
+      await pumpEventQueue();
+
+      expect(wipingService.state, isA<NoVault>());
+      expect(grantStore.grants, isEmpty);
+      expect(sessionStore.sessions, isEmpty);
+      expect(nativeWipes, 1);
+    });
+
+    test('init with a vault leaves grants and sessions alone', () async {
+      await fakeStore.setWrappedDek('wrapped-dek-placeholder');
+
+      await wipingService.init();
+      await pumpEventQueue();
+
+      expect(wipingService.state, isA<VaultLocked>());
+      expect(grantStore.grants, hasLength(1));
+      expect(sessionStore.sessions, hasLength(1));
+      expect(nativeWipes, 0);
     });
   });
 }

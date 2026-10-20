@@ -223,6 +223,25 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
   }
 
+  /// Erases the vault and everything tied to it, then returns to setup (#20).
+  ///
+  /// Returns the failure, if any, because the screen that asked has usually
+  /// gone by the time the wipe ends.
+  Future<VaultFailure?> wipe() async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    VaultFailure? failure;
+    try {
+      await _vaultService.wipe();
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+      state = state.copyWith(failure: failure);
+    } finally {
+      await _refreshState();
+      state = state.copyWith(isLoading: false);
+    }
+    return failure;
+  }
+
   Future<void> createIdentity({String? displayName}) async {
     if (state.vaultState is! VaultUnlocked) {
       state = state.copyWith(failure: const VaultLockedFailure());
@@ -289,6 +308,9 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
     if (e is VaultLockedOutException) {
       return const VaultLockedOutFailure();
+    }
+    if (e is VaultWipeIncompleteException) {
+      return const VaultWipeIncompleteFailure();
     }
     if (e is IdentityNotFoundException) {
       return const IdentityNotFoundFailure();

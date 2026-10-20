@@ -25,6 +25,9 @@ String vaultFailureMessage(VaultFailure failure) {
   if (failure is VaultLockedOutFailure) {
     return 'Too many failed attempts. Please wait and try again.';
   }
+  if (failure is VaultWipeIncompleteFailure) {
+    return 'The wipe did not finish. Please try again.';
+  }
   if (failure is IdentityNotFoundFailure) {
     return 'The requested identity was not found.';
   }

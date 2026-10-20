@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../nip46/application/nip46_providers.dart';
 import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
+import '../../vault/presentation/vault_failure_messages.dart';
 import 'trusted_apps_screen.dart';
 import 'widgets/settings_tile.dart';
+import 'widgets/wipe_vault_dialog.dart';
 
 String formatInactivityTimeout(int minutes) {
   return switch (minutes) {
@@ -213,15 +216,43 @@ class SettingsScreen extends ConsumerWidget {
             title: 'Backup Vault',
             subtitle: 'Export your recovery data',
           ),
-          const SettingsTile(
+          SettingsTile(
             icon: Icons.delete_forever_outlined,
             title: 'Wipe Vault',
             subtitle: 'Permanently delete all keys',
             isDestructive: true,
+            onTap: () => _confirmAndWipe(context, ref),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndWipe(BuildContext context, WidgetRef ref) async {
+    final identityCount = ref.read(vaultControllerProvider).identities.length;
+    // Read from the store: the NIP-46 controller starts relays when created.
+    final sessions = await ref.read(nip46SessionStoreProvider).listSessions();
+    if (!context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => WipeVaultDialog(
+        identityCount: identityCount,
+        connectionCount: sessions.length,
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = ref.read(vaultControllerProvider.notifier);
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    // The app switches to setup once the vault is gone.
+    final failure = await controller.wipe();
+    if (failure != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(vaultFailureMessage(failure))),
+      );
+    }
   }
 }
 

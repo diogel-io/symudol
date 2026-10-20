@@ -134,6 +134,18 @@ class MainActivity : FlutterActivity() {
                     Nip55CryptoBridge.clearActiveKey()
                     result.success(null)
                 }
+                "wipeNip55NativeState" -> {
+                    // Vault wipe (diogel-io/symudol#20): the key, its deadline and every
+                    // remembered decision the ContentProvider could act on.
+                    DiogelLog.d(TAG) { "onMethodCall: wipeNip55NativeState" }
+                    Nip55CryptoBridge.clearActiveKey()
+                    Nip55CryptoBridge.clearLockDeadline()
+                    if (Nip55PermissionMirror(this).wipe()) {
+                        result.success(null)
+                    } else {
+                        result.error("WIPE_FAILED", "the permission mirror could not be cleared", null)
+                    }
+                }
                 "setNip55LockDeadline" -> {
                     val delayMs = (call.arguments as? Number)?.toLong()
                     if (delayMs == null) {

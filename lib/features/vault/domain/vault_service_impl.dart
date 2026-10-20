@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
+import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
@@ -51,6 +54,9 @@ class VaultServiceImpl implements VaultService {
   final NostrCryptoService _cryptoService;
   final VaultCryptoService _vaultCryptoService;
   final DateTime Function() _now;
+  final Nip55PermissionStore? _nip55PermissionStore;
+  final Nip46SessionStore? _nip46SessionStore;
+  final Future<void> Function()? _wipeNativeState;
   VaultState _state = const NoVault();
   VaultIdentity? _activeIdentity;
   Uint8List? _dek;
@@ -60,10 +66,16 @@ class VaultServiceImpl implements VaultService {
     NostrCryptoService cryptoService = const DartNostrCryptoService(),
     VaultCryptoService? vaultCryptoService,
     DateTime Function()? now,
+    Nip55PermissionStore? nip55PermissionStore,
+    Nip46SessionStore? nip46SessionStore,
+    Future<void> Function()? wipeNativeState,
   }) : _cryptoService = cryptoService,
        _vaultCryptoService =
            vaultCryptoService ?? const PointyCastleVaultCryptoService(),
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _nip55PermissionStore = nip55PermissionStore,
+       _nip46SessionStore = nip46SessionStore,
+       _wipeNativeState = wipeNativeState;
 
   @override
   VaultState get state => _state;
@@ -80,9 +92,94 @@ class VaultServiceImpl implements VaultService {
     if (wrappedDek == null) {
       _state = const NoVault();
       _activeIdentity = null;
+      // With no vault nothing else may remain. This also finishes a wipe that
+      // was interrupted after the vault keys went (#20). It runs alongside
+      // start-up rather than holding it: it is cleanup, and finishes long
+      // before a new vault can be set up.
+      unawaited(
+        _clearLinkedData().then((failed) {
+          if (failed.isNotEmpty) {
+            diogelLog('VaultService: init could not clear ${failed.join(', ')}');
+          }
+        }),
+      );
     } else {
       _state = const VaultLocked();
       _activeIdentity = null;
+    }
+  }
+
+  @override
+  Future<void> wipe() async {
+    // Signing stops at once, whatever happens to storage below.
+    _activeIdentity = null;
+    _clearDek();
+    _state = const NoVault();
+
+    final failed = <String>[];
+    // The vault keys go first: a wipe cut short leaves no vault, and init()
+    // finishes the rest on the next launch. deleteAll() also removes the
+    // stored grants and sessions; the steps below clear their caches, the
+    // native mirror and anything stored elsewhere.
+    await _attemptWipeStep('vault', _store.clearAll, failed);
+    failed.addAll(await _clearLinkedData());
+
+    try {
+      if (await _store.getWrappedDek() != null) {
+        _state = const VaultLocked();
+      }
+    } catch (e) {
+      diogelLog('VaultService: could not read the vault after wiping', error: e);
+      // Unknown: assume a vault the wipe could not delete is still there.
+      if (failed.contains('vault')) _state = const VaultLocked();
+    }
+
+    if (failed.isNotEmpty) {
+      throw VaultWipeIncompleteException(failed);
+    }
+  }
+
+  /// Clears everything tied to the vault outside it, attempting every step.
+  /// Returns the steps that failed.
+  Future<List<String>> _clearLinkedData() async {
+    final failed = <String>[];
+    final wipeNativeState = _wipeNativeState;
+    final nip46SessionStore = _nip46SessionStore;
+    final nip55PermissionStore = _nip55PermissionStore;
+    if (wipeNativeState != null) {
+      await _attemptWipeStep('native NIP-55 state', wipeNativeState, failed);
+    }
+    if (nip46SessionStore != null) {
+      await _attemptWipeStep(
+        'NIP-46 sessions',
+        nip46SessionStore.clearAll,
+        failed,
+      );
+    }
+    if (nip55PermissionStore != null) {
+      await _attemptWipeStep(
+        'NIP-55 grants',
+        nip55PermissionStore.clearAll,
+        failed,
+      );
+    }
+    return failed;
+  }
+
+  Future<void> _attemptWipeStep(
+    String name,
+    Future<void> Function() step,
+    List<String> failed,
+  ) async {
+    try {
+      await step();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultService: wipe step failed: $name',
+        error: e,
+        stackTrace: stack,
+      );
+      failed.add(name);
     }
   }
 
