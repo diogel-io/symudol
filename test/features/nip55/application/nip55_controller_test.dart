@@ -222,6 +222,37 @@ void main() {
     );
 
     test(
+      'a grant remembered without the caller certificate matches no caller',
+      () async {
+        final permissionStore = FakeNip55PermissionStore();
+        final permissionController = Nip55Controller(
+          gateway: gateway,
+          vaultController: vaultController,
+          vaultService: vaultService,
+          requestController: requestController,
+          permissionStore: permissionStore,
+        );
+
+        await permissionController.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+        });
+        final request = requestController.state.requests.single;
+
+        await permissionController.approveSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        // As the Kotlin mirror reads a null certificate (#17).
+        expect(
+          permissionStore.grants.single.certificateSha256,
+          nip55UnresolvedCertificate,
+        );
+      },
+    );
+
+    test(
       'sign_event reject and remember persists scoped reject grant',
       () async {
         final permissionStore = FakeNip55PermissionStore();

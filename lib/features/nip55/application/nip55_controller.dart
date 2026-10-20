@@ -1247,7 +1247,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       id: 'nip55-${decision.name}-${scope.wire}-${_now().microsecondsSinceEpoch}',
       identityPubkey: identityPubkey,
       packageName: packageName,
-      certificateSha256: incoming.clientIdentity.certificateSha256,
+      // Unreadable: the grant then matches no caller, here and natively (#17).
+      certificateSha256:
+          incoming.clientIdentity.certificateSha256 ?? nip55UnresolvedCertificate,
       scope: scope,
       decision: decision,
       createdAt: _now(),
@@ -1413,10 +1415,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // peer-scoped grants because it strips the peer.  This must match
     // Nip55ApprovalPolicy._scopeFor which preserves the peer.
     //
-    // decrypt_zap_event is also matched here because NIP-57 zap receipts
-    // are NIP-04 encrypted to the recipient. If the user trusts an app
-    // to decrypt DMs, they trust it to decrypt zap receipts too, so
-    // nip04_decrypt/nip44_decrypt grants also satisfy decrypt_zap_event.
+    // decrypt_zap_event is also matched here: a nip04_decrypt/nip44_decrypt
+    // grant for any peer covers zap receipts, which are NIP-04 encrypted to
+    // the recipient. Matching is Nip55PermissionScope.matches, the rule the
+    // shared case table checks against the Kotlin mirror (#17).
     final requested = switch (incoming.method) {
       Nip55Method.nip04Decrypt => Nip04DecryptScope(incoming.pubkey),
       Nip55Method.nip44Decrypt => Nip44DecryptScope(incoming.pubkey),
@@ -1425,25 +1427,9 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     };
     if (requested == null) return false;
     final grantScope = grant.scope;
-    return switch ((grantScope, requested)) {
-      // Wildcard (null peer) matches any requested peer;
-      // specific peer only matches that exact peer.
-      (
-        Nip04DecryptScope(peerPubkey: final grantPeer),
-        Nip04DecryptScope(peerPubkey: final requestedPeer),
-      ) =>
-        grantPeer == null || grantPeer == requestedPeer,
-      (
-        Nip44DecryptScope(peerPubkey: final grantPeer),
-        Nip44DecryptScope(peerPubkey: final requestedPeer),
-      ) =>
-        grantPeer == null || grantPeer == requestedPeer,
-      // nip04_decrypt and nip44_decrypt grants also satisfy decrypt_zap_event.
-      // This mirrors Nip55PermissionMirror.scopeMatches on the Kotlin side.
-      (Nip04DecryptScope(), DecryptZapEventScope()) => true,
-      (Nip44DecryptScope(), DecryptZapEventScope()) => true,
-      // Direct decrypt_zap_event grant matches directly.
-      (DecryptZapEventScope(), DecryptZapEventScope()) => true,
+    return switch (grantScope) {
+      Nip04DecryptScope() || Nip44DecryptScope() || DecryptZapEventScope() =>
+        grantScope.matches(requested),
       _ => false,
     };
   }
