@@ -79,6 +79,20 @@ class Nip55NativeMirrorSync {
     }
   }
 
+  /// Erase all native NIP-55 state for a vault wipe (#20): the active key and
+  /// its lock deadline, the permission mirror (grants and active pubkey) and
+  /// the legacy remembered rejects.
+  ///
+  /// Unlike the other calls here this rethrows, so the wipe can report that
+  /// it did not finish. A build with no native side has nothing to wipe.
+  Future<void> wipeNativeState() async {
+    try {
+      await _channel.invokeMethod<void>('wipeNip55NativeState');
+    } on MissingPluginException {
+      diogelLog('Nip55NativeMirrorSync: no native side, nothing to wipe');
+    }
+  }
+
   /// Clear the active key from the native crypto bridge
   /// (called when the vault locks).
   Future<void> clearActiveKey() async {

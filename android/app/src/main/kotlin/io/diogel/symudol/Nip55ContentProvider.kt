@@ -328,7 +328,7 @@ class Nip55ContentProvider : ContentProvider() {
 
     private fun hasLegacyRememberedReject(packageName: String?, method: String): Boolean {
         if (packageName.isNullOrBlank()) return false
-        val preferences = context?.getSharedPreferences("nip55_provider_permissions_v1", 0)
+        val preferences = context?.getSharedPreferences(Nip55PermissionMirror.LEGACY_PREFS_NAME, 0)
             ?: return false
         return preferences.getString("$packageName:$method", null) == "reject"
     }
