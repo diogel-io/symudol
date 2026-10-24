@@ -178,3 +178,15 @@ flutter build appbundle --release
 ```
 
 Release builds require a correctly configured Android signing setup before they can be distributed safely.
+
+### NIP-46 in release builds
+
+Android 1.0 hides NIP-46 remote signing in release builds (#26): Settings has no Remote Signer
+tile, so no NIP-46 relay connection is opened. Debug and profile builds keep it. To test it in a
+release build, opt in explicitly:
+
+```bash
+flutter build apk --release --dart-define=SYMUDOL_ENABLE_NIP46=true
+```
+
+The flag is `kNip46Enabled` in `lib/features/nip46/application/nip46_feature.dart`.

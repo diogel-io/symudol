@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:symudol/app/diogel_log.dart';
 
 import '../../../../theme/tokens.dart';
+import '../../../nip46/application/nip46_feature.dart';
 import '../../../nip46/application/nip46_providers.dart';
 import '../../../vault/application/vault_providers.dart';
 import '../../../vault/presentation/vault_failure_messages.dart';
@@ -21,12 +22,17 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
     'identities',
     () async => (await ref.read(vaultStoreProvider).getIdentities()).length,
   );
+  // A build that hides NIP-46 doesn't mention it, though the wipe still
+  // clears any sessions an earlier build stored (#26).
+  final showConnections = ref.read(nip46EnabledProvider);
   // Read from the store: the NIP-46 controller starts relays when created.
-  final connectionCount = await _countOrNull(
-    'NIP-46 sessions',
-    () async =>
-        (await ref.read(nip46SessionStoreProvider).listSessions()).length,
-  );
+  final connectionCount = showConnections
+      ? await _countOrNull(
+          'NIP-46 sessions',
+          () async =>
+              (await ref.read(nip46SessionStoreProvider).listSessions()).length,
+        )
+      : null;
   if (!context.mounted) return;
 
   final confirmed = await showDialog<bool>(
@@ -34,6 +40,7 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
     builder: (_) => WipeVaultDialog(
       identityCount: identityCount,
       connectionCount: connectionCount,
+      showConnections: showConnections,
     ),
   );
   if (confirmed != true || !context.mounted) return;
@@ -75,10 +82,14 @@ class WipeVaultDialog extends StatefulWidget {
   final int? identityCount;
   final int? connectionCount;
 
+  /// False in builds that hide NIP-46: the dialog then leaves connections out.
+  final bool showConnections;
+
   const WipeVaultDialog({
     super.key,
     required this.identityCount,
     required this.connectionCount,
+    this.showConnections = true,
   });
 
   @override
@@ -111,9 +122,14 @@ class _WipeVaultDialogState extends State<WipeVaultDialog> {
           : '${_plural(identityCount, 'identity', 'identities')} and '
                 '${identityCount == 1 ? 'its private key' : 'their private keys'}',
       'Every Trusted app permission',
-      connectionCount == null
-          ? 'Every NIP-46 connection'
-          : _plural(connectionCount, 'NIP-46 connection', 'NIP-46 connections'),
+      if (widget.showConnections)
+        connectionCount == null
+            ? 'Every NIP-46 connection'
+            : _plural(
+                connectionCount,
+                'NIP-46 connection',
+                'NIP-46 connections',
+              ),
     ];
 
     return AlertDialog(

@@ -1,4 +1,5 @@
 import 'package:symudol/app/app.dart';
+import 'package:symudol/features/nip46/application/nip46_feature.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
@@ -63,6 +64,7 @@ void main() {
     WidgetTester tester, {
     required int identityCount,
     required int connectionCount,
+    bool showConnections = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -74,6 +76,7 @@ void main() {
                 builder: (_) => WipeVaultDialog(
                   identityCount: identityCount,
                   connectionCount: connectionCount,
+                  showConnections: showConnections,
                 ),
               ),
               child: const Text('open'),
@@ -97,6 +100,22 @@ void main() {
     expect(find.text('• Every Trusted app permission'), findsOneWidget);
     expect(find.text('• 1 NIP-46 connection'), findsOneWidget);
     expect(find.textContaining('cannot be undone'), findsOneWidget);
+  });
+
+  // Release builds hide NIP-46 for Android 1.0 (#26).
+  testWidgets('leaves NIP-46 connections out when NIP-46 is hidden', (
+    tester,
+  ) async {
+    await showWipeDialog(
+      tester,
+      identityCount: 2,
+      connectionCount: 1,
+      showConnections: false,
+    );
+
+    expect(find.text('• 2 identities and their private keys'), findsOneWidget);
+    expect(find.text('• Every Trusted app permission'), findsOneWidget);
+    expect(find.textContaining('NIP-46'), findsNothing);
   });
 
   testWidgets('wipe stays disabled until WIPE is typed', (tester) async {
@@ -201,5 +220,67 @@ void main() {
     expect(grantStore.grants, isEmpty);
     expect(sessionStore.sessions, isEmpty);
     expect(nativeSync.wipes, greaterThanOrEqualTo(1));
+  });
+
+  // A build that hides NIP-46 never names it, but still erases sessions an
+  // earlier build stored (#26).
+  testWidgets('wiping with NIP-46 hidden still erases its sessions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+    addTearDown(() => tester.view.resetDevicePixelRatio());
+
+    final vaultStore = FakeVaultStore();
+    final sessionStore = FakeNip46SessionStore([_session('s1')]);
+
+    final setup = VaultServiceImpl(vaultStore);
+    await setup.createVault('123456');
+    await setup.createIdentity(displayName: 'Alice');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          vaultStoreProvider.overrideWithValue(vaultStore),
+          nip55PermissionStoreProvider.overrideWithValue(
+            FakeNip55PermissionStore(),
+          ),
+          nip46SessionStoreProvider.overrideWithValue(sessionStore),
+          nip55NativeSyncProvider.overrideWithValue(_RecordingNativeSync()),
+          nip46EnabledProvider.overrideWithValue(false),
+        ],
+        child: const DiogelApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final digit in ['1', '2', '3', '4', '5', '6']) {
+      await tester.tap(find.text(digit));
+      await tester.pump();
+    }
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    await tester.tap(find.text('Settings').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Wipe Vault'), 200);
+    await tester.tap(find.text('Wipe Vault'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('• 1 identity and its private key'), findsOneWidget);
+    expect(find.textContaining('NIP-46'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('wipeVaultConfirmationField')),
+      'WIPE',
+    );
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Wipe vault'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SetupVaultScreen), findsOneWidget);
+    expect(sessionStore.sessions, isEmpty);
   });
 }
