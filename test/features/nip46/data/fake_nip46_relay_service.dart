@@ -9,6 +9,10 @@ class FakeNip46RelayService implements Nip46RelayService {
 
   final List<Map<String, Object?>> capturedPublishes = [];
   final Set<String> connectedSessions = {};
+  final Map<String, DateTime?> sinceBySession = {};
+  final Map<String, Nip46RelayAuthSigner?> authSignerBySession = {};
+  final Map<String, List<String>> relaysBySession = {};
+  int reconnectAllCalls = 0;
 
   void simulateInbound(Nip46InboundRelayEvent event) {
     _eventController.add(event);
@@ -18,17 +22,26 @@ class FakeNip46RelayService implements Nip46RelayService {
   Future<void> startSession(
     String sessionId,
     List<String> relays,
-    String remoteSignerPubkey,
-  ) async {
+    String remoteSignerPubkey, {
+    DateTime? since,
+    Nip46RelayAuthSigner? authSigner,
+  }) async {
     connectedSessions.add(sessionId);
+    sinceBySession[sessionId] = since;
+    authSignerBySession[sessionId] = authSigner;
+    relaysBySession[sessionId] = relays;
   }
 
   @override
   Future<void> updateSessionRelays(
     String sessionId,
     List<String> relays,
-    String remoteSignerPubkey,
-  ) async {}
+    String remoteSignerPubkey, {
+    DateTime? since,
+    Nip46RelayAuthSigner? authSigner,
+  }) async {
+    relaysBySession[sessionId] = relays;
+  }
 
   @override
   Future<void> stopSession(String sessionId) async {
@@ -41,6 +54,11 @@ class FakeNip46RelayService implements Nip46RelayService {
     Map<String, Object?> signedEventJson,
   ) async {
     capturedPublishes.add({'sessionId': sessionId, ...signedEventJson});
+  }
+
+  @override
+  Future<void> reconnectAll() async {
+    reconnectAllCalls++;
   }
 
   @override

@@ -8,6 +8,7 @@ import '../features/vault/presentation/setup_vault_screen.dart';
 import '../features/navigation/presentation/main_navigation_screen.dart';
 import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
+import '../features/nip46/application/nip46_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
 import '../features/vault/domain/vault_state.dart';
@@ -208,6 +209,12 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       unawaited(
         ref.read(vaultControllerProvider.notifier).refreshBiometricUnlock(),
       );
+      // Relays dropped while in the background reconnect now rather than
+      // after their back-off (#30). Only if NIP-46 has started at all.
+      if (state == AppLifecycleState.resumed &&
+          ref.exists(nip46RelayServiceProvider)) {
+        unawaited(ref.read(nip46RelayServiceProvider).reconnectAll());
+      }
       // Force reset on resume regardless of throttle
       _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
       _resetInactivityTimer();
