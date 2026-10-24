@@ -162,7 +162,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
 
     await _sessionStore.saveSession(session);
-    await _relayService.startSession(session.id, sessionRelays, pubkey);
+    await _startRelays(session);
     state = state.copyWith(
       sessions: [...state.sessions, session],
     );
@@ -188,10 +188,11 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       status: Nip46SessionStatus.pending,
       createdAt: _now(),
       pendingSecret: parsed.secret,
+      initiatedBy: Nip46ConnectionInitiator.nostrconnect,
     );
 
     await _sessionStore.saveSession(session);
-    await _relayService.startSession(session.id, parsed.relays, sessionPubkey);
+    await _startRelays(session);
 
     state = state.copyWith(
       sessions: [...state.sessions, session],
@@ -235,15 +236,18 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       pendingApproval: null,
     );
 
-    // Publish ack response — for nostrconnect flow the connect request
-    // already published the initial ack; for bunker flow we respond to the
-    // incoming connect request (if one came in before approval).
+    // In the bunker flow this answers the client's connect request with
+    // "ack". In the nostrconnect flow there was no request: the client waits
+    // for a connect response carrying the secret from its URI, and must
+    // check it (NIP-46).
     if (pending.clientPubkey.isNotEmpty) {
+      final isNostrconnect =
+          pending.initiatedBy == Nip46ConnectionInitiator.nostrconnect;
       try {
         await _publishResponse(
           session: approved,
-          requestId: _pendingConnectRequestId ?? 'connect',
-          result: 'ack',
+          requestId: _connectResponseId(pending),
+          result: isNostrconnect ? pending.pendingSecret ?? 'ack' : 'ack',
         );
       } catch (e) {
         diogelLog('Nip46Controller: failed to publish connect ack', error: e);
@@ -263,7 +267,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     if (pending.clientPubkey.isNotEmpty) {
       await _publishErrorResponse(
         session: pending,
-        requestId: _pendingConnectRequestId ?? 'connect',
+        requestId: _connectResponseId(pending),
         error: 'Connection rejected by user',
       );
     }
@@ -359,11 +363,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
       for (final session in sessions) {
         if (session.status == Nip46SessionStatus.active) {
-          await _relayService.startSession(
-            session.id,
-            session.relays,
-            session.remoteSignerPubkey,
-          );
+          await _startRelays(session);
         }
       }
 
@@ -442,6 +442,16 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       return;
     }
 
+    // Once a session knows its client, only that client may use it. A bunker
+    // session waiting for its first connect doesn't know it yet.
+    if (session.clientPubkey.isNotEmpty &&
+        event.senderPubkey != session.clientPubkey) {
+      diogelLog(
+        'Nip46Controller: dropping event ${event.eventId} from a key that is not the session\'s client',
+      );
+      return;
+    }
+
     // Decrypt the request envelope.
     final Nip46Request request;
     final bool usesNip04;
@@ -470,6 +480,21 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         request: request,
         usesNip04: usesNip04,
         senderPubkey: event.senderPubkey,
+      );
+      return;
+    }
+
+    // An approved client connecting again, after a restart or a lost
+    // connection, is already trusted: acknowledge it and keep its grants.
+    // The sender check above means it is the session's own client; a new
+    // client needs a new token (a used secret is never accepted again).
+    if (session.status == Nip46SessionStatus.active &&
+        request.method == Nip46Method.connect) {
+      await _publishResponse(
+        session: session,
+        requestId: request.id,
+        result: 'ack',
+        usesNip04: usesNip04,
       );
       return;
     }
@@ -547,9 +572,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     }
 
     // Update session with the client pubkey and requested scopes (for approval UI).
+    // The secret stays until approval, so a second connect while this one
+    // waits must carry it too; the sender check then holds it to this client.
     var updatedSession = session.copyWith(
       clientPubkey: senderPubkey,
-      pendingSecret: null,
       usesNip04: usesNip04,
       grantedScopes: requestedScopes,
     );
@@ -855,13 +881,15 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           );
 
         case Nip46Method.switchRelays:
-          // params: [] — Nostria sends this after connect; some clients send a relay list
-          // in a custom extension field. We respond with current relays.
-          final relayJson = jsonEncode(session.relays);
+          // The signer chooses the relays, and the reply is its updated list,
+          // or null when nothing changes (NIP-46). Symudol has no relay
+          // preference of its own yet, so the session's relays stand. When
+          // it does, save the new list, move the session with
+          // _relayService.updateSessionRelays, then reply with the list.
           await _publishResponse(
             session: session,
             requestId: request.id,
-            result: relayJson,
+            result: jsonEncode(null),
             usesNip04: usesNip04,
           );
 
@@ -878,6 +906,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           // Handled separately before dispatch.
           break;
 
+        // auth_url challenges (NIP-46 "Auth Challenge") are never sent: they
+        // are for signers that authenticate the user somewhere else, and
+        // Symudol asks in the app.
         case Nip46Method.unsupported:
           await _publishErrorResponse(
             session: session,
@@ -973,6 +1004,36 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     } catch (e) {
       diogelLog('Nip46Controller: failed to publish error response', error: e);
     }
+  }
+
+  /// Starts the session's relays, listening from just before its last use so
+  /// requests sent while the app was closed arrive and older ones don't.
+  Future<void> _startRelays(Nip46Session session) {
+    final lastSeen =
+        session.lastUsedAt ?? session.connectedAt ?? session.createdAt;
+    final privkey = session.remoteSignerPrivkey;
+    return _relayService.startSession(
+      session.id,
+      session.relays,
+      session.remoteSignerPubkey,
+      since: lastSeen.subtract(DartNip46RelayService.sinceSkew),
+      authSigner: (relayUrl, challenge) => _crypto
+          .buildSignedRelayAuthEvent(
+            sessionPrivkey: privkey,
+            relayUrl: relayUrl,
+            challenge: challenge,
+          )
+          .toJson(),
+    );
+  }
+
+  /// The id for the reply to a connect: the client's request id in the bunker
+  /// flow. A nostrconnect reply answers no request, so it gets a fresh id.
+  String _connectResponseId(Nip46Session session) {
+    if (session.initiatedBy == Nip46ConnectionInitiator.nostrconnect) {
+      return _generateId();
+    }
+    return _pendingConnectRequestId ?? _generateId();
   }
 
   bool _markProcessed(String eventId) {

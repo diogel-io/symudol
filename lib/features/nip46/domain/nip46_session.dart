@@ -2,6 +2,10 @@ import 'nip46_permission_scope.dart';
 
 enum Nip46SessionStatus { pending, active, revoked, disconnected }
 
+/// Which side started the connection: Symudol with a `bunker://` token, or
+/// the client with a `nostrconnect://` one. The connect reply differs.
+enum Nip46ConnectionInitiator { bunker, nostrconnect }
+
 class Nip46Session {
   final String id;
   final String clientPubkey;
@@ -22,6 +26,8 @@ class Nip46Session {
   final String? pendingSecret;
   // True if the client's first request used NIP-04 encryption; we respond in kind.
   final bool usesNip04;
+  // Sessions stored before this field existed read as bunker.
+  final Nip46ConnectionInitiator initiatedBy;
 
   const Nip46Session({
     required this.id,
@@ -39,6 +45,7 @@ class Nip46Session {
     this.connectedAt,
     this.pendingSecret,
     this.usesNip04 = false,
+    this.initiatedBy = Nip46ConnectionInitiator.bunker,
   });
 
   Nip46Session copyWith({
@@ -73,6 +80,7 @@ class Nip46Session {
       pendingSecret:
           pendingSecret == _sentinel ? this.pendingSecret : pendingSecret as String?,
       usesNip04: usesNip04 ?? this.usesNip04,
+      initiatedBy: initiatedBy,
     );
   }
 
@@ -92,6 +100,7 @@ class Nip46Session {
     'connectedAt': connectedAt?.toIso8601String(),
     'pendingSecret': pendingSecret,
     'usesNip04': usesNip04,
+    'initiatedBy': initiatedBy.name,
   };
 
   factory Nip46Session.fromJson(Map<String, Object?> json) {
@@ -128,6 +137,8 @@ class Nip46Session {
           : null,
       pendingSecret: json['pendingSecret'] as String?,
       usesNip04: json['usesNip04'] as bool? ?? false,
+      initiatedBy: Nip46ConnectionInitiator.values.asNameMap()[json['initiatedBy']] ??
+          Nip46ConnectionInitiator.bunker,
     );
   }
 }
