@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../nip46/application/nip46_feature.dart';
 import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../vault/domain/biometric_unlock_status.dart';
@@ -220,19 +221,21 @@ class SettingsScreen extends ConsumerWidget {
               );
             },
           ),
-          SettingsTile(
-            icon: Icons.lan_outlined,
-            title: 'Remote Signer (NIP-46)',
-            subtitle:
-                'Manage relay-based remote signing sessions for Amethyst, Nostria, and other NIP-46 clients.',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const Nip46ConnectionsScreen(),
-                ),
-              );
-            },
-          ),
+          // Hidden in release builds for Android 1.0 (#26).
+          if (ref.watch(nip46EnabledProvider))
+            SettingsTile(
+              icon: Icons.lan_outlined,
+              title: 'Remote Signer (NIP-46)',
+              subtitle:
+                  'Manage relay-based remote signing sessions for Amethyst, Nostria, and other NIP-46 clients.',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const Nip46ConnectionsScreen(),
+                  ),
+                );
+              },
+            ),
           const SettingsTile(
             icon: Icons.info_outline,
             title: 'Session security',
