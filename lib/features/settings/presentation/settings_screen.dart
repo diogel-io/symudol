@@ -51,12 +51,12 @@ String biometricUnlockSubtitle(BiometricUnlockStatus status) {
   }
   if (status.enabled ||
       status.availability == BiometricAvailability.available) {
-    return 'Unlock with your fingerprint; the PIN is still needed after a '
-        'restart or every 72 hours';
+    return 'Unlock with your fingerprint or face; the PIN is still needed '
+        'after a restart or every 72 hours';
   }
   return switch (status.availability) {
     BiometricAvailability.noneEnrolled =>
-      'Add a fingerprint in Android settings first',
+      'Add a fingerprint or face in Android settings first',
     BiometricAvailability.noHardware =>
       'This phone has no strong biometric sensor',
     _ => 'Not available on this phone',

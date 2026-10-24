@@ -38,14 +38,14 @@ String vaultFailureMessage(VaultFailure failure) {
     return biometricPinRequiredMessage;
   }
   if (failure is BiometricLockedOutFailure) {
-    return 'Too many fingerprint attempts. Unlock with your PIN.';
+    return 'Too many biometric attempts. Unlock with your PIN.';
   }
   if (failure is BiometricKeyInvalidatedFailure) {
-    return "Biometric unlock was turned off because this phone's fingerprints "
-        'changed. Unlock with your PIN.';
+    return "Biometric unlock was turned off because this phone's fingerprints or "
+        'face changed. Unlock with your PIN.';
   }
   if (failure is BiometricFailure) {
-    return 'The fingerprint check did not work. Unlock with your PIN.';
+    return 'The biometric check did not work. Unlock with your PIN.';
   }
     if (failure is IdentityNotFoundFailure) {
     return 'The requested identity was not found.';

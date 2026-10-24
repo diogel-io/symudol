@@ -11,10 +11,14 @@ next to the PIN's Argon2id wrap (`pin-protection.md`, "Key Envelope and Migratio
 
 - **The key.** An AES-256-GCM key in the Android Keystore, `symudol_biometric_dek_wrap.<time>`
   (`BiometricVault.kt`). Each turn-on makes a new key and deletes the older ones only once the new
-  wrap succeeds, so a cancelled prompt leaves the existing key and wrap working. It needs a strong biometric for every use
+  wrap succeeds, so a cancelled prompt leaves the existing key and wrap working. If an old key
+  can't be deleted then, it is logged and left: the wrap no longer points at it (#108). A wrap
+  saved before keys had a time suffix has no alias and is read as the first key,
+  `symudol_biometric_dek_wrap`. It needs a strong biometric for every use
   (`setUserAuthenticationRequired`, and `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`
   on API 30+, per-use auth below it). The screen-lock PIN doesn't count. Adding a fingerprint
-  invalidates it (`setInvalidatedByBiometricEnrollment`).
+  invalidates it (`setInvalidatedByBiometricEnrollment`). `BIOMETRIC_STRONG` covers class-3 face
+  unlock as well as fingerprints, so the app's copy says "fingerprint or face".
 - **The check is the Keystore's.** `BiometricPrompt` gets the key's cipher as its `CryptoObject`,
   and the cipher only works once the user has authenticated. A yes from a dialog alone can't use
   the key.
@@ -60,11 +64,17 @@ PIN still works and nothing else is lost.
 - **A fingerprint added:** the next unlock fails with `keyInvalidated`.
 - **No fingerprint left** (all removed, or the screen lock cleared): Android reports none enrolled,
   and Symudol turns biometric unlock off as soon as it reads that, at the next lock or when the app
-  comes back to the front. Settings then shows it as off, rather than claiming it's on.
+  comes back to the front. Settings then shows it as off, rather than claiming it's on. The
+  turn-off runs in the vault's queue, after any turn-on or unlock still in progress (#108).
 - **The sensor unavailable for now:** biometric unlock stays on. The unlock screen and Settings say
   the phone can't use it right now, and Settings can still turn it off.
 
 A second unlock while the vault is open zeroes the first DEK before keeping the new one.
+
+The status is read when the vault state changes (set-up, lock, unlock, wipe), after a biometric
+action or a PIN change, when the app comes back to the front, before the unlock screen prompts, and
+when the Settings tile is tapped. Other refreshes, such as a settings or identity change, keep the
+last status (#108).
 
 That is why this doesn't reverse "No Keystore Binding for the KEK" in `pin-protection.md`. There,
 a lost Keystore key would have locked the vault for good. Here it only loses a convenience.

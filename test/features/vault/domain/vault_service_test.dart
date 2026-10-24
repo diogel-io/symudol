@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:symudol/app/utils/concurrency_utils.dart';
@@ -931,6 +932,28 @@ void main() {
       expect(await fakeStore.getBiometricWrap(), isNull);
       expect(biometric.hasKey, isFalse);
       expect((await vaultService.getBiometricUnlockStatus()).turnedOff, isFalse);
+    });
+
+    test('a status read waits for a turn-on in progress (#108)', () async {
+      await createWithIdentity();
+      final gate = Completer<void>();
+      biometric.wrapGate = gate;
+      final enabling = vaultService.enableBiometricUnlock('123456');
+      await pumpEventQueue();
+      expect(biometric.prompts, 1);
+      // Every fingerprint removed while the turn-on is still saving.
+      biometric.availabilityValue = BiometricAvailability.noneEnrolled;
+
+      final reading = vaultService.getBiometricUnlockStatus();
+      await pumpEventQueue();
+      gate.complete();
+      await enabling;
+      final status = await reading;
+
+      expect(status.turnedOff, isTrue);
+      expect(status.enabled, isFalse);
+      expect(await fakeStore.getBiometricWrap(), isNull);
+      expect(biometric.hasKey, isFalse);
     });
 
     test("it stays on while the phone can't use it for now", () async {

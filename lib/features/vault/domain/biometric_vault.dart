@@ -37,8 +37,12 @@ class BiometricWrap {
     'ciphertext': ciphertext,
   };
 
+  /// The one key used before each wrap got its own (#108). A wrap saved
+  /// then has no alias, and still opens with this key.
+  static const legacyAlias = 'symudol_biometric_dek_wrap';
+
   factory BiometricWrap.fromJson(Map<String, dynamic> json) => BiometricWrap(
-    alias: json['alias'] as String,
+    alias: json['alias'] as String? ?? legacyAlias,
     iv: json['iv'] as String,
     ciphertext: json['ciphertext'] as String,
   );

@@ -3,6 +3,7 @@ import 'package:symudol/features/vault/domain/vault_failure.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../fakes/fake_biometric_vault.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 void main() {
@@ -175,6 +176,30 @@ void main() {
         expect(controller.state.failure, isA<DuplicateIdentityFailure>());
       },
     );
+  });
+
+  group('VaultController biometric status reads (#108)', () {
+    test('only a vault state change or a biometric action reads it', () async {
+      final biometric = FakeBiometricVault();
+      controller = VaultController(
+        VaultServiceImpl(FakeVaultStore(), biometricVault: biometric),
+      );
+      await controller.createVault('123456');
+      final afterCreate = biometric.availabilityReads;
+      expect(afterCreate, greaterThan(0));
+
+      await controller.setInactivityTimeout(10);
+      await controller.createIdentity(displayName: 'Test');
+      expect(biometric.availabilityReads, afterCreate);
+
+      await controller.enableBiometricUnlock('123456');
+      expect(controller.state.biometricUnlock.enabled, isTrue);
+      final afterEnable = biometric.availabilityReads;
+
+      await controller.lock();
+      expect(biometric.availabilityReads, greaterThan(afterEnable));
+      expect(controller.state.biometricUnlock.enabled, isTrue);
+    });
   });
 
   group('VaultController wipe', () {
