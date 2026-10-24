@@ -98,6 +98,25 @@ class DartNip46Crypto {
     return _crypto.signEvent(privateKeyHex: sessionPrivkey, draft: draft);
   }
 
+  /// Builds a signed NIP-42 AUTH event (kind 22242) answering [challenge]
+  /// from [relayUrl], signed with the session key, never the user's.
+  SignedNostrEvent buildSignedRelayAuthEvent({
+    required String sessionPrivkey,
+    required String relayUrl,
+    required String challenge,
+  }) {
+    final draft = NostrEventDraft(
+      kind: 22242,
+      content: '',
+      tags: [
+        ['relay', relayUrl],
+        ['challenge', challenge],
+      ],
+      createdAt: DateTime.now().toUtc(),
+    );
+    return _crypto.signEvent(privateKeyHex: sessionPrivkey, draft: draft);
+  }
+
   Nip46Request _parseJson(String plaintext) {
     final Object? decoded;
     try {

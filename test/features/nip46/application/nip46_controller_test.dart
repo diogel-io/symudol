@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:symudol/features/nip46/application/nip46_controller.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
+import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
 import 'package:symudol/features/nip46/domain/nip46_connection_token.dart';
+import 'package:symudol/features/nip46/domain/nip46_permission_scope.dart';
 import 'package:symudol/features/nip46/domain/nip46_relay_event.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
@@ -260,6 +264,227 @@ void main() {
 
       expect(controller.state.sessions, hasLength(1));
       expect(relayService.connectedSessions, hasLength(1));
+    });
+  });
+
+  group('protocol (#30)', () {
+    const nostrCrypto = DartNostrCryptoService();
+    // Throwaway client keys, generated for these tests only.
+    const clientPrivkey =
+        '7f3b2c1d0e9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c';
+    const strangerPrivkey =
+        '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    final clientPubkey = nostrCrypto.derivePublicKey(clientPrivkey);
+    final strangerPubkey = nostrCrypto.derivePublicKey(strangerPrivkey);
+    var eventCounter = 0;
+
+    /// Sends [method] from the key [fromPrivkey] to [session], as a relay would.
+    Future<void> send(
+      Nip46Session session,
+      String method, {
+      String? id,
+      List<String> params = const [],
+      String fromPrivkey = clientPrivkey,
+    }) async {
+      final content = nostrCrypto.nip44Encrypt(
+        privateKeyHex: fromPrivkey,
+        peerPubkeyHex: session.remoteSignerPubkey,
+        plaintext: jsonEncode({
+          'id': id ?? 'req-${eventCounter + 1}',
+          'method': method,
+          'params': params,
+        }),
+      );
+      relayService.simulateInbound(
+        Nip46InboundRelayEvent(
+          eventId: 'event-${++eventCounter}',
+          senderPubkey: nostrCrypto.derivePublicKey(fromPrivkey),
+          recipientPubkey: session.remoteSignerPubkey,
+          encryptedContent: content,
+          relay: 'wss://relay.example.com',
+          createdAt: 0,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+
+    /// The decrypted responses published so far, oldest first.
+    List<Map<String, Object?>> responses() => [
+      for (final event in relayService.capturedPublishes)
+        (jsonDecode(
+                  nostrCrypto.nip44Decrypt(
+                    privateKeyHex: clientPrivkey,
+                    peerPubkeyHex: event['pubkey'] as String,
+                    ciphertext: event['content'] as String,
+                  ),
+                )
+                as Map)
+            .cast<String, Object?>(),
+    ];
+
+    /// A bunker session that [clientPrivkey] connected to and the user approved.
+    Future<Nip46Session> activeBunkerSession({
+      List<Nip46PermissionScope> grants = const [],
+    }) async {
+      final token = await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+      await send(
+        session,
+        'connect',
+        id: 'connect-1',
+        params: [session.remoteSignerPubkey, token.secret],
+      );
+      await controller.approveConnection(grantedScopes: grants);
+      relayService.capturedPublishes.clear();
+      return controller.state.sessions.single;
+    }
+
+    test('a nostrconnect approval replies with the URI secret', () async {
+      await controller.importNostrconnectToken(
+        'nostrconnect://$clientPubkey?secret=s3cr3t'
+        '&relay=${Uri.encodeComponent("wss://relay.example.com")}',
+      );
+
+      await controller.approveConnection();
+
+      final reply = responses().single;
+      expect(reply['result'], 's3cr3t');
+      expect(reply['error'], isNull);
+      expect(reply['id'], isNot('connect'));
+      expect(reply['id'], hasLength(16));
+    });
+
+    test('a bunker approval replies ack to the connect request', () async {
+      final token = await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+      await send(
+        session,
+        'connect',
+        id: 'connect-1',
+        params: [session.remoteSignerPubkey, token.secret],
+      );
+      expect(controller.state.pendingApproval?.clientPubkey, clientPubkey);
+
+      await controller.approveConnection();
+
+      expect(responses().single, {
+        'id': 'connect-1',
+        'result': 'ack',
+        'error': null,
+      });
+      expect(controller.state.sessions.single.pendingSecret, isNull);
+    });
+
+    test('a bunker connect without the secret is ignored', () async {
+      await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+
+      await send(session, 'connect', params: [session.remoteSignerPubkey]);
+
+      // The session has no client yet, so there is no one to answer.
+      expect(controller.state.pendingApproval, isNull);
+      expect(controller.state.sessions.single.clientPubkey, isEmpty);
+      expect(relayService.capturedPublishes, isEmpty);
+    });
+
+    test('another key cannot take over a connect awaiting approval', () async {
+      final token = await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+      await send(
+        session,
+        'connect',
+        params: [session.remoteSignerPubkey, token.secret],
+      );
+
+      await send(
+        session,
+        'connect',
+        params: [session.remoteSignerPubkey, token.secret],
+        fromPrivkey: strangerPrivkey,
+      );
+
+      expect(controller.state.pendingApproval?.clientPubkey, clientPubkey);
+      expect(relayService.capturedPublishes, isEmpty);
+    });
+
+    test('an approved client connecting again gets ack and keeps its grants',
+        () async {
+      final session = await activeBunkerSession(
+        grants: const [Nip46PingScope()],
+      );
+
+      await send(
+        session,
+        'connect',
+        id: 'reconnect-1',
+        params: [session.remoteSignerPubkey],
+      );
+
+      expect(responses().single, {
+        'id': 'reconnect-1',
+        'result': 'ack',
+        'error': null,
+      });
+      expect(controller.state.pendingApproval, isNull);
+      final after = controller.state.sessions.single;
+      expect(after.status, Nip46SessionStatus.active);
+      expect(after.grantedScopes, hasLength(1));
+    });
+
+    test('events from a key other than the session client are dropped',
+        () async {
+      final session = await activeBunkerSession();
+
+      await send(
+        session,
+        'connect',
+        params: [session.remoteSignerPubkey],
+        fromPrivkey: strangerPrivkey,
+      );
+
+      expect(relayService.capturedPublishes, isEmpty);
+      expect(strangerPubkey, isNot(clientPubkey));
+    });
+
+    test('switch_relays replies null and keeps the relays', () async {
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity();
+      final session = await activeBunkerSession();
+
+      await send(session, 'switch_relays', id: 'switch-1');
+
+      expect(responses().single, {
+        'id': 'switch-1',
+        'result': 'null',
+        'error': null,
+      });
+      expect(controller.state.sessions.single.relays, session.relays);
+    });
+
+    test('relays start from just before the session was last used', () async {
+      await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+
+      expect(
+        relayService.sinceBySession[session.id],
+        session.createdAt.subtract(DartNip46RelayService.sinceSkew),
+      );
+    });
+
+    test('relay AUTH is signed with the session key', () async {
+      await controller.initiateBunkerSession();
+      final session = controller.state.sessions.single;
+      final signer = relayService.authSignerBySession[session.id]!;
+
+      final auth = signer('wss://relay.example.com', 'challenge-1');
+
+      expect(auth['kind'], 22242);
+      expect(auth['pubkey'], session.remoteSignerPubkey);
+      expect(auth['content'], '');
+      expect(auth['tags'], [
+        ['relay', 'wss://relay.example.com'],
+        ['challenge', 'challenge-1'],
+      ]);
     });
   });
 }
