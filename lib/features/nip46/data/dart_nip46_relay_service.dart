@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:symudol/app/diogel_log.dart';
 
 import '../domain/nip46_relay_event.dart';
@@ -73,6 +74,10 @@ class DartNip46RelayService implements Nip46RelayService {
   static const Duration _pingInterval = Duration(seconds: 30);
   static const Duration _maxReconnectDelay = Duration(seconds: 60);
 
+  /// A connection that lasts this long resets the reconnect back-off. One
+  /// the relay drops sooner (a rate limit, say) keeps backing off.
+  static const Duration stableConnection = Duration(seconds: 30);
+
   /// How far before the previous subscription a re-subscription reaches,
   /// for clock skew between the client, the relay and this phone.
   static const Duration sinceSkew = Duration(minutes: 5);
@@ -102,7 +107,17 @@ class DartNip46RelayService implements Nip46RelayService {
        _publishBaseDelay = publishBaseDelay;
 
   static Future<Nip46RelaySocket> _connectWebSocket(String url) async {
-    final socket = await WebSocket.connect(url).timeout(_connectTimeout);
+    final connecting = WebSocket.connect(url);
+    final WebSocket socket;
+    try {
+      socket = await connecting.timeout(_connectTimeout);
+    } on TimeoutException {
+      // The handshake may still finish; close that socket rather than leak it.
+      unawaited(
+        connecting.then((late) => late.close(), onError: (Object _) => null),
+      );
+      rethrow;
+    }
     // A socket left half-open by a network change is closed when a ping goes
     // unanswered, and closing it starts a reconnect.
     socket.pingInterval = _pingInterval;
@@ -121,6 +136,11 @@ class DartNip46RelayService implements Nip46RelayService {
 
   @override
   Stream<Nip46InboundRelayEvent> get inboundEvents => _eventController.stream;
+
+  /// How many reconnects in a row [relayUrl] has made for [sessionId].
+  @visibleForTesting
+  int? reconnectAttemptsFor(String sessionId, String relayUrl) =>
+      _sessions[sessionId]?.relays[relayUrl]?.reconnectAttempts;
 
   @override
   Future<void> startSession(
@@ -260,7 +280,7 @@ class DartNip46RelayService implements Nip46RelayService {
     }
 
     conn.socket = socket;
-    conn.reconnectAttempts = 0;
+    conn.connectedAt = _now();
     conn.consecutiveFailures = 0;
     conn.unhealthyUntil = null;
     conn.authEventId = null;
@@ -283,6 +303,12 @@ class DartNip46RelayService implements Nip46RelayService {
   ) {
     if (conn.socket != socket) return;
     diogelLog('Nip46RelayService: disconnected from ${conn.url}');
+    final connectedAt = conn.connectedAt;
+    if (connectedAt != null &&
+        _now().difference(connectedAt) >= stableConnection) {
+      conn.reconnectAttempts = 0;
+    }
+    conn.connectedAt = null;
     conn.socket = null;
     conn.messageSub = null;
     conn.subscriptionId = null;
@@ -620,6 +646,7 @@ class _RelayConnection {
   Nip46RelaySocket? socket;
   StreamSubscription<dynamic>? messageSub;
   bool connecting = false;
+  DateTime? connectedAt;
   String? subscriptionId;
   DateTime? lastSubscribedAt;
   int consecutiveFailures = 0;

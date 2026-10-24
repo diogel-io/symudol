@@ -23,12 +23,12 @@ Against the NIP-46 text in the Diogel workspace's NIPs reference (`46.md`):
 | `switch_relays` | Replies `null`: Symudol has no relay preference of its own yet, so the session's relays stand. |
 | NIP-42 relay AUTH | Answered with a kind 22242 event signed by the session key, never the user's key. The subscription is renewed, and an event refused with `auth-required:` is sent again. |
 | `auth_url` challenges | Not sent. They are for signers that authenticate the user elsewhere; Symudol asks in the app. |
-| Subscriptions | Ask for kind 24133 events since five minutes before the session was last used, and close the old subscription before each refresh. |
-| Lost connections | Reconnect with back-off from 2 s to 60 s, a 10 s connect timeout and 30 s pings, and at once when the app returns to the foreground. |
+| Subscriptions | The first subscription asks for kind 24133 events since five minutes before the session was last used (or connected, or created). Each refresh and reconnect closes the old subscription and asks since five minutes before it. After AUTH, the subscription starts again from the first cursor. |
+| Lost connections | Reconnect with back-off from 2 s to 60 s, a 10 s connect timeout and 30 s pings, and at once when the app returns to the foreground. The back-off resets only after a connection stays up for 30 s. |
 | Failing relays | Skipped for two minutes after ten refusals in a row, then tried again. |
 
 Requests that need review still time out until the review screen lands (#27), so this run covers
-pairing, reconnecting, `get_public_key`, `ping`, `get_relays` and `switch_relays`. Add signing to
+pairing, reconnecting, `get_public_key` and `switch_relays`. Add signing to
 the matrix when #27 ships.
 
 ## Set Up
@@ -57,7 +57,9 @@ Run each check with each client, and record pass, fail or not supported.
 3. **Reconnect after a client restart.** Reload the client, or close and reopen it. It reconnects
    without a new approval in Symudol and without an error.
 4. **Reconnect after a network drop.** With a session open, turn on flight mode on the emulator
-   for a minute, then turn it off. The client's next request is answered within a minute.
+   for a minute, then turn it off. The client's next request is answered once the relay
+   reconnects. Allow 70 seconds for the first attempt (up to 60 s of back-off and a 10 s connect
+   timeout); a failed attempt adds another back-off.
 5. **Reconnect on resume.** Put Symudol in the background for a few minutes, bring it back, and
    make a request from the client. It is answered.
 6. **`switch_relays`.** If the client sends it after connecting, the session keeps working on the

@@ -269,6 +269,27 @@ void main() {
       expect(sockets.single.sentOfType('REQ'), hasLength(1));
     });
 
+    test('a relay that drops the connection at once keeps backing off',
+        () async {
+      await (await start()).drop();
+      await pump();
+      await sockets.last.drop();
+      await pump();
+
+      expect(service.reconnectAttemptsFor(sessionId, relayUrl), 2);
+    });
+
+    test('a connection that stayed up resets the back-off', () async {
+      await (await start()).drop();
+      await pump();
+
+      now = now.add(DartNip46RelayService.stableConnection);
+      await sockets.last.drop();
+      await pump();
+
+      expect(service.reconnectAttemptsFor(sessionId, relayUrl), 1);
+    });
+
     test('reconnectAll leaves a connected relay alone', () async {
       await start();
 

@@ -490,12 +490,16 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // client needs a new token (a used secret is never accepted again).
     if (session.status == Nip46SessionStatus.active &&
         request.method == Nip46Method.connect) {
-      await _publishResponse(
-        session: session,
-        requestId: request.id,
-        result: 'ack',
-        usesNip04: usesNip04,
-      );
+      try {
+        await _publishResponse(
+          session: session,
+          requestId: request.id,
+          result: 'ack',
+          usesNip04: usesNip04,
+        );
+      } catch (e) {
+        diogelLog('Nip46Controller: failed to acknowledge a reconnect', error: e);
+      }
       return;
     }
 
