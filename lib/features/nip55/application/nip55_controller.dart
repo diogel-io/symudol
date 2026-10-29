@@ -198,18 +198,31 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     _reviewExpiresAt = _now().add(_reviewTimeout);
     _reviewTimer = Timer(_reviewTimeout, () {
       if (!mounted || _reviewKey != key) return;
-      unawaited(_expireReview());
+      unawaited(
+        _expireReview().catchError(
+          (Object e, StackTrace stack) => diogelLog(
+            'Nip55Controller: could not answer a review that timed out',
+            error: e,
+            stackTrace: stack,
+          ),
+        ),
+      );
     });
   }
 
+  /// The request ends even when the client can't be answered, so its signing
+  /// request is dismissed either way (#106).
   Future<void> _expireReview() async {
     final signingRequestId = state.pendingSigningRequestId;
-    await cancelPendingExternalRequest(
-      error: 'NIP-55 request timed out waiting for review',
-      rejected: false,
-    );
-    if (signingRequestId != null) {
-      await _requestController.dismissRequest(signingRequestId);
+    try {
+      await cancelPendingExternalRequest(
+        error: 'NIP-55 request timed out waiting for review',
+        rejected: false,
+      );
+    } finally {
+      if (signingRequestId != null) {
+        await _requestController.dismissRequest(signingRequestId);
+      }
     }
   }
 
@@ -246,7 +259,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     if (previousVaultState != null &&
         previousVaultState is! NoVault &&
         state.vaultState is NoVault) {
-      _answerWaitingRequestAfterWipe();
+      _answerPendingRequestAfterWipe();
     }
     final target = (
       state.vaultState is VaultUnlocked,
@@ -266,28 +279,43 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         );
   }
 
-  /// A client waiting for an unlock gets its answer once the vault is wiped,
-  /// however it was wiped (#104): Settings, Forgot PIN, or too many failed
-  /// PINs. Only on the change from a vault to none: a request that arrives
-  /// before any vault exists waits through setup.
+  /// A pending client gets its answer once the vault is wiped, however it was
+  /// wiped (#104): Settings, Forgot PIN, or too many failed PINs. That is a
+  /// request waiting for an unlock or one under review (#106), with any
+  /// requests deferred behind it. Only on the change from a vault to none: a
+  /// request that arrives before any vault exists waits through setup.
   ///
   /// The vault controller reports the wipe once it has finished, so the
   /// answer, which hands the user back to the client, comes after it. A
   /// failure to answer leaves the wipe alone.
-  void _answerWaitingRequestAfterWipe() {
-    if (!state.isWaitingForUnlock) return;
+  void _answerPendingRequestAfterWipe() {
+    if (state.pendingIncoming == null && _deferredClientAuthRequests.isEmpty) {
+      return;
+    }
     unawaited(
-      cancelPendingExternalRequest(
-        error: 'The Symudol vault was erased',
-        rejected: false,
-      ).catchError(
+      _endPendingRequestsAfterWipe().catchError(
         (Object e, StackTrace stack) => diogelLog(
-          'Nip55Controller: could not answer the waiting request after a wipe',
+          'Nip55Controller: could not answer the pending request after a wipe',
           error: e,
           stackTrace: stack,
         ),
       ),
     );
+  }
+
+  /// Answers the pending request and dismisses its signing request, which
+  /// would otherwise stay in Requests for a key that no longer exists (#106).
+  Future<void> _endPendingRequestsAfterWipe() async {
+    const error = 'The Symudol vault was erased';
+    final signingRequestId = state.pendingSigningRequestId;
+    try {
+      await cancelPendingExternalRequest(error: error, rejected: false);
+    } finally {
+      if (signingRequestId != null) {
+        await _requestController.dismissRequest(signingRequestId);
+      }
+      await _rejectDeferredClientAuthenticationRequests(error, rejected: false);
+    }
   }
 
   /// Whether the vault is still unlocked as [identity].
@@ -1501,6 +1529,13 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         cancelPendingExternalRequest(
           error: 'NIP-55 request timed out waiting for unlock',
           rejected: false,
+        ).catchError(
+          (Object e, StackTrace stack) => diogelLog(
+            'Nip55Controller: could not answer a request that timed out '
+            'waiting for unlock',
+            error: e,
+            stackTrace: stack,
+          ),
         ),
       );
     });
