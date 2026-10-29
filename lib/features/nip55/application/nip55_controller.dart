@@ -1653,12 +1653,24 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       _deferredClientAuthRequests,
     );
     _deferredClientAuthRequests.clear();
+    // Every client is answered even when one can't be: the queue is already
+    // cleared, so a client skipped here would never hear back (#106).
+    Object? firstFailure;
+    StackTrace? firstStack;
     for (final incoming in deferred) {
-      await _gateway.rejectNip55Intent(
-        requestToken: incoming.requestToken,
-        error: error,
-        rejected: rejected,
-      );
+      try {
+        await _gateway.rejectNip55Intent(
+          requestToken: incoming.requestToken,
+          error: error,
+          rejected: rejected,
+        );
+      } catch (e, stack) {
+        firstFailure ??= e;
+        firstStack ??= stack;
+      }
+    }
+    if (firstFailure != null) {
+      Error.throwWithStackTrace(firstFailure, firstStack!);
     }
   }
 

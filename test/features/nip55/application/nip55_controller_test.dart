@@ -2706,6 +2706,36 @@ void main() {
       expect(statusOf(requestId), SigningRequestStatus.rejected);
     });
 
+    test('answers every deferred request after a failed answer', () async {
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: FakeNip55PermissionStore(),
+      );
+      for (final id in ['auth-first', 'auth-second', 'auth-third']) {
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: id, kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+      }
+      gateway.throwOnReject = true;
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, [
+        'token-auth-first',
+        'token-auth-second',
+        'token-auth-third',
+      ]);
+      expect(gateway.rejectedErrorsByToken['token-auth-third'], erased);
+      expect(permissionController.state.hasPendingExternalRequest, isFalse);
+      permissionController.dispose();
+    });
+
     test('an unanswerable review timeout is still dismissed', () async {
       final timedController = Nip55Controller(
         gateway: gateway,
