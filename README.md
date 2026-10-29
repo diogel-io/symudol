@@ -190,3 +190,7 @@ flutter build apk --release --dart-define=SYMUDOL_ENABLE_NIP46=true
 ```
 
 The flag is `kNip46Enabled` in `lib/features/nip46/application/nip46_feature.dart`.
+
+## Licence
+
+Symudol is released under the MIT licence. See [LICENSE](LICENSE).
