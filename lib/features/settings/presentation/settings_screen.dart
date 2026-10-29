@@ -44,6 +44,10 @@ String formatApprovalSessionDuration(int minutes) {
 String formatWipeAfterFailures(int? attempts) =>
     attempts == null ? 'Off' : 'After $attempts failed attempts';
 
+/// Symudol's own notice on the open-source licences page (#113).
+const symudolLicenceLegalese =
+    '© 2026 Threenine Consulting Limited. Released under the MIT licence.';
+
 /// The Biometric Unlock tile's subtitle (#23).
 String biometricUnlockSubtitle(BiometricUnlockStatus status) {
   if (status.enabledButUnavailable) {
@@ -242,6 +246,17 @@ class SettingsScreen extends ConsumerWidget {
             subtitle:
                 'Shorter delays are safer; longer delays are more convenient. '
                 'Never only lasts while the app process remains running.',
+          ),
+          SettingsTile(
+            key: const Key('openSourceLicencesTile'),
+            icon: Icons.description_outlined,
+            title: 'Open-source licences',
+            subtitle: 'Licences for Symudol and the packages it uses',
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'Symudol',
+              applicationLegalese: symudolLicenceLegalese,
+            ),
           ),
           SettingsTile(
             icon: Icons.lock_open,
