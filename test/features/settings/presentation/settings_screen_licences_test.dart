@@ -40,6 +40,11 @@ void main() {
 
     expect(find.byType(LicensePage), findsOneWidget);
     expect(find.text('Symudol'), findsWidgets);
-    expect(find.text(symudolLicenceLegalese), findsOneWidget);
+    expect(
+      find.text(
+        '© 2026 Threenine Consulting Limited. Released under the MIT licence.',
+      ),
+      findsOneWidget,
+    );
   });
 }
