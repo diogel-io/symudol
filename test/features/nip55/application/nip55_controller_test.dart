@@ -2631,6 +2631,154 @@ void main() {
       expect(controller.state.isWaitingForUnlock, isTrue);
     });
   });
+
+  // An uncaught async error fails the test, so the failing answers below also
+  // check that nothing escapes the controller.
+  group('a wipe answers a request under review (#106)', () {
+    const erased = 'The Symudol vault was erased';
+
+    void expectAnsweredAfterWipe(String token) {
+      expect(gateway.rejectedTokens, [token]);
+      expect(gateway.rejectedFlagsByToken[token], isFalse);
+      expect(gateway.rejectedErrorsByToken[token], erased);
+      expect(controller.state.hasPendingExternalRequest, isFalse);
+    }
+
+    SigningRequestStatus statusOf(String requestId) => requestController
+        .state
+        .requests
+        .singleWhere((r) => r.id == requestId)
+        .status;
+
+    test('answers and dismisses a sign_event under review', () async {
+      await controller.handleRawIntent(signEventRaw(id: 'wipe-sign'));
+      final requestId = controller.state.pendingSigningRequestId;
+      expect(requestId, isNotNull);
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expectAnsweredAfterWipe('token-wipe-sign');
+      expect(statusOf(requestId!), SigningRequestStatus.rejected);
+    });
+
+    test('answers a get_public_key under review', () async {
+      await controller.handleRawIntent({
+        'requestToken': 'token-wipe-pubkey',
+        'type': 'get_public_key',
+        'callingPackage': 'com.example.app',
+        'callerCertificateSha256': 'AA:BB',
+      });
+      expect(controller.state.pendingPublicKeyRequest, isNotNull);
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expectAnsweredAfterWipe('token-wipe-pubkey');
+    });
+
+    test('answers a sign_message under review', () async {
+      await controller.handleRawIntent({
+        'requestToken': 'token-wipe-crypto',
+        'type': 'sign_message',
+        'content': 'hello message',
+        'currentUser': vaultController.state.activeIdentity!.publicKey,
+      });
+      expect(controller.state.pendingCryptoRequest, isNotNull);
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expectAnsweredAfterWipe('token-wipe-crypto');
+    });
+
+    test('dismisses the request when the client cannot be answered', () async {
+      await controller.handleRawIntent(signEventRaw(id: 'wipe-unanswerable'));
+      final requestId = controller.state.pendingSigningRequestId!;
+      gateway.throwOnReject = true;
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, ['token-wipe-unanswerable']);
+      expect(vaultController.state.vaultState, isA<NoVault>());
+      expect(controller.state.hasPendingExternalRequest, isFalse);
+      expect(statusOf(requestId), SigningRequestStatus.rejected);
+    });
+
+    test('answers every deferred request after a failed answer', () async {
+      final permissionController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        permissionStore: FakeNip55PermissionStore(),
+      );
+      for (final id in ['auth-first', 'auth-second', 'auth-third']) {
+        await permissionController.handleRawIntent({
+          ...signEventRaw(id: id, kind: 22242),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+      }
+      gateway.throwOnReject = true;
+
+      expect(await vaultController.wipe(), isNull);
+      await pumpEventQueue();
+
+      expect(gateway.rejectedTokens, [
+        'token-auth-first',
+        'token-auth-second',
+        'token-auth-third',
+      ]);
+      expect(gateway.rejectedErrorsByToken['token-auth-third'], erased);
+      expect(permissionController.state.hasPendingExternalRequest, isFalse);
+      permissionController.dispose();
+    });
+
+    test('an unanswerable review timeout is still dismissed', () async {
+      final timedController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        reviewTimeout: const Duration(milliseconds: 50),
+      );
+      await timedController.handleRawIntent(signEventRaw(id: 'expired'));
+      final requestId = timedController.state.pendingSigningRequestId!;
+      gateway.throwOnReject = true;
+
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+
+      expect(gateway.rejectedTokens, ['token-expired']);
+      expect(timedController.state.hasPendingExternalRequest, isFalse);
+      expect(statusOf(requestId), SigningRequestStatus.rejected);
+      timedController.dispose();
+    });
+
+    test('an unlock timeout that cannot be answered ends quietly', () async {
+      await vaultController.lock();
+      final timedController = Nip55Controller(
+        gateway: gateway,
+        vaultController: vaultController,
+        vaultService: vaultService,
+        requestController: requestController,
+        pendingUnlockTimeout: const Duration(milliseconds: 1),
+      );
+      gateway.throwOnReject = true;
+      await timedController.handleRawIntent({
+        'requestToken': 'token-unlock-timeout-fails',
+        'type': 'sign_message',
+        'content': 'hello',
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(gateway.rejectedTokens, ['token-unlock-timeout-fails']);
+      expect(timedController.state.pendingIncoming, isNull);
+      timedController.dispose();
+    });
+  });
 }
 
 /// Holds [getActivePrivateKey] until [gate] completes, as a slow decrypt would.
