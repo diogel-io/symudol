@@ -12,12 +12,16 @@ class FakeProfileNetworkStore implements ProfileNetworkStore {
   /// When true, [write] throws.
   bool failWrites = false;
 
+  /// When set, [read] waits for it before answering.
+  Future<void>? hold;
+
   /// How many times the settings were read.
   int reads = 0;
 
   @override
   Future<ProfileNetworkSettings> read() async {
     reads++;
+    await hold;
     return settings;
   }
 

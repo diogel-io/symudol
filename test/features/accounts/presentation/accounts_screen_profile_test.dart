@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -75,6 +77,33 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('relay.damus.io'), findsNothing);
+  });
+
+  testWidgets('Load waits until the relay settings are read (#45)', (
+    tester,
+  ) async {
+    final settingsRead = Completer<void>();
+    network.hold = settingsRead.future;
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byTooltip('Load profile').first);
+    await tester.pumpAndSettle();
+
+    FilledButton load() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Load profile'),
+    );
+    expect(find.text('Reading your relay settings…'), findsOneWidget);
+    expect(load().onPressed, isNull);
+
+    settingsRead.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Symudol will ask relay.damus.io'),
+      findsOneWidget,
+    );
+    expect(load().onPressed, isNotNull);
+    expect(profiles.requested, isEmpty);
   });
 
   testWidgets('the confirmation names the relays and indexers', (tester) async {

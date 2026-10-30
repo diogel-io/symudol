@@ -1,5 +1,9 @@
 import 'profile_relays.dart';
 
+/// The Blossom server images are uploaded to when the identity lists none of
+/// its own: Porwr's and Bancwr's default (diogel-io/symudol#45).
+const String defaultBlossomServer = 'https://blossom.primal.net';
+
 /// The app-wide relays a profile is read from and published to, and the
 /// Blossom server images are uploaded to, as the user chose them in Settings
 /// (diogel-io/symudol#45). An identity's own NIP-65 relays are added to these
@@ -94,4 +98,24 @@ class ProfileNetworkSettings {
       ...value.whereType<String>().map(normaliseRelayUrl).whereType<String>(),
     }.take(maxOwnRelays).toList();
   }
+}
+
+/// [value] as a Blossom server URL with a lowercase host and no trailing
+/// `/`, or null when it is not an `https://` URL without a query or fragment.
+String? normaliseBlossomUrl(String? value) {
+  if (value == null) return null;
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasQuery ||
+      uri.hasFragment) {
+    return null;
+  }
+  final lower = uri.host.toLowerCase();
+  final host = lower.contains(':') ? '[$lower]' : lower;
+  final port = uri.hasPort ? ':${uri.port}' : '';
+  final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+  return 'https://$host$port$path';
 }

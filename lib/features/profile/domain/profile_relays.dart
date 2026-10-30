@@ -21,12 +21,9 @@ const List<String> defaultIndexerRelays = [
   'wss://relay.nos.social',
 ];
 
-/// The Blossom server images are uploaded to when the identity lists none of
-/// its own: Porwr's and Bancwr's default (diogel-io/symudol#45).
-const String defaultBlossomServer = 'https://blossom.primal.net';
-
-/// A bound on how many of an identity's own relays are used, so a huge list
-/// cannot fan out.
+/// A bound on how many relays one list holds, so a huge list cannot fan out:
+/// an identity's own relays, and each relay list chosen in Settings
+/// (diogel-io/symudol#45).
 const int maxOwnRelays = 8;
 
 /// [value] as a relay URL with a lowercase scheme and host and no bare `/`
@@ -48,26 +45,6 @@ String? normaliseRelayUrl(String? value) {
   final path = uri.path == '/' ? '' : uri.path;
   final query = uri.hasQuery ? '?${uri.query}' : '';
   return '${uri.scheme}://$host$port$path$query';
-}
-
-/// [value] as a Blossom server URL with a lowercase host and no trailing
-/// `/`, or null when it is not an `https://` URL without a query or fragment.
-String? normaliseBlossomUrl(String? value) {
-  if (value == null) return null;
-  final uri = Uri.tryParse(value.trim());
-  if (uri == null ||
-      uri.scheme != 'https' ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      uri.hasQuery ||
-      uri.hasFragment) {
-    return null;
-  }
-  final lower = uri.host.toLowerCase();
-  final host = lower.contains(':') ? '[$lower]' : lower;
-  final port = uri.hasPort ? ':${uri.port}' : '';
-  final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
-  return 'https://$host$port$path';
 }
 
 /// The write relays of a NIP-65 list (kind 10002): `r` tags marked `write` or

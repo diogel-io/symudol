@@ -180,7 +180,7 @@ class _ProfileNetworkScreenState extends ConsumerState<ProfileNetworkScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Profile relays'),
+          title: const Text('Relays and media server'),
           actions: [
             if (form != null)
               TextButton(
