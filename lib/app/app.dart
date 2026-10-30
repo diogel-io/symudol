@@ -23,6 +23,9 @@ class DiogelApp extends ConsumerStatefulWidget {
 
 class DiogelAppState extends ConsumerState<DiogelApp>
     with WidgetsBindingObserver {
+  /// The app's only navigator: screens pushed from Settings or Accounts, and
+  /// dialogs, sit above `home` on it.
+  final _navigatorKey = GlobalKey<NavigatorState>();
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
   bool _inBackground = false;
@@ -151,6 +154,12 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
     if (!isUnlocked) {
       _cancelLockTimers();
+      // Swapping `home` only replaces the root route: anything pushed while
+      // unlocked would stay above the unlock screen (#123). A lock overrides
+      // PopScope (popUntil skips it), so unsaved edits are dropped.
+      if (previousWasUnlocked) {
+        _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
       return;
     }
 
@@ -235,6 +244,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       onPointerDown: (_) => _resetInactivityTimer(),
       onPointerMove: (_) => _resetInactivityTimer(),
       child: MaterialApp(
+        navigatorKey: _navigatorKey,
         title: 'Symudol',
         theme: DiogelTheme.darkTheme,
         home: isLoading && vaultState is NoVault
