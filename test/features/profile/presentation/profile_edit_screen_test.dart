@@ -12,6 +12,7 @@ import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 
+import '../../../fakes/fake_profile_network_store.dart';
 import '../../../fakes/fake_profile_relay_client.dart';
 import '../../../fakes/fake_vault_store.dart';
 
@@ -37,6 +38,7 @@ void main() {
     overrides: [
       vaultServiceProvider.overrideWithValue(vault),
       vaultControllerProvider.overrideWith((ref) => controller),
+      profileNetworkStoreProvider.overrideWithValue(FakeProfileNetworkStore()),
       relayProfileServiceProvider.overrideWithValue(
         RelayProfileService(client: relays),
       ),
