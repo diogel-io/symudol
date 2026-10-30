@@ -1,90 +1,129 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:dart_nostr/dart_nostr.dart';
 
 import '../domain/nostr_profile.dart';
+import '../domain/profile_relays.dart';
+import 'profile_relay_client.dart';
 
-/// Fetches Nostr profile metadata (NIP-01 kind 0 events) from a set of relays.
+/// Finds an identity's profile metadata (NIP-01 kind 0) where it lives: on
+/// the identity's own NIP-65 write relays, the default relays or the indexer
+/// relays (diogel-io/symudol#42).
 class RelayProfileService {
-  static const List<String> defaultRelays = [
-    'wss://relay.damus.io',
-    'wss://nos.lol',
-  ];
+  RelayProfileService({ProfileRelayClient? client})
+    : _client = client ?? DartNostrProfileRelayClient();
 
-  bool _relaysInitialized = false;
+  final ProfileRelayClient _client;
 
-  Future<void> _ensureRelaysInitialized() async {
-    if (_relaysInitialized) return;
+  static const int _relayListKind = 10002;
+  static const int _profileKind = 0;
 
-    await Nostr.instance.services.relays.init(
-      relaysUrl: defaultRelays,
-      retryOnError: true,
-      ignoreConnectionException: true,
-    );
-
-    _relaysInitialized = true;
-  }
-
-  /// Returns the most recent profile metadata for [pubkeyHex], or null if
-  /// no relay responded with a kind 0 event in time. Throws
-  /// [ProfileFetchException] when the relays cannot be queried or the
-  /// profile cannot be read, so callers can tell a failure from no profile.
+  /// Looks up the most recent profile metadata for [pubkeyHex]. The default
+  /// and indexer relays are asked for both the identity's relay list (kind
+  /// 10002) and its profile (kind 0) at once; the list's write relays not
+  /// already asked are then asked for the profile too.
+  ///
+  /// Throws [ProfileFetchException] when no relay answered or the profile
+  /// cannot be read, so callers can tell a failure from no profile: a
+  /// profile null result means every relay in
+  /// [ProfileLookup.searchedRelays] answered without one.
   ///
   /// Each relay learns [pubkeyHex] and the device's IP address, so call this
   /// only when the user has asked (diogel-io/symudol#83).
-  Future<NostrProfile?> fetchProfile(String pubkeyHex) async {
+  Future<ProfileLookup> fetchProfile(String pubkeyHex) async {
     try {
-      await _ensureRelaysInitialized();
-
-      final request = NostrRequest(
-        filters: [
-          NostrFilter(kinds: const [0], authors: [pubkeyHex], limit: 1),
-        ],
+      final base = profileRelays(
+        const [],
+        defaultProfileRelays,
+        defaultIndexerRelays,
       );
-
-      final subscription =
-          Nostr.instance.services.relays.startEventsSubscription(request: request);
-
-      final events = <NostrEvent>[];
-      final completer = Completer<void>();
-      Timer? graceTimer;
-      late final StreamSubscription<NostrEvent> streamSubscription;
-
-      streamSubscription = subscription.stream.listen((event) {
-        events.add(event);
-        // Give other relays a brief moment to respond too, so we can pick
-        // the most recent profile, then stop waiting.
-        graceTimer ??= Timer(const Duration(milliseconds: 800), () {
-          if (!completer.isCompleted) completer.complete();
-        });
-      });
-
-      final timeoutTimer = Timer(const Duration(seconds: 8), () {
-        if (!completer.isCompleted) completer.complete();
-      });
-
-      await completer.future;
-      graceTimer?.cancel();
-      timeoutTimer.cancel();
-      await streamSubscription.cancel();
-      subscription.close();
-
-      if (events.isEmpty) return null;
-
-      events.sort(
-        (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
-            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+      final first = await _client.query(
+        kinds: const [_profileKind, _relayListKind],
+        author: pubkeyHex,
+        relays: base,
       );
+      final own = writeRelays(
+        _newest(first.events, _relayListKind, pubkeyHex)?.tags,
+      );
+      final events = [...first.events];
+      final answered = {...first.answered};
 
-      final content = events.first.content;
-      if (content == null || content.isEmpty) return null;
+      final unasked = own.where((relay) => !base.contains(relay)).toList();
+      if (unasked.isNotEmpty) {
+        try {
+          final second = await _client.query(
+            kinds: const [_profileKind],
+            author: pubkeyHex,
+            relays: unasked,
+          );
+          events.addAll(second.events);
+          answered.addAll(second.answered);
+        } catch (_) {
+          // The identity's own relays could not be asked; what the defaults
+          // and indexers returned still stands.
+        }
+      }
 
-      return NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
+      if (answered.isEmpty) {
+        throw StateError('No relay answered');
+      }
+
+      final content = _newest(events, _profileKind, pubkeyHex)?.content;
+      final profile = content == null || content.isEmpty
+          ? null
+          : NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
+      return ProfileLookup(
+        profile: profile,
+        searchedRelays: profileRelays(
+          own,
+          defaultProfileRelays,
+          defaultIndexerRelays,
+        ).where(answered.contains).toList(),
+        publishRelays: profileRelays(own, defaultProfileRelays),
+      );
     } catch (error) {
       throw ProfileFetchException(error);
     }
   }
+
+  /// The most recent of [events] of [kind] signed by [pubkeyHex], or null. A
+  /// relay can answer with any event, so the others are ignored.
+  static NostrEvent? _newest(
+    List<NostrEvent> events,
+    int kind,
+    String pubkeyHex,
+  ) {
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    NostrEvent? newest;
+    for (final event in events) {
+      if (event.kind != kind || event.pubkey != pubkeyHex) continue;
+      if (newest == null ||
+          (event.createdAt ?? epoch).isAfter(newest.createdAt ?? epoch)) {
+        newest = event;
+      }
+    }
+    return newest;
+  }
+}
+
+/// What a profile lookup found, and where.
+class ProfileLookup {
+  const ProfileLookup({
+    this.profile,
+    this.searchedRelays = const [],
+    this.publishRelays = const [],
+  });
+
+  /// The newest profile found, or null when no relay held one.
+  final NostrProfile? profile;
+
+  /// Every relay that answered the profile query, the identity's own write
+  /// relays first.
+  final List<String> searchedRelays;
+
+  /// Where a new or edited profile should be published: the identity's own
+  /// write relays plus the defaults.
+  final List<String> publishRelays;
 }
 
 /// The profile could not be fetched or read.

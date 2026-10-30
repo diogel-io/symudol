@@ -35,7 +35,12 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
     final service = ref.read(relayProfileServiceProvider);
     ProfileLoadState next;
     try {
-      next = ProfileLoaded(await service.fetchProfile(pubkeyHex));
+      final lookup = await service.fetchProfile(pubkeyHex);
+      next = ProfileLoaded(
+        lookup.profile,
+        searchedRelays: lookup.searchedRelays,
+        publishRelays: lookup.publishRelays,
+      );
     } catch (_) {
       next = const ProfileLoadFailed();
     }
