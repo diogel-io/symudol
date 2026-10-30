@@ -44,7 +44,7 @@ class RelayProfileService {
         ),
         timeout: _relayListTimeout,
       );
-      own = writeRelays(_newest(lists, pubkeyHex)?.tags);
+      own = writeRelays(_newest(lists, _relayListKind, pubkeyHex)?.tags);
     } catch (_) {
       // Search the defaults and indexers without the identity's own relays.
     }
@@ -61,7 +61,7 @@ class RelayProfileService {
         author: pubkeyHex,
         relays: searched,
       );
-      final content = _newest(events, pubkeyHex)?.content;
+      final content = _newest(events, _profileKind, pubkeyHex)?.content;
       final profile = content == null || content.isEmpty
           ? null
           : NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
@@ -75,12 +75,17 @@ class RelayProfileService {
     }
   }
 
-  /// The most recent of [events] signed by [pubkeyHex], or null.
-  static NostrEvent? _newest(List<NostrEvent> events, String pubkeyHex) {
+  /// The most recent of [events] of [kind] signed by [pubkeyHex], or null. A
+  /// relay can answer with any event, so the others are ignored.
+  static NostrEvent? _newest(
+    List<NostrEvent> events,
+    int kind,
+    String pubkeyHex,
+  ) {
     final epoch = DateTime.fromMillisecondsSinceEpoch(0);
     NostrEvent? newest;
     for (final event in events) {
-      if (event.pubkey != pubkeyHex) continue;
+      if (event.kind != kind || event.pubkey != pubkeyHex) continue;
       if (newest == null ||
           (event.createdAt ?? epoch).isAfter(newest.createdAt ?? epoch)) {
         newest = event;

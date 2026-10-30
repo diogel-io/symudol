@@ -89,6 +89,18 @@ void main() {
     expect(lookup.searchedRelays, isNot(contains('wss://mallory.example.com')));
   });
 
+  test('an event of another kind is not taken for the profile', () async {
+    client.held[indexer] = [
+      _profile(alice, 'alice', 10),
+      _event(alice, 1, 30, content: 'a newer note'),
+    ];
+    client.answerAnyKind = true;
+
+    final lookup = await service.fetchProfile(alice);
+
+    expect(lookup.profile?.name, 'alice');
+  });
+
   test('no profile anywhere reports every relay searched', () async {
     final lookup = await service.fetchProfile(alice);
 
@@ -170,6 +182,10 @@ class _FakeRelayClient implements ProfileRelayClient {
   /// Kinds whose queries throw.
   final Set<int> failKinds = {};
 
+  /// When true, answer with every held event whatever the kind asked for,
+  /// as a misbehaving relay might.
+  bool answerAnyKind = false;
+
   final List<_Query> queries = [];
 
   @override
@@ -183,7 +199,7 @@ class _FakeRelayClient implements ProfileRelayClient {
     if (failKinds.contains(kind)) throw StateError('relays unreachable');
     return [
       for (final relay in relays)
-        ...?held[relay]?.where((event) => event.kind == kind),
+        ...?held[relay]?.where((event) => answerAnyKind || event.kind == kind),
     ];
   }
 }

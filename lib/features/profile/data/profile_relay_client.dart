@@ -61,8 +61,9 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
     Timer? graceTimer;
 
     final streamSubscription = subscription.stream.listen((event) {
-      // dart_nostr does not check what relays send, so drop any event whose
-      // id or signature is wrong.
+      // dart_nostr does not check what relays send, so drop any event that
+      // does not match the request, or whose id or signature is wrong.
+      if (event.kind != kind || event.pubkey != author) return;
       if (!isAuthentic(event)) return;
       events.add(event);
       // Give other relays a brief moment to respond too, so we can pick
