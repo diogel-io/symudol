@@ -120,6 +120,85 @@ void main() {
 
     expect(store.grants, isEmpty);
   });
+  group('a grant stored after the first open shows (#99)', () {
+    // Settings with a Trusted apps tile, so the screen can be closed and
+    // reopened in the same ProviderScope.
+    Widget settings(FakeNip55PermissionStore store) => ProviderScope(
+      overrides: [nip55PermissionStoreProvider.overrideWithValue(store)],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const TrustedAppsScreen()),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('reopening shows a grant stored while it was closed', (
+      tester,
+    ) async {
+      final store = FakeNip55PermissionStore();
+      await tester.pumpWidget(settings(store));
+      await open(tester);
+      expect(find.textContaining('No remembered NIP-55'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      // Stored straight to the store, as Nip55Controller does.
+      store.grants.add(_grant('grant-1', const GetPublicKeyScope()));
+      await open(tester);
+
+      expect(find.text('com.example.nostr'), findsWidgets);
+      expect(find.textContaining('No remembered NIP-55'), findsNothing);
+    });
+
+    testWidgets('a reload while open keeps the list on screen', (tester) async {
+      final store = FakeNip55PermissionStore()
+        ..grants.add(_grant('grant-1', const GetPublicKeyScope()));
+      await tester.pumpWidget(settings(store));
+      await open(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TrustedAppsScreen)),
+      );
+
+      store.grants.add(_grant('grant-2', const Nip04DecryptScope()));
+      final reload = container
+          .read(nip55PermissionControllerProvider.notifier)
+          .load();
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await reload;
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('NIP-04 decrypt'), findsOneWidget);
+    });
+
+    testWidgets('a grant shown after reopening can be revoked', (tester) async {
+      final store = FakeNip55PermissionStore();
+      await tester.pumpWidget(settings(store));
+      await open(tester);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      store.grants.add(_grant('grant-1', const GetPublicKeyScope()));
+      await open(tester);
+
+      await tester.tap(find.byTooltip('Revoke permission'));
+      await tester.pumpAndSettle();
+
+      expect(store.grants, isEmpty);
+      expect(find.textContaining('No remembered NIP-55'), findsOneWidget);
+    });
+  });
 }
 
 Widget _app(FakeNip55PermissionStore store) {
