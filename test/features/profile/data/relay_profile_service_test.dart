@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
+import 'package:symudol/features/profile/domain/profile_network_settings.dart';
 import 'package:symudol/features/profile/domain/profile_relays.dart';
 
 import '../../../fakes/fake_profile_relay_client.dart';
@@ -135,6 +137,72 @@ void main() {
       'wss://profiles.nostr1.com',
     ]);
     expect(lookup.publishRelays, defaultProfileRelays);
+  });
+
+  group('relays chosen in Settings (#45)', () {
+    const chosen = 'wss://chosen.example.com';
+    const chosenIndexer = 'wss://index.example.com';
+
+    RelayProfileService withSettings(ProfileNetworkSettings settings) =>
+        RelayProfileService(client: client, settings: () async => settings);
+
+    test(
+      'are asked, searched and published to instead of the defaults',
+      () async {
+        client.held[chosenIndexer] = [
+          _relayList(alice, [own], 5),
+        ];
+        final service = withSettings(
+          ProfileNetworkSettings.defaults().copyWith(
+            profileRelays: [chosen],
+            indexerRelays: [chosenIndexer],
+          ),
+        );
+
+        final lookup = await service.fetchProfile(alice);
+
+        expect(client.queries.first.relays, [chosen, chosenIndexer]);
+        expect(client.queries.last.relays, [own]);
+        expect(lookup.searchedRelays, [own, chosen, chosenIndexer]);
+        expect(lookup.publishRelays, [own, chosen]);
+      },
+    );
+
+    test('an empty indexer list asks the profile relays alone', () async {
+      final service = withSettings(
+        ProfileNetworkSettings.defaults().copyWith(
+          profileRelays: [chosen],
+          indexerRelays: [],
+        ),
+      );
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(client.queries.single.relays, [chosen]);
+      expect(lookup.searchedRelays, [chosen]);
+      expect(lookup.publishRelays, [chosen]);
+    });
+
+    test('a lookup waits for the settings before asking any relay', () async {
+      final settings = Completer<ProfileNetworkSettings>();
+      final service = RelayProfileService(
+        client: client,
+        settings: () => settings.future,
+      );
+
+      final lookup = service.fetchProfile(alice);
+      await Future<void>.delayed(Duration.zero);
+      expect(client.queries, isEmpty);
+
+      settings.complete(
+        ProfileNetworkSettings.defaults().copyWith(
+          profileRelays: [chosen],
+          indexerRelays: [],
+        ),
+      );
+      await lookup;
+      expect(client.queries.single.relays, [chosen]);
+    });
   });
 
   test('no relay answering is a fetch failure, not no profile', () async {

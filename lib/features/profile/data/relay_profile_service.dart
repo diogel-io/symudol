@@ -3,23 +3,32 @@ import 'dart:convert';
 import 'package:dart_nostr/dart_nostr.dart';
 
 import '../domain/nostr_profile.dart';
+import '../domain/profile_network_settings.dart';
 import '../../requests/domain/signed_nostr_event.dart';
 import '../domain/profile_relays.dart';
 import 'profile_relay_client.dart';
 
 /// Finds an identity's profile metadata (NIP-01 kind 0) where it lives: on
 /// the identity's own NIP-65 write relays, the default relays or the indexer
-/// relays (diogel-io/symudol#42).
+/// relays (diogel-io/symudol#42). The default and indexer relays are the ones
+/// the user chose in Settings (diogel-io/symudol#45).
 class RelayProfileService {
-  RelayProfileService({ProfileRelayClient? client})
-    : _client = client ?? DartNostrProfileRelayClient();
+  RelayProfileService({
+    ProfileRelayClient? client,
+    Future<ProfileNetworkSettings> Function()? settings,
+  }) : _client = client ?? DartNostrProfileRelayClient(),
+       _settings = settings ?? _defaults;
 
   final ProfileRelayClient _client;
+  final Future<ProfileNetworkSettings> Function() _settings;
+
+  static Future<ProfileNetworkSettings> _defaults() async =>
+      ProfileNetworkSettings.defaults();
 
   static const int _relayListKind = 10002;
   static const int _profileKind = 0;
 
-  /// Looks up the most recent profile metadata for [pubkeyHex]. The default
+  /// Looks up the most recent profile metadata for [pubkeyHex]. The profile
   /// and indexer relays are asked for both the identity's relay list (kind
   /// 10002) and its profile (kind 0) at once; the list's write relays not
   /// already asked are then asked for the profile too.
@@ -33,10 +42,11 @@ class RelayProfileService {
   /// only when the user has asked (diogel-io/symudol#83).
   Future<ProfileLookup> fetchProfile(String pubkeyHex) async {
     try {
+      final settings = await _settings();
       final base = profileRelays(
         const [],
-        defaultProfileRelays,
-        defaultIndexerRelays,
+        settings.profileRelays,
+        settings.indexerRelays,
       );
       final first = await _client.query(
         kinds: const [_profileKind, _relayListKind],
@@ -87,10 +97,10 @@ class RelayProfileService {
         createdAt: newest?.createdAt,
         searchedRelays: profileRelays(
           own,
-          defaultProfileRelays,
-          defaultIndexerRelays,
+          settings.profileRelays,
+          settings.indexerRelays,
         ).where(answered.contains).toList(),
-        publishRelays: profileRelays(own, defaultProfileRelays),
+        publishRelays: profileRelays(own, settings.profileRelays),
       );
     } catch (error) {
       throw ProfileFetchException(error);

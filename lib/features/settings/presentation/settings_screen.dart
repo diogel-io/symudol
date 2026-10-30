@@ -9,6 +9,7 @@ import '../../vault/domain/biometric_unlock_status.dart';
 import '../../vault/domain/biometric_vault.dart';
 import '../../vault/presentation/vault_failure_messages.dart';
 import 'change_pin_screen.dart';
+import 'profile_network_screen.dart';
 import 'trusted_apps_screen.dart';
 import 'widgets/biometric_pin_dialog.dart';
 import 'widgets/settings_tile.dart';
@@ -264,6 +265,28 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'Secure your vault immediately',
             onTap: () {
               ref.read(vaultControllerProvider.notifier).lock();
+            },
+          ),
+          const SizedBox(height: DiogelSpacing.space6),
+          Text(
+            'NETWORK',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: DiogelColors.textTertiary,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: DiogelSpacing.space2),
+          SettingsTile(
+            key: const Key('profileNetworkTile'),
+            icon: Icons.hub_outlined,
+            title: 'Profile relays and media server',
+            subtitle:
+                'Where profiles are read from and published to, and the '
+                'media server for image uploads',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ProfileNetworkScreen()),
+              );
             },
           ),
           const SizedBox(height: DiogelSpacing.space6),

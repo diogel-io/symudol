@@ -44,22 +44,30 @@ Future<void> confirmAndLoadProfile(
   ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
 }
 
-/// Names the relays a profile fetch will query and what they learn.
-class LoadProfileDialog extends StatelessWidget {
+/// Names the relays a profile fetch will query and what they learn: the ones
+/// chosen in Settings (diogel-io/symudol#45). Load waits until the settings
+/// are read, so the relays named are the ones asked.
+class LoadProfileDialog extends ConsumerWidget {
   const LoadProfileDialog({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final relays = [
-      ...defaultProfileRelays,
-      ...defaultIndexerRelays,
-    ].map(relayHost).join(', ');
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(profileNetworkSettingsProvider).value;
+    final relays = settings == null
+        ? null
+        : profileRelays(
+            const [],
+            settings.profileRelays,
+            settings.indexerRelays,
+          ).map(relayHost).join(', ');
     return AlertDialog(
       title: const Text('Load profile from relays?'),
       content: Text(
-        'Symudol will ask $relays, and the relays this identity lists as '
-        'its own, for this identity\'s profile. '
-        'They will see this public key and your IP address.',
+        relays == null
+            ? 'Reading your relay settings…'
+            : 'Symudol will ask $relays, and the relays this identity lists '
+                  'as its own, for this identity\'s profile. '
+                  'They will see this public key and your IP address.',
       ),
       actions: [
         TextButton(
@@ -67,7 +75,9 @@ class LoadProfileDialog extends StatelessWidget {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: relays == null
+              ? null
+              : () => Navigator.of(context).pop(true),
           child: const Text('Load profile'),
         ),
       ],

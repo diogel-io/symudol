@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/domain/nostr_profile.dart';
+import 'package:symudol/features/profile/domain/profile_network_settings.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 
+import '../../../fakes/fake_profile_network_store.dart';
 import '../../../fakes/fake_relay_profile_service.dart';
 import '../../../fakes/fake_vault_store.dart';
 
@@ -16,6 +20,7 @@ void main() {
   late VaultServiceImpl service;
   late VaultController controller;
   late FakeRelayProfileService profiles;
+  late FakeProfileNetworkStore network;
 
   setUp(() async {
     service = VaultServiceImpl(FakeVaultStore());
@@ -26,6 +31,7 @@ void main() {
     await controller.initialize();
     await controller.unlock('1234');
     profiles = FakeRelayProfileService();
+    network = FakeProfileNetworkStore();
   });
 
   Future<void> pumpAccounts(WidgetTester tester) async {
@@ -36,6 +42,7 @@ void main() {
       overrides: [
         vaultServiceProvider.overrideWithValue(service),
         vaultControllerProvider.overrideWith((ref) => controller),
+        profileNetworkStoreProvider.overrideWithValue(network),
         relayProfileServiceProvider.overrideWithValue(profiles),
       ],
       child: const MaterialApp(home: AccountsScreen()),
@@ -47,6 +54,55 @@ void main() {
     await pumpAccounts(tester);
 
     expect(find.byTooltip('Load profile'), findsNWidgets(2));
+    expect(profiles.requested, isEmpty);
+  });
+
+  testWidgets('the confirmation names the relays chosen in Settings (#45)', (
+    tester,
+  ) async {
+    network.settings = ProfileNetworkSettings.defaults().copyWith(
+      profileRelays: ['wss://chosen.example.com'],
+      indexerRelays: ['wss://index.example.com'],
+    );
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byTooltip('Load profile').first);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining(
+        'Symudol will ask chosen.example.com, index.example.com, and the '
+        'relays this identity lists as its own',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('relay.damus.io'), findsNothing);
+  });
+
+  testWidgets('Load waits until the relay settings are read (#45)', (
+    tester,
+  ) async {
+    final settingsRead = Completer<void>();
+    network.hold = settingsRead.future;
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byTooltip('Load profile').first);
+    await tester.pumpAndSettle();
+
+    FilledButton load() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Load profile'),
+    );
+    expect(find.text('Reading your relay settings…'), findsOneWidget);
+    expect(load().onPressed, isNull);
+
+    settingsRead.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Symudol will ask relay.damus.io'),
+      findsOneWidget,
+    );
+    expect(load().onPressed, isNotNull);
     expect(profiles.requested, isEmpty);
   });
 

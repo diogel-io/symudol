@@ -21,8 +21,9 @@ const List<String> defaultIndexerRelays = [
   'wss://relay.nos.social',
 ];
 
-/// A bound on how many of an identity's own relays are used, so a huge list
-/// cannot fan out.
+/// A bound on how many relays one list holds, so a huge list cannot fan out:
+/// an identity's own relays, and each relay list chosen in Settings
+/// (diogel-io/symudol#45).
 const int maxOwnRelays = 8;
 
 /// [value] as a relay URL with a lowercase scheme and host and no bare `/`
