@@ -50,4 +50,39 @@ void main() {
 
     expect(find.text('Root'), findsOneWidget);
   });
+
+  testWidgets('removes a covered route and keeps the one above it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(navigatorKey: navigatorKey, home: const Text('Root')),
+    );
+    late BuildContext sheetContext;
+    final sheetResult = navigatorKey.currentState!.push(
+      MaterialPageRoute<bool>(
+        builder: (context) {
+          sheetContext = context;
+          return const Text('Sheet');
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    // The work the sheet awaits opens an approval above it, as a NIP-46
+    // nostrconnect import does.
+    navigatorKey.currentState!.push(
+      MaterialPageRoute<void>(builder: (_) => const Text('Approval')),
+    );
+    await tester.pumpAndSettle();
+
+    popIfCurrent(sheetContext, true);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Approval'), findsOneWidget);
+    expect(find.text('Sheet', skipOffstage: false), findsNothing);
+    expect(await sheetResult, isTrue);
+
+    navigatorKey.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Root'), findsOneWidget);
+  });
 }

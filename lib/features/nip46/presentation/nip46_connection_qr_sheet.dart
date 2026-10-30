@@ -107,11 +107,14 @@ class _Nip46ConnectionQrSheetState
       final token = await ref
           .read(nip46ControllerProvider.notifier)
           .initiateBunkerSession();
+      // A vault lock can close the sheet meanwhile (#123).
+      if (!mounted) return;
       setState(() {
         _generatedToken = token;
         _isGenerating = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _generateError = e.toString();
         _isGenerating = false;
@@ -139,6 +142,7 @@ class _Nip46ConnectionQrSheetState
           .importNostrconnectToken(uri);
       if (mounted) popIfCurrent(context);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _importError = e.toString();
         _isImporting = false;

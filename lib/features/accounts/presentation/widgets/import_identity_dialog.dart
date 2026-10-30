@@ -56,6 +56,9 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
       displayName: name.isEmpty ? null : name,
     );
     
+    // A vault lock can close the dialog during the import (#123).
+    if (!mounted) return;
+
     // The controller update is async, and it updates the state.
     // We should check the state for failures.
     final state = ref.read(vaultControllerProvider);
