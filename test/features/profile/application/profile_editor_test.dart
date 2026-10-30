@@ -126,7 +126,7 @@ void main() {
 
   test('the event is kind 0, signed by the active identity, and newer than '
       'the one it replaces', () async {
-    final future = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+    final future = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 60;
     relays.held[indexer] = [
       profileEvent({'name': 'alice'}, future),
     ];
@@ -338,6 +338,80 @@ void main() {
       container.read(nostrProfileProvider(pubkey)).profile?.picture,
       'https://a/2.png',
     );
+  });
+
+  test(
+    'preparing shows what will be signed, keeping the user\'s edits',
+    () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice', 'picture': 'https://a/old.png'}, 10),
+      ];
+      await editor().load();
+      editor().updateForm(state().form.withText('about', 'new'));
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice', 'picture': 'https://a/new.png'}, 20),
+      ];
+
+      final prepared = await editor().prepareSave();
+
+      expect(state().form['picture'], 'https://a/new.png');
+      expect(state().form['about'], 'new');
+      expect(state().dirty, isTrue);
+
+      await editor().save(prepared: prepared);
+
+      expect(jsonDecode(relays.published.single.event.content), {
+        'name': 'alice',
+        'picture': 'https://a/new.png',
+        'about': 'new',
+      });
+      expect(state().form['picture'], 'https://a/new.png');
+      expect(state().dirty, isFalse);
+    },
+  );
+
+  test('after a save the form holds what was published', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice', 'website': 'https://a'}, 10),
+    ];
+    await editor().load();
+    editor().updateForm(state().form.withText('name', 'Alice'));
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice', 'website': 'https://b'}, 20),
+    ];
+
+    await editor().save();
+
+    expect(state().form['name'], 'Alice');
+    expect(state().form['website'], 'https://b');
+  });
+
+  test('loading while the profile is already loading waits for it', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice'}, 10),
+    ];
+    relays.queryDelay = const Duration(milliseconds: 50);
+
+    final first = container.read(nostrProfileProvider(pubkey).notifier).load();
+    await editor().load();
+    await first;
+
+    expect(state().phase, ProfileEditorPhase.editing);
+    expect(state().form['name'], 'alice');
+    expect(relays.queries, hasLength(1));
+  });
+
+  test('a newest profile dated far ahead is refused, not outdated', () async {
+    final ahead = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice'}, ahead),
+    ];
+    await editor().load();
+
+    await expectLater(editor().save(), throwsA(isA<ProfileSaveException>()));
+
+    expect(state().saveError, contains('ahead of this phone'));
+    expect(relays.published, isEmpty);
   });
 
   test('a locked vault fails cleanly', () async {

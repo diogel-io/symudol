@@ -108,6 +108,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       // save will publish to, and the save uses that same reading.
       final prepared = await editor.prepareSave();
       if (!mounted) return;
+      // The form now holds what the save will sign: the newest profile with
+      // the user's edits applied.
+      _fill(ref.read(profileEditorProvider(_pubkey)).form);
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => _PublishDialog(
@@ -119,6 +122,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
 
       final results = await editor.save(prepared: prepared);
       if (!mounted) return;
+      _fill(ref.read(profileEditorProvider(_pubkey)).form);
       await showModalBottomSheet<void>(
         context: context,
         builder: (context) => _PublishResultsSheet(results: results),

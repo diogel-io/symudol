@@ -97,6 +97,18 @@ void main() {
       });
     });
 
+    test('unreadable birthday parts are kept beside readable ones', () {
+      final latest = <String, Object?>{
+        'birthday': {'year': 1990, 'month': '4', 'note': 'x'},
+      };
+      final form = formFromContent(latest).withText('about', 'hi');
+
+      expect(mergeProfile(latest, form), {
+        'about': 'hi',
+        'birthday': {'note': 'x', 'year': 1990, 'month': '4'},
+      });
+    });
+
     test('they are replaced once the user fills the field in', () {
       final form = formFromContent(latest)
           .withText('name', 'alice')

@@ -181,13 +181,27 @@ Map<String, Object?> mergeProfile(
   } else if (previous['bot'] is! bool) {
     keepUnread('bot');
   }
-  final birthday = <String, int>{
+  // Birthday parts the form could not read (not integers), and any other
+  // keys another app put in the object, are kept while the matching form
+  // part is empty.
+  final previousBirthday = switch (previous['birthday']) {
+    final Map<String, Object?> parts => parts,
+    _ => const <String, Object?>{},
+  };
+  const parts = ['year', 'month', 'day'];
+  final birthday = <String, Object?>{
+    for (final entry in previousBirthday.entries)
+      if (!parts.contains(entry.key)) entry.key: entry.value,
     for (final (key, value) in [
       ('year', form.birthday.year),
       ('month', form.birthday.month),
       ('day', form.birthday.day),
     ])
-      if (int.tryParse(value.trim()) case final int number) key: number,
+      if (int.tryParse(value.trim()) case final int number)
+        key: number
+      else if (previousBirthday.containsKey(key) &&
+          previousBirthday[key] is! int)
+        key: previousBirthday[key],
   };
   if (birthday.isNotEmpty) {
     merged['birthday'] = birthday;

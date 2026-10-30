@@ -151,37 +151,49 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
   }
 
   /// Checks the form and reads the newest profile, so the user can confirm
-  /// the relays a save will publish to before anything is signed. Pass the
-  /// result to [save]. Throws [ProfileSaveException] when it can't be saved.
+  /// the relays a save will publish to before anything is signed. The form
+  /// is rebased onto that reading, keeping the user's edits, so the screen
+  /// shows what the save will sign. Pass the result to [save]. Throws
+  /// [ProfileSaveException] when it can't be saved.
   Future<ProfileLookup> prepareSave() => _guard(() async {
     _validate();
     final latest = await _latest();
-    if (ref.mounted) state = state.copyWith(saving: false);
+    if (ref.mounted) {
+      state = state.copyWith(
+        saving: false,
+        form: _rebased(latest),
+        saved: formFromContent(latest.content),
+      );
+    }
     return latest;
   });
 
   /// Merges the form into [prepared], or the newest profile read again now,
   /// signs it with the active identity and publishes it. Returns how each
   /// relay answered; throws [ProfileSaveException] when nothing was
-  /// published.
+  /// published. Afterwards the form holds what was published.
   Future<Map<String, RelayPublishResult>> save({ProfileLookup? prepared}) =>
       _guard(() async {
         _validate();
-        final form = state.form;
-        final results = await _publish(
-          form,
-          state.saved,
-          prepared ?? await _latest(),
-        );
+        final latest = prepared ?? await _latest();
+        final form = _rebased(latest);
+        final results = await _publish(form, latest);
         if (ref.mounted) {
           state = state.copyWith(
             saving: false,
+            form: form,
             saved: form,
             publishResults: results,
           );
         }
         return results;
       });
+
+  /// The newest profile in [latest] with only the fields the user changed
+  /// since loading applied, so a save does not revert what another app
+  /// changed meanwhile.
+  ProfileForm _rebased(ProfileLookup latest) =>
+      applyEdits(formFromContent(latest.content), state.saved, state.form);
 
   /// Runs [step] with the saving flag set, keeping the editor alive until it
   /// ends even if the screen closes, and turns any failure into a
@@ -238,7 +250,6 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
 
   Future<Map<String, RelayPublishResult>> _publish(
     ProfileForm form,
-    ProfileForm loaded,
     ProfileLookup latest,
   ) async {
     final service = ref.read(relayProfileServiceProvider);
@@ -251,10 +262,7 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
       );
     }
 
-    final content = mergeProfile(
-      latest.content,
-      applyEdits(formFromContent(latest.content), loaded, form),
-    );
+    final content = mergeProfile(latest.content, form);
     final draft = NostrEventDraft(
       kind: 0,
       content: jsonEncode(content),
@@ -297,14 +305,28 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
     return results;
   }
 
+  /// How far ahead of this phone's clock an event can be dated: relays
+  /// commonly refuse events more than about 15 minutes in the future.
+  static const Duration _maxAhead = Duration(minutes: 10);
+
   /// Now, or a second after [current] when that is not earlier: a
   /// replaceable event must be newer than the one it replaces, or relays
-  /// keep the old one.
+  /// keep the old one. Throws [ProfileSaveException] when that would date
+  /// the event further ahead than relays accept, because then no update can
+  /// replace [current] (diogel-io/symudol#118 review).
   static DateTime _createdAfter(DateTime? current) {
     final now = DateTime.fromMillisecondsSinceEpoch(
       DateTime.now().millisecondsSinceEpoch ~/ 1000 * 1000,
     );
     if (current == null || now.isAfter(current)) return now;
-    return current.add(const Duration(seconds: 1));
+    final next = current.add(const Duration(seconds: 1));
+    if (next.isAfter(now.add(_maxAhead))) {
+      throw const ProfileSaveException(
+        "This identity's newest profile is dated ahead of this phone's clock, "
+        'so relays would keep it over an update. Check the date and time on '
+        'this phone, and in the app that published that profile.',
+      );
+    }
+    return next;
   }
 }
