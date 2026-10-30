@@ -281,8 +281,8 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.hub_outlined,
             title: 'Profile relays and media server',
             subtitle:
-                'Where profiles are read from and published to, and where '
-                'images are uploaded',
+                'Where profiles are read from and published to, and the '
+                'media server for image uploads',
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ProfileNetworkScreen()),

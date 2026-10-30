@@ -239,8 +239,10 @@ class _ProfileNetworkScreenState extends ConsumerState<ProfileNetworkScreen> {
                     decoration: InputDecoration(
                       labelText: 'Blossom server',
                       helperText:
-                          'Used for image uploads when an identity lists no '
-                          'Blossom server of its own.',
+                          'For image uploads, which are coming in a later '
+                          'version. Used when an identity lists no Blossom '
+                          'server of its own.',
+                      helperMaxLines: 3,
                       errorText: _blossomError,
                     ),
                   ),
