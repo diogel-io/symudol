@@ -1,12 +1,9 @@
-import 'package:flutter/foundation.dart';
-
 import 'profile_relays.dart';
 
 /// The app-wide relays a profile is read from and published to, and the
 /// Blossom server images are uploaded to, as the user chose them in Settings
 /// (diogel-io/symudol#45). An identity's own NIP-65 relays are added to these
 /// at lookup time; they are not part of these settings.
-@immutable
 class ProfileNetworkSettings {
   const ProfileNetworkSettings({
     required this.profileRelays,
@@ -70,8 +67,8 @@ class ProfileNetworkSettings {
   @override
   bool operator ==(Object other) =>
       other is ProfileNetworkSettings &&
-      listEquals(other.profileRelays, profileRelays) &&
-      listEquals(other.indexerRelays, indexerRelays) &&
+      _sameList(other.profileRelays, profileRelays) &&
+      _sameList(other.indexerRelays, indexerRelays) &&
       other.blossomServer == blossomServer;
 
   @override
@@ -80,6 +77,14 @@ class ProfileNetworkSettings {
     Object.hashAll(indexerRelays),
     blossomServer,
   );
+
+  static bool _sameList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 
   /// [value]'s relay URLs, normalised, without duplicates and at most
   /// [maxOwnRelays], or null when [value] is not a list.

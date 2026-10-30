@@ -60,7 +60,7 @@ class _ProfileNetworkScreenState extends ConsumerState<ProfileNetworkScreen> {
     final url = normaliseRelayUrl(field.text);
     final String? error;
     if (url == null) {
-      error = 'Enter a relay address starting with wss://';
+      error = 'Enter a relay address starting with ws:// or wss://';
     } else if (current.contains(url)) {
       error = 'That relay is already in the list';
     } else if (current.length >= maxOwnRelays) {

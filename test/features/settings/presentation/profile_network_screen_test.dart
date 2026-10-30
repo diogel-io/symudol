@@ -101,7 +101,7 @@ void main() {
 
     await addRelay(tester, 'addIndexerRelayField', 'https://example.com');
     expect(
-      find.text('Enter a relay address starting with wss://'),
+      find.text('Enter a relay address starting with ws:// or wss://'),
       findsOneWidget,
     );
 
