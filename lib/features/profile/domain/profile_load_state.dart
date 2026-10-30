@@ -28,7 +28,7 @@ class ProfileLoaded extends ProfileLoadState {
 
   final NostrProfile? _profile;
 
-  /// Every relay asked for the profile (diogel-io/symudol#42).
+  /// Every relay that answered the profile query (diogel-io/symudol#42).
   final List<String> searchedRelays;
 
   /// Where a new or edited profile should be published: the identity's own

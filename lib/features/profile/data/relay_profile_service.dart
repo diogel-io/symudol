@@ -18,56 +18,67 @@ class RelayProfileService {
   static const int _relayListKind = 10002;
   static const int _profileKind = 0;
 
-  /// How long to wait for the relay list before looking for the profile.
-  static const Duration _relayListTimeout = Duration(seconds: 5);
-
-  /// Looks up the most recent profile metadata for [pubkeyHex] in two passes:
-  /// the identity's relay list (kind 10002) from the default and indexer
-  /// relays, then its kind 0 from the list's write relays, the defaults and
-  /// the indexers. Throws [ProfileFetchException] when the profile relays
-  /// cannot be queried or the profile cannot be read, so callers can tell a
-  /// failure from no profile. A relay list that cannot be fetched only means
-  /// the identity's own relays are not searched.
+  /// Looks up the most recent profile metadata for [pubkeyHex]. The default
+  /// and indexer relays are asked for both the identity's relay list (kind
+  /// 10002) and its profile (kind 0) at once; the list's write relays not
+  /// already asked are then asked for the profile too.
+  ///
+  /// Throws [ProfileFetchException] when no relay answered or the profile
+  /// cannot be read, so callers can tell a failure from no profile: a
+  /// profile null result means every relay in
+  /// [ProfileLookup.searchedRelays] answered without one.
   ///
   /// Each relay learns [pubkeyHex] and the device's IP address, so call this
   /// only when the user has asked (diogel-io/symudol#83).
   Future<ProfileLookup> fetchProfile(String pubkeyHex) async {
-    List<String> own = const [];
     try {
-      final lists = await _client.query(
-        kind: _relayListKind,
-        author: pubkeyHex,
-        relays: profileRelays(
-          const [],
-          defaultProfileRelays,
-          defaultIndexerRelays,
-        ),
-        timeout: _relayListTimeout,
+      final base = profileRelays(
+        const [],
+        defaultProfileRelays,
+        defaultIndexerRelays,
       );
-      own = writeRelays(_newest(lists, _relayListKind, pubkeyHex)?.tags);
-    } catch (_) {
-      // Search the defaults and indexers without the identity's own relays.
-    }
-
-    final searched = profileRelays(
-      own,
-      defaultProfileRelays,
-      defaultIndexerRelays,
-    );
-
-    try {
-      final events = await _client.query(
-        kind: _profileKind,
+      final first = await _client.query(
+        kinds: const [_profileKind, _relayListKind],
         author: pubkeyHex,
-        relays: searched,
+        relays: base,
       );
+      final own = writeRelays(
+        _newest(first.events, _relayListKind, pubkeyHex)?.tags,
+      );
+      final events = [...first.events];
+      final answered = {...first.answered};
+
+      final unasked = own.where((relay) => !base.contains(relay)).toList();
+      if (unasked.isNotEmpty) {
+        try {
+          final second = await _client.query(
+            kinds: const [_profileKind],
+            author: pubkeyHex,
+            relays: unasked,
+          );
+          events.addAll(second.events);
+          answered.addAll(second.answered);
+        } catch (_) {
+          // The identity's own relays could not be asked; what the defaults
+          // and indexers returned still stands.
+        }
+      }
+
+      if (answered.isEmpty) {
+        throw StateError('No relay answered');
+      }
+
       final content = _newest(events, _profileKind, pubkeyHex)?.content;
       final profile = content == null || content.isEmpty
           ? null
           : NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
       return ProfileLookup(
         profile: profile,
-        searchedRelays: searched,
+        searchedRelays: profileRelays(
+          own,
+          defaultProfileRelays,
+          defaultIndexerRelays,
+        ).where(answered.contains).toList(),
         publishRelays: profileRelays(own, defaultProfileRelays),
       );
     } catch (error) {
@@ -106,7 +117,8 @@ class ProfileLookup {
   /// The newest profile found, or null when no relay held one.
   final NostrProfile? profile;
 
-  /// Every relay asked for the profile.
+  /// Every relay that answered the profile query, the identity's own write
+  /// relays first.
   final List<String> searchedRelays;
 
   /// Where a new or edited profile should be published: the identity's own

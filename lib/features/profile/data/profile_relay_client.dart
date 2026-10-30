@@ -3,64 +3,73 @@ import 'dart:async';
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter/foundation.dart';
 
-import '../domain/profile_relays.dart';
-
-/// Asks relays for one author's events of one kind. A seam so the profile
+/// Asks relays for one author's events of some kinds. A seam so the profile
 /// lookup can be tested without a network (diogel-io/symudol#42).
 abstract class ProfileRelayClient {
-  /// The events of [kind] by [author] that [relays] return within [timeout].
+  /// The newest event of each of [kinds] by [author] that [relays] return,
+  /// and which relays answered, waiting at most [timeout] once connected.
   /// Each relay learns [author] and the device's IP address.
-  Future<List<NostrEvent>> query({
-    required int kind,
+  Future<RelayQueryResult> query({
+    required List<int> kinds,
     required String author,
     required List<String> relays,
     Duration timeout,
   });
 }
 
+/// What a relay query returned.
+class RelayQueryResult {
+  const RelayQueryResult({this.events = const [], this.answered = const {}});
+
+  /// The events returned, each of a requested kind by the requested author.
+  final List<NostrEvent> events;
+
+  /// The relays that sent everything they store (EOSE). A relay that could
+  /// not be reached or never finished is not here.
+  final Set<String> answered;
+}
+
 /// Queries relays through the shared [Nostr.instance].
 class DartNostrProfileRelayClient implements ProfileRelayClient {
-  bool _relaysInitialized = false;
-
-  Future<void> _ensureRelaysInitialized() async {
-    if (_relaysInitialized) return;
-
-    await Nostr.instance.services.relays.init(
-      relaysUrl: defaultProfileRelays,
-      retryOnError: true,
-      ignoreConnectionException: true,
-    );
-
-    _relaysInitialized = true;
-  }
-
   @override
-  Future<List<NostrEvent>> query({
-    required int kind,
+  Future<RelayQueryResult> query({
+    required List<int> kinds,
     required String author,
     required List<String> relays,
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    await _ensureRelaysInitialized();
+    final service = Nostr.instance.services.relays;
+    bool connected(String relay) =>
+        service.nostrRegistry.isRelayRegisteredAndConnectedSuccesfully(relay);
+
+    // Connect first, so [timeout] counts from when the request is sent, not
+    // from the start of a connection wait of up to 5 s per relay. dart_nostr
+    // would otherwise hold the request until every listed relay has
+    // connected or given up, then try the unreachable ones again.
+    if (relays.any((relay) => !connected(relay))) {
+      await service.init(relaysUrl: relays, ignoreConnectionException: true);
+    }
+    final reachable = relays.where(connected).toList();
+    if (reachable.isEmpty) return const RelayQueryResult();
 
     final request = NostrRequest(
       filters: [
-        NostrFilter(kinds: [kind], authors: [author], limit: 1),
+        for (final kind in kinds)
+          NostrFilter(kinds: [kind], authors: [author], limit: 1),
       ],
     );
 
     final events = <NostrEvent>[];
     final completer = Completer<void>();
-    final requested = relays.toSet();
+    final requested = reachable.toSet();
     final finished = <String>{};
 
-    // dart_nostr connects to any relay in [relays] it has not seen yet, and
-    // sends the request only to those relays. Wait until every one of them
-    // has sent everything it stores (EOSE), so a slower relay holding a newer
-    // event is not cut off; [timeout] covers relays that never answer.
-    final subscription = Nostr.instance.services.relays.startEventsSubscription(
+    // Wait until every relay has sent everything it stores (EOSE), so a
+    // slower relay holding a newer event is not cut off; [timeout] covers
+    // relays that never finish.
+    final subscription = service.startEventsSubscription(
       request: request,
-      relays: relays,
+      relays: reachable,
       onEose: (relay, _) {
         finished.add(relay);
         if (finished.containsAll(requested) && !completer.isCompleted) {
@@ -72,7 +81,7 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
     final streamSubscription = subscription.stream.listen((event) {
       // dart_nostr does not check what relays send, so drop any event that
       // does not match the request, or whose id or signature is wrong.
-      if (event.kind != kind || event.pubkey != author) return;
+      if (!kinds.contains(event.kind) || event.pubkey != author) return;
       if (!isAuthentic(event)) return;
       events.add(event);
     });
@@ -86,7 +95,7 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
     await streamSubscription.cancel();
     subscription.close();
 
-    return events;
+    return RelayQueryResult(events: events, answered: {...finished});
   }
 
   /// Whether [event]'s id matches its content and its signature is valid.

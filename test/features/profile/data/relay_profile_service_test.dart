@@ -30,39 +30,60 @@ void main() {
     expect(lookup.profile?.name, 'alice');
   });
 
-  test('the relay list is read from the defaults and indexers', () async {
-    await service.fetchProfile(alice);
+  test(
+    'the defaults and indexers are asked for the profile and list at once',
+    () async {
+      await service.fetchProfile(alice);
 
-    final listQuery = client.queries.first;
-    expect(listQuery.kind, 10002);
-    expect(listQuery.author, alice);
-    expect(listQuery.relays, [
-      ...defaultProfileRelays,
-      ...defaultIndexerRelays,
-    ]);
-  });
+      expect(client.queries, hasLength(1));
+      final first = client.queries.single;
+      expect(first.kinds, [0, 10002]);
+      expect(first.author, alice);
+      expect(first.relays, [...defaultProfileRelays, ...defaultIndexerRelays]);
+    },
+  );
 
   test(
-    'the profile is searched for on the identity\'s write relays first',
+    'the identity\'s own write relays are then asked for the profile',
     () async {
       client.held[indexer] = [
         _relayList(alice, [own, 'wss://old.example.com'], 1),
-        _relayList(alice, [own], 5),
+        _relayList(alice, [own, 'wss://nos.lol'], 5),
       ];
       client.held[own] = [_profile(alice, 'own', 10)];
 
       final lookup = await service.fetchProfile(alice);
 
-      final profileQuery = client.queries.last;
-      expect(profileQuery.kind, 0);
-      expect(profileQuery.relays, [
+      final second = client.queries.last;
+      expect(second.kinds, [0]);
+      expect(second.relays, [own]);
+      expect(lookup.profile?.name, 'own');
+      expect(lookup.searchedRelays, [
         own,
-        ...defaultProfileRelays,
+        'wss://nos.lol',
+        'wss://relay.damus.io',
+        'wss://relay.primal.net',
         ...defaultIndexerRelays,
       ]);
-      expect(lookup.profile?.name, 'own');
-      expect(lookup.searchedRelays, profileQuery.relays);
-      expect(lookup.publishRelays, [own, ...defaultProfileRelays]);
+      expect(lookup.publishRelays, [
+        own,
+        'wss://nos.lol',
+        'wss://relay.damus.io',
+        'wss://relay.primal.net',
+      ]);
+    },
+  );
+
+  test(
+    'a list naming only relays already asked needs no second query',
+    () async {
+      client.held[indexer] = [
+        _relayList(alice, ['wss://nos.lol'], 5),
+      ];
+
+      await service.fetchProfile(alice);
+
+      expect(client.queries, hasLength(1));
     },
   );
 
@@ -86,7 +107,7 @@ void main() {
     final lookup = await service.fetchProfile(alice);
 
     expect(lookup.profile?.name, 'alice');
-    expect(lookup.searchedRelays, isNot(contains('wss://mallory.example.com')));
+    expect(client.queries, hasLength(1));
   });
 
   test('an event of another kind is not taken for the profile', () async {
@@ -101,35 +122,60 @@ void main() {
     expect(lookup.profile?.name, 'alice');
   });
 
-  test('no profile anywhere reports every relay searched', () async {
+  test('no profile anywhere lists every relay that answered', () async {
+    client.unreachable.add('wss://relay.nos.social');
+
     final lookup = await service.fetchProfile(alice);
 
     expect(lookup.profile, isNull);
     expect(lookup.searchedRelays, [
       ...defaultProfileRelays,
-      ...defaultIndexerRelays,
+      'wss://purplepag.es',
+      'wss://profiles.nostr1.com',
     ]);
     expect(lookup.publishRelays, defaultProfileRelays);
   });
 
+  test('no relay answering is a fetch failure, not no profile', () async {
+    client.unreachable.addAll([
+      ...defaultProfileRelays,
+      ...defaultIndexerRelays,
+    ]);
+
+    expect(service.fetchProfile(alice), throwsA(isA<ProfileFetchException>()));
+  });
+
+  test('unreachable own relays keep the profile from the others', () async {
+    client.held[indexer] = [
+      _relayList(alice, [own], 5),
+      _profile(alice, 'alice', 10),
+    ];
+    client.unreachable.add(own);
+
+    final lookup = await service.fetchProfile(alice);
+
+    expect(lookup.profile?.name, 'alice');
+    expect(lookup.searchedRelays, isNot(contains(own)));
+    expect(lookup.publishRelays.first, own);
+  });
+
   test(
-    'a failed relay list still searches the defaults and indexers',
+    'a failed query on the own relays keeps the profile from the others',
     () async {
-      client.failKinds.add(10002);
-      client.held[indexer] = [_profile(alice, 'alice', 10)];
+      client.held[indexer] = [
+        _relayList(alice, [own], 5),
+        _profile(alice, 'alice', 10),
+      ];
+      client.failRelays.add(own);
 
       final lookup = await service.fetchProfile(alice);
 
       expect(lookup.profile?.name, 'alice');
-      expect(client.queries.last.relays, [
-        ...defaultProfileRelays,
-        ...defaultIndexerRelays,
-      ]);
     },
   );
 
-  test('a failed profile query is a fetch failure', () async {
-    client.failKinds.add(0);
+  test('a failed query on the defaults is a fetch failure', () async {
+    client.failRelays.add('wss://relay.damus.io');
 
     expect(service.fetchProfile(alice), throwsA(isA<ProfileFetchException>()));
   });
@@ -172,15 +218,18 @@ NostrEvent _event(
   );
 }
 
-typedef _Query = ({int kind, String author, List<String> relays});
+typedef _Query = ({List<int> kinds, String author, List<String> relays});
 
 /// Answers each query with the matching events held on the relays asked.
 class _FakeRelayClient implements ProfileRelayClient {
   /// The events each relay holds.
   final Map<String, List<NostrEvent>> held = {};
 
-  /// Kinds whose queries throw.
-  final Set<int> failKinds = {};
+  /// Relays that never answer.
+  final Set<String> unreachable = {};
+
+  /// A query that includes any of these relays throws.
+  final Set<String> failRelays = {};
 
   /// When true, answer with every held event whatever the kind asked for,
   /// as a misbehaving relay might.
@@ -189,17 +238,25 @@ class _FakeRelayClient implements ProfileRelayClient {
   final List<_Query> queries = [];
 
   @override
-  Future<List<NostrEvent>> query({
-    required int kind,
+  Future<RelayQueryResult> query({
+    required List<int> kinds,
     required String author,
     required List<String> relays,
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    queries.add((kind: kind, author: author, relays: relays));
-    if (failKinds.contains(kind)) throw StateError('relays unreachable');
-    return [
-      for (final relay in relays)
-        ...?held[relay]?.where((event) => answerAnyKind || event.kind == kind),
-    ];
+    queries.add((kinds: kinds, author: author, relays: relays));
+    if (relays.any(failRelays.contains)) {
+      throw StateError('relays unreachable');
+    }
+    final answering = relays.where((relay) => !unreachable.contains(relay));
+    return RelayQueryResult(
+      events: [
+        for (final relay in answering)
+          ...?held[relay]?.where(
+            (event) => answerAnyKind || kinds.contains(event.kind),
+          ),
+      ],
+      answered: answering.toSet(),
+    );
   }
 }
