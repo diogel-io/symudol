@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
@@ -172,11 +174,21 @@ void main() {
       );
 
       store.grants.add(_grant('grant-2', const Nip04DecryptScope()));
+      final readDone = Completer<void>();
+      store.hold = readDone.future;
       final reload = container
           .read(nip55PermissionControllerProvider.notifier)
           .load();
       await tester.pump();
+      // The reload is still reading: the list stays, with no spinner.
+      expect(
+        container.read(nip55PermissionControllerProvider).isLoading,
+        isTrue,
+      );
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('Share public key'), findsOneWidget);
+
+      readDone.complete();
       await reload;
       await tester.pumpAndSettle();
 
