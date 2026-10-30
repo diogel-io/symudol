@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:symudol/features/nip55/application/nip55_controller.dart';
+import 'package:symudol/features/nip55/application/nip55_permission_controller.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
@@ -889,6 +890,109 @@ void main() {
       );
       expect(permissionStore.grants.single.expiresAt, isNull);
       expect(gateway.completedToken, 'pk-token');
+    });
+
+    group('Trusted apps sees grants remembered here (#99)', () {
+      late FakeNip55PermissionStore permissionStore;
+      late Nip55PermissionController trustedApps;
+
+      setUp(() async {
+        permissionStore = FakeNip55PermissionStore();
+        trustedApps = Nip55PermissionController(store: permissionStore);
+        // Trusted apps was opened once, while nothing was remembered.
+        await trustedApps.load();
+        expect(trustedApps.state.grants, isEmpty);
+      });
+
+      Nip55Controller remembering({Future<void> Function()? onGrantsChanged}) =>
+          Nip55Controller(
+            gateway: gateway,
+            vaultController: vaultController,
+            vaultService: vaultService,
+            requestController: requestController,
+            permissionStore: permissionStore,
+            onGrantsChanged: onGrantsChanged ?? trustedApps.load,
+          );
+
+      test('a remembered sign_event shows without a restart', () async {
+        final nip55 = remembering();
+        await nip55.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+        final request = requestController.state.requests.single;
+
+        await nip55.approveSigningRequest(
+          request.id,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(trustedApps.state.grants, hasLength(1));
+        expect(trustedApps.state.grants.single.scope, isA<SignEventScope>());
+      });
+
+      test('a remembered get_public_key shows without a restart', () async {
+        final nip55 = remembering();
+        await nip55.handleRawIntent({
+          'requestToken': 'pk-token',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        await nip55.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(trustedApps.state.grants, hasLength(1));
+        expect(trustedApps.state.grants.single.scope, isA<GetPublicKeyScope>());
+      });
+
+      test('using a remembered grant updates its last use', () async {
+        permissionStore.grants.add(
+          Nip55PermissionGrant(
+            id: 'grant-1',
+            identityPubkey: vaultController.state.activeIdentity!.publicKey,
+            packageName: 'com.example.app',
+            certificateSha256: 'AA:BB',
+            scope: const SignEventScope(1),
+            decision: Nip55PermissionDecision.allow,
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+        await trustedApps.load();
+        expect(trustedApps.state.grants.single.lastUsedAt, isNull);
+        final nip55 = remembering();
+
+        await nip55.handleRawIntent({
+          ...signEventRaw(),
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        expect(gateway.completedExtras?['event'], contains('"sig"'));
+        expect(trustedApps.state.grants.single.lastUsedAt, isNotNull);
+      });
+
+      test('a failed refresh still answers the app', () async {
+        final nip55 = remembering(
+          onGrantsChanged: () async => throw StateError('screen gone'),
+        );
+        await nip55.handleRawIntent({
+          'requestToken': 'pk-token',
+          'type': 'get_public_key',
+          'callingPackage': 'com.example.app',
+          'callerCertificateSha256': 'AA:BB',
+        });
+
+        await nip55.approvePublicKeyRequest(
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(gateway.completedToken, 'pk-token');
+        expect(permissionStore.grants, hasLength(1));
+      });
     });
 
     group('a broad sign_event is never remembered (#5)', () {

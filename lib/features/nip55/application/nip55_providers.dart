@@ -60,5 +60,9 @@ final nip55ControllerProvider =
         requestController: requestController,
         permissionStore: ref.watch(nip55PermissionStoreProvider),
         nativeSync: ref.watch(nip55NativeSyncProvider),
+        // Read when a grant is stored, not watched: Trusted apps reloads
+        // without rebuilding this controller (#99).
+        onGrantsChanged: () =>
+            ref.read(nip55PermissionControllerProvider.notifier).load(),
       );
     });

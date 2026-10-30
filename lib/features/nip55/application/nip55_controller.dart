@@ -119,6 +119,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   final VaultService _vaultService;
   final RequestController _requestController;
   final Nip55NativeMirrorSync? _nativeSync;
+  final Future<void> Function()? _onGrantsChanged;
   final Duration _pendingUnlockTimeout;
   final Duration _reviewTimeout;
   final DateTime Function() _now;
@@ -146,6 +147,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     Nip55PermissionStore? permissionStore,
     Nip55ApprovalPolicy approvalPolicy = const Nip55ApprovalPolicy(),
     Nip55NativeMirrorSync? nativeSync,
+    Future<void> Function()? onGrantsChanged,
     Duration pendingUnlockTimeout = const Duration(minutes: 5),
     Duration reviewTimeout = const Duration(minutes: 5),
     DateTime Function()? now,
@@ -159,6 +161,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
        _permissionStore = permissionStore,
        _approvalPolicy = approvalPolicy,
        _nativeSync = nativeSync,
+       _onGrantsChanged = onGrantsChanged,
        _pendingUnlockTimeout = pendingUnlockTimeout,
        _reviewTimeout = reviewTimeout,
        _now = now ?? DateTime.now,
@@ -1336,6 +1339,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       return;
     }
     await store.saveGrant(grant);
+    await _notifyGrantsChanged();
   }
 
   /// Saves supported scopes from the `permissions` field of a connect-time
@@ -1377,6 +1381,24 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     final store = _permissionStore;
     if (store == null) return;
     await store.saveGrant(grant.copyWith(lastUsedAt: DateTime.now()));
+    await _notifyGrantsChanged();
+  }
+
+  /// Tells Trusted apps that the stored grants changed, so it shows them
+  /// without a restart (diogel-io/symudol#99). The grant is already stored,
+  /// so a failure here never fails the NIP-55 answer.
+  Future<void> _notifyGrantsChanged() async {
+    final onGrantsChanged = _onGrantsChanged;
+    if (onGrantsChanged == null) return;
+    try {
+      await onGrantsChanged();
+    } catch (e, stack) {
+      diogelLog(
+        'Nip55Controller: could not refresh Trusted apps',
+        error: e,
+        stackTrace: stack,
+      );
+    }
   }
 
   Nip55PermissionScope _scopeFor(Nip55IncomingRequest incoming) {

@@ -6,11 +6,26 @@ import '../../nip55/application/nip55_providers.dart';
 import '../../nip55/domain/nip55_client_permission.dart';
 import '../../nip55/domain/nip55_permission_decision.dart';
 
-class TrustedAppsScreen extends ConsumerWidget {
+class TrustedAppsScreen extends ConsumerStatefulWidget {
   const TrustedAppsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TrustedAppsScreen> createState() => _TrustedAppsScreenState();
+}
+
+class _TrustedAppsScreenState extends ConsumerState<TrustedAppsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Reload on every open, so a grant stored since the list was first read
+    // shows without a restart (#99).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(nip55PermissionControllerProvider.notifier).load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(nip55PermissionControllerProvider);
     final controller = ref.read(nip55PermissionControllerProvider.notifier);
     final groups = _groupByPackage(state.grants);
@@ -26,7 +41,8 @@ class TrustedAppsScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: state.isLoading
+      // A reload keeps the list on screen; the spinner is for the first read.
+      body: state.isLoading && state.grants.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : state.grants.isEmpty
           ? const Center(
