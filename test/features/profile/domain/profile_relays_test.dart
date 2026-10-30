@@ -4,15 +4,27 @@ import 'package:symudol/features/profile/domain/profile_relays.dart';
 /// Where a profile is read from and published to (diogel-io/symudol#42).
 void main() {
   group('normaliseRelayUrl', () {
-    test('lowercases the host and drops a trailing slash', () {
+    test('lowercases the host and drops a bare trailing slash', () {
       expect(
         normaliseRelayUrl(' wss://Relay.Example.com/ '),
         'wss://relay.example.com',
       );
       expect(
-        normaliseRelayUrl('ws://localhost:7777/inbox/'),
+        normaliseRelayUrl('ws://localhost:7777/inbox'),
         'ws://localhost:7777/inbox',
       );
+    });
+
+    test('keeps a trailing slash on a path, which can select the endpoint', () {
+      expect(
+        normaliseRelayUrl('wss://example.com/relay/'),
+        'wss://example.com/relay/',
+      );
+    });
+
+    test('keeps the brackets on an IPv6 host', () {
+      expect(normaliseRelayUrl('ws://[::1]:7777'), 'ws://[::1]:7777');
+      expect(normaliseRelayUrl('wss://[2001:DB8::1]/'), 'wss://[2001:db8::1]');
     });
 
     test('rejects anything that is not a websocket URL', () {

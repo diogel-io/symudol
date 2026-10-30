@@ -25,8 +25,10 @@ const List<String> defaultIndexerRelays = [
 /// cannot fan out.
 const int maxOwnRelays = 8;
 
-/// [value] as a relay URL with a lowercase scheme and host and no trailing
-/// slash, or null when it is not a `wss://` or `ws://` URL.
+/// [value] as a relay URL with a lowercase scheme and host and no bare `/`
+/// path, or null when it is not a `wss://` or `ws://` URL. Any other path is
+/// kept as it is, trailing slash included, because a relay's path can select
+/// its endpoint.
 String? normaliseRelayUrl(String? value) {
   if (value == null) return null;
   final uri = Uri.tryParse(value.trim());
@@ -35,10 +37,13 @@ String? normaliseRelayUrl(String? value) {
       uri.host.isEmpty) {
     return null;
   }
+  final lower = uri.host.toLowerCase();
+  // Uri.host drops an IPv6 literal's brackets; put them back.
+  final host = lower.contains(':') ? '[$lower]' : lower;
   final port = uri.hasPort ? ':${uri.port}' : '';
-  final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+  final path = uri.path == '/' ? '' : uri.path;
   final query = uri.hasQuery ? '?${uri.query}' : '';
-  return '${uri.scheme}://${uri.host.toLowerCase()}$port$path$query';
+  return '${uri.scheme}://$host$port$path$query';
 }
 
 /// The write relays of a NIP-65 list (kind 10002): `r` tags marked `write` or
