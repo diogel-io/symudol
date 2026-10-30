@@ -22,17 +22,25 @@ void main() {
   });
 
   test('reading a profile does not fetch it', () {
-    expect(container.read(nostrProfileProvider(alice)), isA<ProfileNotLoaded>());
+    expect(
+      container.read(nostrProfileProvider(alice)),
+      isA<ProfileNotLoaded>(),
+    );
     container.listen(nostrProfileProvider(bob), (_, _) {});
 
     expect(service.requested, isEmpty);
   });
 
   test('load fetches only the requested pubkey', () async {
-    service.profile = const NostrProfile(name: 'alice', picture: 'https://x/a.png');
+    service.profile = const NostrProfile(
+      name: 'alice',
+      picture: 'https://x/a.png',
+    );
     container.read(nostrProfileProvider(bob));
 
-    final result = await container.read(nostrProfileProvider(alice).notifier).load();
+    final result = await container
+        .read(nostrProfileProvider(alice).notifier)
+        .load();
 
     expect(service.requested, [alice]);
     expect(result, isA<ProfileLoaded>());
@@ -49,7 +57,9 @@ void main() {
   });
 
   test('no profile on the relays is loaded, not failed', () async {
-    final result = await container.read(nostrProfileProvider(alice).notifier).load();
+    final result = await container
+        .read(nostrProfileProvider(alice).notifier)
+        .load();
 
     expect(result, isA<ProfileLoaded>());
     expect(result.profile, isNull);
@@ -74,9 +84,14 @@ void main() {
   test('a fetch failure is reported as failed', () async {
     service.fail = true;
 
-    final result = await container.read(nostrProfileProvider(alice).notifier).load();
+    final result = await container
+        .read(nostrProfileProvider(alice).notifier)
+        .load();
 
     expect(result, isA<ProfileLoadFailed>());
-    expect(container.read(nostrProfileProvider(alice)), isA<ProfileLoadFailed>());
+    expect(
+      container.read(nostrProfileProvider(alice)),
+      isA<ProfileLoadFailed>(),
+    );
   });
 }

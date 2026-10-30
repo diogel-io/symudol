@@ -27,10 +27,15 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
   @override
   ProfileLoadState build() => const ProfileNotLoaded();
 
+  Future<ProfileLoadState>? _loading;
+
   /// Fetches the profile for [pubkeyHex] alone. Call only after the user has
-  /// asked and confirmed. Returns the resulting state.
-  Future<ProfileLoadState> load() async {
-    if (state is ProfileLoading) return state;
+  /// asked and confirmed. Returns the resulting state; a call while a fetch
+  /// is running waits for that fetch rather than starting another.
+  Future<ProfileLoadState> load() =>
+      _loading ??= _fetch().whenComplete(() => _loading = null);
+
+  Future<ProfileLoadState> _fetch() async {
     state = const ProfileLoading();
     final service = ref.read(relayProfileServiceProvider);
     ProfileLoadState next;
@@ -38,6 +43,8 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
       final lookup = await service.fetchProfile(pubkeyHex);
       next = ProfileLoaded(
         lookup.profile,
+        content: lookup.content,
+        createdAt: lookup.createdAt,
         searchedRelays: lookup.searchedRelays,
         publishRelays: lookup.publishRelays,
       );
@@ -47,4 +54,8 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
     if (ref.mounted) state = next;
     return next;
   }
+
+  /// Records a profile this device has just published, so the avatar and
+  /// name follow a save without fetching again (diogel-io/symudol#41).
+  void published(ProfileLoaded profile) => state = profile;
 }

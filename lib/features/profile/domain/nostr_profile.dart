@@ -13,13 +13,20 @@ class NostrProfile {
     this.nip05,
   });
 
+  /// Reads the string fields of a kind 0 content object. A field another app
+  /// wrote with a different type is ignored rather than failing the profile
+  /// (diogel-io/symudol#41).
   factory NostrProfile.fromJson(Map<String, dynamic> json) {
+    String? text(String key) => switch (json[key]) {
+      final String value => value,
+      _ => null,
+    };
     return NostrProfile(
-      name: json['name'] as String?,
-      displayName: json['display_name'] as String?,
-      picture: json['picture'] as String?,
-      about: json['about'] as String?,
-      nip05: json['nip05'] as String?,
+      name: text('name'),
+      displayName: text('display_name'),
+      picture: text('picture'),
+      about: text('about'),
+      nip05: text('nip05'),
     );
   }
 }

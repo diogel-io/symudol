@@ -22,11 +22,20 @@ class ProfileLoading extends ProfileLoadState {
 class ProfileLoaded extends ProfileLoadState {
   const ProfileLoaded(
     this._profile, {
+    this.content,
+    this.createdAt,
     this.searchedRelays = const [],
     this.publishRelays = const [],
   });
 
   final NostrProfile? _profile;
+
+  /// Every key of the newest kind 0's content; null when there was none
+  /// (diogel-io/symudol#41).
+  final Map<String, Object?>? content;
+
+  /// When the newest kind 0 was created; null when there was none.
+  final DateTime? createdAt;
 
   /// Every relay that answered the profile query (diogel-io/symudol#42).
   final List<String> searchedRelays;

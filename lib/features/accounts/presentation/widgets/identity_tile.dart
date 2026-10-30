@@ -12,10 +12,15 @@ class IdentityTile extends ConsumerWidget {
   final VaultIdentity identity;
   final VoidCallback? onTap;
 
+  /// Opens the profile editor; offered on the active identity only
+  /// (diogel-io/symudol#41).
+  final VoidCallback? onEditProfile;
+
   const IdentityTile({
     super.key,
     required this.identity,
     this.onTap,
+    this.onEditProfile,
   });
 
   @override
@@ -113,7 +118,14 @@ class IdentityTile extends ConsumerWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               )
-            else
+            else ...[
+              if (isActive && onEditProfile != null)
+                IconButton(
+                  tooltip: 'Edit profile',
+                  icon: const Icon(Icons.edit_outlined),
+                  color: DiogelColors.textTertiary,
+                  onPressed: onEditProfile,
+                ),
               IconButton(
                 tooltip: 'Load profile',
                 icon: const Icon(Icons.cloud_download_outlined),
@@ -121,6 +133,7 @@ class IdentityTile extends ConsumerWidget {
                 onPressed: () =>
                     confirmAndLoadProfile(context, ref, identity.publicKey),
               ),
+            ],
             if (!isActive)
               const Icon(Icons.chevron_right, color: DiogelColors.textTertiary),
           ],
