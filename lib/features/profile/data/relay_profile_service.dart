@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dart_nostr/dart_nostr.dart';
 
 import '../domain/nostr_profile.dart';
+import '../../requests/domain/signed_nostr_event.dart';
 import '../domain/profile_relays.dart';
 import 'profile_relay_client.dart';
 
@@ -68,12 +69,22 @@ class RelayProfileService {
         throw StateError('No relay answered');
       }
 
-      final content = _newest(events, _profileKind, pubkeyHex)?.content;
+      final newest = _newest(events, _profileKind, pubkeyHex);
+      final raw = newest?.content;
+      // Content that is not a JSON object fails the lookup, so a save can't
+      // overwrite a profile it could not read (diogel-io/symudol#41).
+      final content = newest == null
+          ? null
+          : raw == null || raw.isEmpty
+          ? <String, Object?>{}
+          : Map<String, Object?>.from(jsonDecode(raw) as Map);
       final profile = content == null || content.isEmpty
           ? null
-          : NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
+          : NostrProfile.fromJson(content);
       return ProfileLookup(
         profile: profile,
+        content: content,
+        createdAt: newest?.createdAt,
         searchedRelays: profileRelays(
           own,
           defaultProfileRelays,
@@ -85,6 +96,13 @@ class RelayProfileService {
       throw ProfileFetchException(error);
     }
   }
+
+  /// Sends the signed profile [event] to [relays] and reports how each
+  /// answered (diogel-io/symudol#41).
+  Future<Map<String, RelayPublishResult>> publishProfile(
+    SignedNostrEvent event,
+    List<String> relays,
+  ) => _client.publish(event: event, relays: relays);
 
   /// The most recent of [events] of [kind] signed by [pubkeyHex], or null. A
   /// relay can answer with any event, so the others are ignored.
@@ -110,12 +128,21 @@ class RelayProfileService {
 class ProfileLookup {
   const ProfileLookup({
     this.profile,
+    this.content,
+    this.createdAt,
     this.searchedRelays = const [],
     this.publishRelays = const [],
   });
 
   /// The newest profile found, or null when no relay held one.
   final NostrProfile? profile;
+
+  /// Every key of the newest kind 0's content, including those Symudol does
+  /// not show, so a save can keep them; null when no relay held a kind 0.
+  final Map<String, Object?>? content;
+
+  /// When the newest kind 0 was created; null when no relay held one.
+  final DateTime? createdAt;
 
   /// Every relay that answered the profile query, the identity's own write
   /// relays first.

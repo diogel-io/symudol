@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../profile/presentation/profile_edit_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
@@ -108,6 +109,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 onTap: identity.isActive 
                   ? null 
                   : () => ref.read(vaultControllerProvider.notifier).setActiveIdentity(identity.localId),
+                onEditProfile: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ProfileEditScreen(identity: identity),
+                  ),
+                ),
               ),
             )),
 

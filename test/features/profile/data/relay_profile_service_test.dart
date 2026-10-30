@@ -2,9 +2,10 @@ import 'dart:convert';
 
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:symudol/features/profile/data/profile_relay_client.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
 import 'package:symudol/features/profile/domain/profile_relays.dart';
+
+import '../../../fakes/fake_profile_relay_client.dart';
 
 /// A profile is found on the identity's own relays, the defaults or an
 /// indexer (diogel-io/symudol#42).
@@ -14,11 +15,11 @@ void main() {
   const indexer = 'wss://purplepag.es';
   const own = 'wss://own.example.com';
 
-  late _FakeRelayClient client;
+  late FakeProfileRelayClient client;
   late RelayProfileService service;
 
   setUp(() {
-    client = _FakeRelayClient();
+    client = FakeProfileRelayClient();
     service = RelayProfileService(client: client);
   });
 
@@ -180,6 +181,51 @@ void main() {
     expect(service.fetchProfile(alice), throwsA(isA<ProfileFetchException>()));
   });
 
+  test(
+    'the newest profile\'s raw content and time are returned (#41)',
+    () async {
+      client.held[indexer] = [
+        _event(alice, 0, 10, content: jsonEncode({'name': 'old'})),
+        _event(
+          alice,
+          0,
+          20,
+          content: jsonEncode({'name': 'alice', 'lud06': 'lnurl1', 'x': 1}),
+        ),
+      ];
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(lookup.content, {'name': 'alice', 'lud06': 'lnurl1', 'x': 1});
+      expect(lookup.createdAt, DateTime.fromMillisecondsSinceEpoch(20000));
+    },
+  );
+
+  test('no kind 0 anywhere has no content or time', () async {
+    final lookup = await service.fetchProfile(alice);
+
+    expect(lookup.content, isNull);
+    expect(lookup.createdAt, isNull);
+  });
+
+  test('a field of the wrong type does not fail the lookup (#41)', () async {
+    client.held[indexer] = [
+      _event(alice, 0, 10, content: jsonEncode({'name': 42, 'about': 'hi'})),
+    ];
+
+    final lookup = await service.fetchProfile(alice);
+
+    expect(lookup.profile?.name, isNull);
+    expect(lookup.profile?.about, 'hi');
+    expect(lookup.content, {'name': 42, 'about': 'hi'});
+  });
+
+  test('content that is not a JSON object is a fetch failure', () async {
+    client.held[indexer] = [_event(alice, 0, 10, content: '["a"]')];
+
+    expect(service.fetchProfile(alice), throwsA(isA<ProfileFetchException>()));
+  });
+
   test('an unreadable profile is a fetch failure', () async {
     client.held[indexer] = [_event(alice, 0, 10, content: 'not json')];
 
@@ -216,47 +262,4 @@ NostrEvent _event(
     createdAt: DateTime.fromMillisecondsSinceEpoch(createdAt * 1000),
     tags: tags,
   );
-}
-
-typedef _Query = ({List<int> kinds, String author, List<String> relays});
-
-/// Answers each query with the matching events held on the relays asked.
-class _FakeRelayClient implements ProfileRelayClient {
-  /// The events each relay holds.
-  final Map<String, List<NostrEvent>> held = {};
-
-  /// Relays that never answer.
-  final Set<String> unreachable = {};
-
-  /// A query that includes any of these relays throws.
-  final Set<String> failRelays = {};
-
-  /// When true, answer with every held event whatever the kind asked for,
-  /// as a misbehaving relay might.
-  bool answerAnyKind = false;
-
-  final List<_Query> queries = [];
-
-  @override
-  Future<RelayQueryResult> query({
-    required List<int> kinds,
-    required String author,
-    required List<String> relays,
-    Duration timeout = const Duration(seconds: 8),
-  }) async {
-    queries.add((kinds: kinds, author: author, relays: relays));
-    if (relays.any(failRelays.contains)) {
-      throw StateError('relays unreachable');
-    }
-    final answering = relays.where((relay) => !unreachable.contains(relay));
-    return RelayQueryResult(
-      events: [
-        for (final relay in answering)
-          ...?held[relay]?.where(
-            (event) => answerAnyKind || kinds.contains(event.kind),
-          ),
-      ],
-      answered: answering.toSet(),
-    );
-  }
 }

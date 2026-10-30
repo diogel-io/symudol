@@ -38,6 +38,8 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
       final lookup = await service.fetchProfile(pubkeyHex);
       next = ProfileLoaded(
         lookup.profile,
+        content: lookup.content,
+        createdAt: lookup.createdAt,
         searchedRelays: lookup.searchedRelays,
         publishRelays: lookup.publishRelays,
       );
@@ -47,4 +49,8 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
     if (ref.mounted) state = next;
     return next;
   }
+
+  /// Records a profile this device has just published, so the avatar and
+  /// name follow a save without fetching again (diogel-io/symudol#41).
+  void published(ProfileLoaded profile) => state = profile;
 }
