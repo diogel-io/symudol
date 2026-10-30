@@ -1,90 +1,112 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:dart_nostr/dart_nostr.dart';
 
 import '../domain/nostr_profile.dart';
+import '../domain/profile_relays.dart';
+import 'profile_relay_client.dart';
 
-/// Fetches Nostr profile metadata (NIP-01 kind 0 events) from a set of relays.
+/// Finds an identity's profile metadata (NIP-01 kind 0) where it lives: on
+/// the identity's own NIP-65 write relays, the default relays or the indexer
+/// relays (diogel-io/symudol#42).
 class RelayProfileService {
-  static const List<String> defaultRelays = [
-    'wss://relay.damus.io',
-    'wss://nos.lol',
-  ];
+  RelayProfileService({ProfileRelayClient? client})
+    : _client = client ?? DartNostrProfileRelayClient();
 
-  bool _relaysInitialized = false;
+  final ProfileRelayClient _client;
 
-  Future<void> _ensureRelaysInitialized() async {
-    if (_relaysInitialized) return;
+  static const int _relayListKind = 10002;
+  static const int _profileKind = 0;
 
-    await Nostr.instance.services.relays.init(
-      relaysUrl: defaultRelays,
-      retryOnError: true,
-      ignoreConnectionException: true,
-    );
+  /// How long to wait for the relay list before looking for the profile.
+  static const Duration _relayListTimeout = Duration(seconds: 5);
 
-    _relaysInitialized = true;
-  }
-
-  /// Returns the most recent profile metadata for [pubkeyHex], or null if
-  /// no relay responded with a kind 0 event in time. Throws
-  /// [ProfileFetchException] when the relays cannot be queried or the
-  /// profile cannot be read, so callers can tell a failure from no profile.
+  /// Looks up the most recent profile metadata for [pubkeyHex] in two passes:
+  /// the identity's relay list (kind 10002) from the default and indexer
+  /// relays, then its kind 0 from the list's write relays, the defaults and
+  /// the indexers. Throws [ProfileFetchException] when the profile relays
+  /// cannot be queried or the profile cannot be read, so callers can tell a
+  /// failure from no profile. A relay list that cannot be fetched only means
+  /// the identity's own relays are not searched.
   ///
   /// Each relay learns [pubkeyHex] and the device's IP address, so call this
   /// only when the user has asked (diogel-io/symudol#83).
-  Future<NostrProfile?> fetchProfile(String pubkeyHex) async {
+  Future<ProfileLookup> fetchProfile(String pubkeyHex) async {
+    List<String> own = const [];
     try {
-      await _ensureRelaysInitialized();
-
-      final request = NostrRequest(
-        filters: [
-          NostrFilter(kinds: const [0], authors: [pubkeyHex], limit: 1),
-        ],
+      final lists = await _client.query(
+        kind: _relayListKind,
+        author: pubkeyHex,
+        relays: profileRelays(
+          const [],
+          defaultProfileRelays,
+          defaultIndexerRelays,
+        ),
+        timeout: _relayListTimeout,
       );
+      own = writeRelays(_newest(lists, pubkeyHex)?.tags);
+    } catch (_) {
+      // Search the defaults and indexers without the identity's own relays.
+    }
 
-      final subscription =
-          Nostr.instance.services.relays.startEventsSubscription(request: request);
+    final searched = profileRelays(
+      own,
+      defaultProfileRelays,
+      defaultIndexerRelays,
+    );
 
-      final events = <NostrEvent>[];
-      final completer = Completer<void>();
-      Timer? graceTimer;
-      late final StreamSubscription<NostrEvent> streamSubscription;
-
-      streamSubscription = subscription.stream.listen((event) {
-        events.add(event);
-        // Give other relays a brief moment to respond too, so we can pick
-        // the most recent profile, then stop waiting.
-        graceTimer ??= Timer(const Duration(milliseconds: 800), () {
-          if (!completer.isCompleted) completer.complete();
-        });
-      });
-
-      final timeoutTimer = Timer(const Duration(seconds: 8), () {
-        if (!completer.isCompleted) completer.complete();
-      });
-
-      await completer.future;
-      graceTimer?.cancel();
-      timeoutTimer.cancel();
-      await streamSubscription.cancel();
-      subscription.close();
-
-      if (events.isEmpty) return null;
-
-      events.sort(
-        (a, b) => (b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0))
-            .compareTo(a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)),
+    try {
+      final events = await _client.query(
+        kind: _profileKind,
+        author: pubkeyHex,
+        relays: searched,
       );
-
-      final content = events.first.content;
-      if (content == null || content.isEmpty) return null;
-
-      return NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
+      final content = _newest(events, pubkeyHex)?.content;
+      final profile = content == null || content.isEmpty
+          ? null
+          : NostrProfile.fromJson(jsonDecode(content) as Map<String, dynamic>);
+      return ProfileLookup(
+        profile: profile,
+        searchedRelays: searched,
+        publishRelays: profileRelays(own, defaultProfileRelays),
+      );
     } catch (error) {
       throw ProfileFetchException(error);
     }
   }
+
+  /// The most recent of [events] signed by [pubkeyHex], or null.
+  static NostrEvent? _newest(List<NostrEvent> events, String pubkeyHex) {
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    NostrEvent? newest;
+    for (final event in events) {
+      if (event.pubkey != pubkeyHex) continue;
+      if (newest == null ||
+          (event.createdAt ?? epoch).isAfter(newest.createdAt ?? epoch)) {
+        newest = event;
+      }
+    }
+    return newest;
+  }
+}
+
+/// What a profile lookup found, and where.
+class ProfileLookup {
+  const ProfileLookup({
+    this.profile,
+    this.searchedRelays = const [],
+    this.publishRelays = const [],
+  });
+
+  /// The newest profile found, or null when no relay held one.
+  final NostrProfile? profile;
+
+  /// Every relay asked for the profile.
+  final List<String> searchedRelays;
+
+  /// Where a new or edited profile should be published: the identity's own
+  /// write relays plus the defaults.
+  final List<String> publishRelays;
 }
 
 /// The profile could not be fetched or read.

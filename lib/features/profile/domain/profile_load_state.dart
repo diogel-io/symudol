@@ -20,9 +20,20 @@ class ProfileLoading extends ProfileLoadState {
 /// The relays answered. [profile] is null when they hold no kind 0 event
 /// for the pubkey.
 class ProfileLoaded extends ProfileLoadState {
-  const ProfileLoaded(this._profile);
+  const ProfileLoaded(
+    this._profile, {
+    this.searchedRelays = const [],
+    this.publishRelays = const [],
+  });
 
   final NostrProfile? _profile;
+
+  /// Every relay asked for the profile (diogel-io/symudol#42).
+  final List<String> searchedRelays;
+
+  /// Where a new or edited profile should be published: the identity's own
+  /// write relays plus the defaults.
+  final List<String> publishRelays;
 
   @override
   NostrProfile? get profile => _profile;

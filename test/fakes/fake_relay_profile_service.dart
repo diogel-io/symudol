@@ -12,13 +12,26 @@ class FakeRelayProfileService extends RelayProfileService {
   /// When true, every fetch throws [ProfileFetchException].
   bool fail;
 
+  /// The relays every fetch reports as searched.
+  List<String> searchedRelays = const [
+    'wss://relay.damus.io',
+    'wss://purplepag.es',
+  ];
+
+  /// The relays every fetch reports as the place to publish.
+  List<String> publishRelays = const ['wss://relay.damus.io'];
+
   /// The pubkeys fetched, in order.
   final List<String> requested = [];
 
   @override
-  Future<NostrProfile?> fetchProfile(String pubkeyHex) async {
+  Future<ProfileLookup> fetchProfile(String pubkeyHex) async {
     requested.add(pubkeyHex);
     if (fail) throw ProfileFetchException(StateError('relays unreachable'));
-    return profile;
+    return ProfileLookup(
+      profile: profile,
+      searchedRelays: searchedRelays,
+      publishRelays: publishRelays,
+    );
   }
 }

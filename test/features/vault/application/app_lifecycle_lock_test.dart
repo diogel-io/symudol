@@ -9,7 +9,6 @@ import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
-import 'package:symudol/features/profile/domain/nostr_profile.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:flutter/material.dart';
@@ -85,7 +84,8 @@ class _Gateway implements Nip55Gateway {
 /// Avoids real relay connections from the identity's avatar.
 class _RelayProfileService extends RelayProfileService {
   @override
-  Future<NostrProfile?> fetchProfile(String pubkeyHex) async => null;
+  Future<ProfileLookup> fetchProfile(String pubkeyHex) async =>
+      const ProfileLookup();
 }
 
 class _PermissionStore implements Nip55PermissionStore {

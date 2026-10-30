@@ -55,6 +55,22 @@ void main() {
     expect(result.profile, isNull);
   });
 
+  test('the searched and publish relays reach the state (#42)', () async {
+    service.searchedRelays = ['wss://own.example.com', 'wss://purplepag.es'];
+    service.publishRelays = ['wss://own.example.com'];
+
+    final result = await container
+        .read(nostrProfileProvider(alice).notifier)
+        .load();
+
+    final loaded = result as ProfileLoaded;
+    expect(loaded.searchedRelays, [
+      'wss://own.example.com',
+      'wss://purplepag.es',
+    ]);
+    expect(loaded.publishRelays, ['wss://own.example.com']);
+  });
+
   test('a fetch failure is reported as failed', () async {
     service.fail = true;
 

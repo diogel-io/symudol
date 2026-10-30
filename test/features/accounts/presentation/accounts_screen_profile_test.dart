@@ -50,7 +50,7 @@ void main() {
     expect(profiles.requested, isEmpty);
   });
 
-  testWidgets('the confirmation names both relays', (tester) async {
+  testWidgets('the confirmation names the relays and indexers', (tester) async {
     await pumpAccounts(tester);
 
     await tester.tap(find.byTooltip('Load profile').first);
@@ -61,7 +61,11 @@ void main() {
     expect(
       find.descendant(
         of: dialog,
-        matching: find.textContaining('relay.damus.io and nos.lol'),
+        matching: find.textContaining(
+          'relay.damus.io, nos.lol, relay.primal.net, purplepag.es, '
+          'profiles.nostr1.com, relay.nos.social, and the relays this '
+          'identity lists as its own',
+        ),
       ),
       findsOneWidget,
     );
@@ -105,11 +109,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Load profile'));
     await tester.pumpAndSettle();
-    expect(find.text('No profile found on these relays'), findsOneWidget);
+    expect(find.text('No profile found'), findsOneWidget);
+    expect(find.text('relay.damus.io'), findsOneWidget);
+    expect(find.text('purplepag.es'), findsOneWidget);
 
-    ScaffoldMessenger.of(
-      tester.element(find.byType(AccountsScreen)),
-    ).removeCurrentSnackBar();
+    await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     profiles.fail = true;
 
