@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../fakes/fake_nip55_permission_store.dart';
+import '../fakes/fake_profile_network_store.dart';
 import '../fakes/fake_vault_store.dart';
 
 class _NativeSync extends Nip55NativeMirrorSync {
@@ -100,6 +101,9 @@ void main() {
             FakeNip55PermissionStore(),
           ),
           relayProfileServiceProvider.overrideWithValue(_RelayProfileService()),
+          profileNetworkStoreProvider.overrideWithValue(
+            FakeProfileNetworkStore(),
+          ),
         ],
         child: const DiogelApp(),
       ),
@@ -180,6 +184,24 @@ void main() {
 
       expect(find.byType(Dialog), findsNothing);
       expect(find.text('Unlock Vault').hitTestable(), findsWidgets);
+    });
+
+    testWidgets('removes Edit profile while it asks to load', (tester) async {
+      final container = await pumpUnlockedApp(tester);
+      await tester.tap(find.byTooltip('Edit profile'));
+      await tester.pumpAndSettle();
+      expect(find.text('Load profile from relays?'), findsOneWidget);
+
+      // Closing the prompt must not also pop the unlock screen.
+      await container.read(vaultControllerProvider.notifier).lock();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unlock Vault').hitTestable(), findsWidgets);
+      expect(find.text('Load profile from relays?'), findsNothing);
+
+      await enterPin(tester);
+
+      expect(find.text('Accounts'), findsWidgets);
     });
 
     testWidgets('an expired session removes a pushed screen', (tester) async {

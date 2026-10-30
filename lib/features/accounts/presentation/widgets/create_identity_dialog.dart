@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/route_pop.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import 'package:symudol/theme/tokens.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
@@ -44,7 +45,7 @@ class _CreateIdentityDialogState extends ConsumerState<CreateIdentityDialog> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    popIfCurrent(context, true);
   }
 
   @override

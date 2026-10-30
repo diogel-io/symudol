@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/route_pop.dart';
 import 'package:symudol/app/sensitive_clipboard.dart';
 import 'package:symudol/app/sensitive_selection.dart';
 
@@ -136,7 +137,7 @@ class _Nip46ConnectionQrSheetState
       await ref
           .read(nip46ControllerProvider.notifier)
           .importNostrconnectToken(uri);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) popIfCurrent(context);
     } catch (e) {
       setState(() {
         _importError = e.toString();
