@@ -111,6 +111,31 @@ void main() {
     });
   });
 
+  group('applyEdits', () {
+    test('only the fields the user changed replace the latest values', () {
+      final loaded = formFromContent({'name': 'alice', 'picture': 'old.png'});
+      final latest = formFromContent({
+        'name': 'alice',
+        'picture': 'changed-elsewhere.png',
+      });
+      final edited = loaded.withText('name', 'Alice');
+
+      final form = applyEdits(latest, loaded, edited);
+
+      expect(form['name'], 'Alice');
+      expect(form['picture'], 'changed-elsewhere.png');
+    });
+
+    test('clearing a field is a change', () {
+      final loaded = formFromContent({'website': 'https://a'});
+      final latest = formFromContent({'website': 'https://b'});
+
+      final form = applyEdits(latest, loaded, loaded.withText('website', ''));
+
+      expect(form['website'], isEmpty);
+    });
+  });
+
   group('formFromContent', () {
     test('reads the fields the form edits', () {
       final form = formFromContent({

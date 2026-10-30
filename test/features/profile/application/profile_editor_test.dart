@@ -102,6 +102,28 @@ void main() {
     });
   });
 
+  test(
+    'saving does not revert a field another app changed after loading',
+    () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice', 'picture': 'https://a/old.png'}, 10),
+      ];
+      await editor().load();
+      editor().updateForm(state().form.withText('about', 'new'));
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice', 'picture': 'https://a/new.png'}, 20),
+      ];
+
+      await editor().save();
+
+      expect(jsonDecode(relays.published.single.event.content), {
+        'name': 'alice',
+        'picture': 'https://a/new.png',
+        'about': 'new',
+      });
+    },
+  );
+
   test('the event is kind 0, signed by the active identity, and newer than '
       'the one it replaces', () async {
     final future = DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600;

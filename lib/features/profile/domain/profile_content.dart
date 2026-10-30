@@ -116,6 +116,25 @@ ProfileForm formFromContent(Map<String, Object?>? content) {
   );
 }
 
+/// [latest] with only the fields the user changed from [loaded] to [edited].
+/// A field left as it was loaded takes its value from [latest], so a save
+/// does not revert what another app changed after the form was loaded.
+ProfileForm applyEdits(
+  ProfileForm latest,
+  ProfileForm loaded,
+  ProfileForm edited,
+) {
+  var form = latest;
+  for (final key in profileTextFields) {
+    if (edited[key] != loaded[key]) form = form.withText(key, edited[key]);
+  }
+  if (edited.bot != loaded.bot) form = form.copyWith(bot: edited.bot);
+  if (edited.birthday != loaded.birthday) {
+    form = form.copyWith(birthday: edited.birthday);
+  }
+  return form;
+}
+
 /// The content to publish: [latest] as it stands, with only the form's keys
 /// changed. A form field left empty is removed, as is `bot` when false and a
 /// birthday with no parts. `about` keeps its inner whitespace; the other text

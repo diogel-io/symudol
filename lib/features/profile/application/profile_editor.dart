@@ -168,7 +168,11 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
       _guard(() async {
         _validate();
         final form = state.form;
-        final results = await _publish(form, prepared ?? await _latest());
+        final results = await _publish(
+          form,
+          state.saved,
+          prepared ?? await _latest(),
+        );
         if (ref.mounted) {
           state = state.copyWith(
             saving: false,
@@ -234,6 +238,7 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
 
   Future<Map<String, RelayPublishResult>> _publish(
     ProfileForm form,
+    ProfileForm loaded,
     ProfileLookup latest,
   ) async {
     final service = ref.read(relayProfileServiceProvider);
@@ -246,7 +251,10 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
       );
     }
 
-    final content = mergeProfile(latest.content, form);
+    final content = mergeProfile(
+      latest.content,
+      applyEdits(formFromContent(latest.content), loaded, form),
+    );
     final draft = NostrEventDraft(
       kind: 0,
       content: jsonEncode(content),
