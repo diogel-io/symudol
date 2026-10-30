@@ -264,6 +264,9 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
 
     return Scaffold(
       appBar: AppBar(
+        // Shown as its own route above a pushed screen, Back is blocked until
+        // the request is approved or rejected (#121): no close button.
+        automaticallyImplyLeading: false,
         title: const Text('Approval Request'),
         actions: const [
           Padding(

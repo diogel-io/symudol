@@ -66,3 +66,14 @@ final nip55ControllerProvider =
             ref.read(nip55PermissionControllerProvider.notifier).load(),
       );
     });
+
+/// Whether a request is waiting on the Approval screen: a signing request
+/// (pending or failed, see [activeRequestProvider]) or a NIP-55 public-key or
+/// crypto request. The home shell brings the approval to the front when this
+/// turns true (#121).
+final hasPendingApprovalProvider = Provider<bool>((ref) {
+  final nip55State = ref.watch(nip55ControllerProvider);
+  return ref.watch(activeRequestProvider) != null ||
+      nip55State.pendingPublicKeyRequest != null ||
+      nip55State.pendingCryptoRequest != null;
+});
