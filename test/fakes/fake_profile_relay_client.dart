@@ -34,6 +34,7 @@ class FakeProfileRelayClient implements ProfileRelayClient {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     queries.add((kinds: kinds, author: author, relays: relays));
+    if (queryDelay > Duration.zero) await Future<void>.delayed(queryDelay);
     if (relays.any(failRelays.contains)) {
       throw StateError('relays unreachable');
     }
@@ -55,12 +56,19 @@ class FakeProfileRelayClient implements ProfileRelayClient {
   /// How each relay answers a publish; a relay not listed accepts.
   final Map<String, RelayPublishResult> publishAnswers = {};
 
+  /// When set, publishing throws this, as an unexpected failure would.
+  Object? publishError;
+
+  /// How long each query takes, so a test can act while one is in flight.
+  Duration queryDelay = Duration.zero;
+
   @override
   Future<Map<String, RelayPublishResult>> publish({
     required SignedNostrEvent event,
     required List<String> relays,
     Duration timeout = const Duration(seconds: 8),
   }) async {
+    if (publishError case final Object error) throw error;
     published.add((event: event, relays: relays));
     return {
       for (final relay in relays)

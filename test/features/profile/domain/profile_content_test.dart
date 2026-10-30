@@ -78,6 +78,39 @@ void main() {
     });
   });
 
+  group('mergeProfile with values the form could not read', () {
+    final latest = <String, Object?>{
+      'name': 42,
+      'bot': 'yes',
+      'birthday': '1990-04-09',
+      'about': 'hi',
+    };
+
+    test('they are kept while their fields are left empty', () {
+      final form = formFromContent(latest).withText('about', 'hello');
+
+      expect(mergeProfile(latest, form), {
+        'name': 42,
+        'bot': 'yes',
+        'birthday': '1990-04-09',
+        'about': 'hello',
+      });
+    });
+
+    test('they are replaced once the user fills the field in', () {
+      final form = formFromContent(latest)
+          .withText('name', 'alice')
+          .copyWith(bot: true, birthday: const ProfileBirthday(year: '1990'));
+
+      expect(mergeProfile(latest, form), {
+        'name': 'alice',
+        'bot': true,
+        'birthday': {'year': 1990},
+        'about': 'hi',
+      });
+    });
+  });
+
   group('formFromContent', () {
     test('reads the fields the form edits', () {
       final form = formFromContent({
@@ -152,6 +185,8 @@ void main() {
         ProfileBirthday(month: '13'),
         ProfileBirthday(day: '0'),
         ProfileBirthday(year: 'nineteen'),
+        // Too long to fit in an int: an error, not an exception.
+        ProfileBirthday(year: '123456789012345678901234567890'),
       ]) {
         final form = const ProfileForm().copyWith(birthday: birthday);
         expect(validateProfileForm(form).keys, ['birthday']);

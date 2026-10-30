@@ -150,47 +150,73 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
     state = state.copyWith(form: form);
   }
 
-  /// Merges the form into the newest profile, signs it with the active
-  /// identity and publishes it. Returns how each relay answered; throws
-  /// [ProfileSaveException] when nothing was published.
-  Future<Map<String, RelayPublishResult>> save() async {
-    final errors = validateProfileForm(state.form);
-    if (errors.isNotEmpty) {
-      state = state.copyWith(fieldErrors: errors, clearSaveError: true);
-      throw const ProfileSaveException('Fix the highlighted fields first.');
-    }
-    state = state.copyWith(
-      saving: true,
-      fieldErrors: const {},
-      clearSaveError: true,
-    );
+  /// Checks the form and reads the newest profile, so the user can confirm
+  /// the relays a save will publish to before anything is signed. Pass the
+  /// result to [save]. Throws [ProfileSaveException] when it can't be saved.
+  Future<ProfileLookup> prepareSave() => _guard(() async {
+    _validate();
+    final latest = await _latest();
+    if (ref.mounted) state = state.copyWith(saving: false);
+    return latest;
+  });
+
+  /// Merges the form into [prepared], or the newest profile read again now,
+  /// signs it with the active identity and publishes it. Returns how each
+  /// relay answered; throws [ProfileSaveException] when nothing was
+  /// published.
+  Future<Map<String, RelayPublishResult>> save({ProfileLookup? prepared}) =>
+      _guard(() async {
+        _validate();
+        final form = state.form;
+        final results = await _publish(form, prepared ?? await _latest());
+        if (ref.mounted) {
+          state = state.copyWith(
+            saving: false,
+            saved: form,
+            publishResults: results,
+          );
+        }
+        return results;
+      });
+
+  /// Runs [step] with the saving flag set, keeping the editor alive until it
+  /// ends even if the screen closes, and turns any failure into a
+  /// [ProfileSaveException] recorded in [ProfileEditorState.saveError].
+  Future<T> _guard<T>(Future<T> Function() step) async {
+    state = state.copyWith(saving: true, clearSaveError: true);
+    final link = ref.keepAlive();
     try {
-      final results = await _save(state.form);
+      return await step();
+    } catch (error) {
+      final failure = error is ProfileSaveException
+          ? error
+          : const ProfileSaveException("Couldn't save the profile. Try again.");
       if (ref.mounted) {
-        state = state.copyWith(
-          saving: false,
-          saved: state.form,
-          publishResults: results,
-        );
+        state = state.copyWith(saving: false, saveError: failure.message);
       }
-      return results;
-    } on ProfileSaveException catch (error) {
-      if (ref.mounted) {
-        state = state.copyWith(saving: false, saveError: error.message);
-      }
-      rethrow;
+      throw failure;
+    } finally {
+      link.close();
     }
   }
 
-  Future<Map<String, RelayPublishResult>> _save(ProfileForm form) async {
-    final service = ref.read(relayProfileServiceProvider);
+  void _validate() {
+    final errors = validateProfileForm(state.form);
+    state = state.copyWith(fieldErrors: errors);
+    if (errors.isNotEmpty) {
+      throw const ProfileSaveException('Fix the highlighted fields first.');
+    }
+  }
 
-    // Read the newest profile again, so fields another app set since the
-    // form was loaded are kept. With no relay answering, a save could drop
-    // fields, so refuse.
+  /// The newest profile, read again so fields another app set since the form
+  /// was loaded are kept. With no relay answering, a save could drop fields,
+  /// so refuse.
+  Future<ProfileLookup> _latest() async {
     final ProfileLookup latest;
     try {
-      latest = await service.fetchProfile(pubkeyHex);
+      latest = await ref
+          .read(relayProfileServiceProvider)
+          .fetchProfile(pubkeyHex);
     } on ProfileFetchException {
       throw const ProfileSaveException(
         "No relay answered, so saving could drop fields set in other apps. "
@@ -203,6 +229,14 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
         'Load it again to create a new one.',
       );
     }
+    return latest;
+  }
+
+  Future<Map<String, RelayPublishResult>> _publish(
+    ProfileForm form,
+    ProfileLookup latest,
+  ) async {
+    final service = ref.read(relayProfileServiceProvider);
 
     final active = ref.read(vaultControllerProvider).activeIdentity;
     if (active == null || active.publicKey != pubkeyHex) {

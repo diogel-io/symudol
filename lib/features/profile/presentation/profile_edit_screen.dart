@@ -5,10 +5,8 @@ import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/load_profile_action.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../application/profile_editor.dart';
-import '../application/profile_providers.dart';
 import '../data/profile_relay_client.dart';
 import '../domain/profile_content.dart';
-import '../domain/profile_load_state.dart';
 import '../domain/profile_relays.dart';
 
 /// Labels for the text fields, by kind 0 key.
@@ -104,23 +102,22 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   }
 
   Future<void> _save() async {
-    final loaded = ref.read(nostrProfileProvider(_pubkey));
-    final relays = loaded is ProfileLoaded && loaded.publishRelays.isNotEmpty
-        ? loaded.publishRelays
-        : defaultProfileRelays;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _PublishDialog(
-        identityName: widget.identity.displayName ?? 'this identity',
-        relays: relays,
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
+    final editor = ref.read(profileEditorProvider(_pubkey).notifier);
     try {
-      final results = await ref
-          .read(profileEditorProvider(_pubkey).notifier)
-          .save();
+      // Read the newest profile first, so the dialog names the relays this
+      // save will publish to, and the save uses that same reading.
+      final prepared = await editor.prepareSave();
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => _PublishDialog(
+          identityName: widget.identity.displayName ?? 'this identity',
+          relays: prepared.publishRelays,
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+
+      final results = await editor.save(prepared: prepared);
       if (!mounted) return;
       await showModalBottomSheet<void>(
         context: context,

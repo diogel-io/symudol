@@ -120,19 +120,38 @@ ProfileForm formFromContent(Map<String, Object?>? content) {
 /// changed. A form field left empty is removed, as is `bot` when false and a
 /// birthday with no parts. `about` keeps its inner whitespace; the other text
 /// fields are trimmed.
+///
+/// A key the form edits but could not read, because another app wrote it
+/// with a different type (`"name": 42`, `"bot": "yes"`), is kept as it is
+/// while its form value is still empty: the user never saw it, so leaving the
+/// field empty is not a request to delete it.
 Map<String, Object?> mergeProfile(
   Map<String, Object?>? latest,
   ProfileForm form,
 ) {
+  final previous = latest ?? const <String, Object?>{};
+  final read = formFromContent(previous);
   final merged = <String, Object?>{
-    for (final entry in (latest ?? const {}).entries)
+    for (final entry in previous.entries)
       if (!_ownedKeys.contains(entry.key)) entry.key: entry.value,
   };
+  void keepUnread(String key) {
+    if (previous.containsKey(key)) merged[key] = previous[key];
+  }
+
   for (final key in profileTextFields) {
     final value = key == 'about' ? form[key].trimRight() : form[key].trim();
-    if (value.isNotEmpty) merged[key] = value;
+    if (value.isNotEmpty) {
+      merged[key] = value;
+    } else if (previous[key] is! String) {
+      keepUnread(key);
+    }
   }
-  if (form.bot) merged['bot'] = true;
+  if (form.bot) {
+    merged['bot'] = true;
+  } else if (previous['bot'] is! bool) {
+    keepUnread('bot');
+  }
   final birthday = <String, int>{
     for (final (key, value) in [
       ('year', form.birthday.year),
@@ -141,7 +160,11 @@ Map<String, Object?> mergeProfile(
     ])
       if (int.tryParse(value.trim()) case final int number) key: number,
   };
-  if (birthday.isNotEmpty) merged['birthday'] = birthday;
+  if (birthday.isNotEmpty) {
+    merged['birthday'] = birthday;
+  } else if (read.birthday.isEmpty) {
+    keepUnread('birthday');
+  }
   return merged;
 }
 
@@ -163,8 +186,9 @@ Map<String, String> validateProfileForm(ProfileForm form) {
   bool inRange(String value, int min, int max) {
     final trimmed = value.trim();
     if (trimmed.isEmpty) return true;
+    // tryParse, not parse: a long run of digits does not fit in an int.
     final number = RegExp(r'^\d+$').hasMatch(trimmed)
-        ? int.parse(trimmed)
+        ? int.tryParse(trimmed)
         : null;
     return number != null && number >= min && number <= max;
   }

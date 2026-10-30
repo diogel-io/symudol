@@ -28,6 +28,7 @@ void main() {
   late FakeProfileRelayClient relays;
   late ProviderContainer container;
   late String pubkey;
+  late ProviderSubscription<ProfileEditorState> screen;
 
   setUp(() async {
     vault = VaultServiceImpl(FakeVaultStore());
@@ -49,7 +50,7 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    container.listen(profileEditorProvider(pubkey), (_, _) {});
+    screen = container.listen(profileEditorProvider(pubkey), (_, _) {});
   });
 
   NostrEvent profileEvent(Map<String, Object?> content, int createdAt) =>
@@ -250,6 +251,71 @@ void main() {
 
     expect(state().fieldErrors.keys, ['website']);
     expect(relays.published, isEmpty);
+  });
+
+  test('a prepared save publishes to the relays the user confirmed', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice'}, 10),
+    ];
+    await editor().load();
+
+    final prepared = await editor().prepareSave();
+    final queriesBefore = relays.queries.length;
+    await editor().save(prepared: prepared);
+
+    expect(relays.queries.length, queriesBefore);
+    expect(relays.published.single.relays, prepared.publishRelays);
+  });
+
+  test('preparing refuses when no relay answers', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice'}, 10),
+    ];
+    await editor().load();
+    relays.unreachable.addAll([
+      ...defaultProfileRelays,
+      ...defaultIndexerRelays,
+    ]);
+
+    await expectLater(
+      editor().prepareSave(),
+      throwsA(isA<ProfileSaveException>()),
+    );
+    expect(state().saving, isFalse);
+  });
+
+  test('an unexpected failure ends the save with a message', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice'}, 10),
+    ];
+    relays.publishError = StateError('socket closed');
+    await editor().load();
+
+    await expectLater(editor().save(), throwsA(isA<ProfileSaveException>()));
+
+    expect(state().saving, isFalse);
+    expect(state().saveError, "Couldn't save the profile. Try again.");
+  });
+
+  test('a save finishes even if the editor screen closes', () async {
+    relays.held[indexer] = [
+      profileEvent({'name': 'alice', 'picture': 'https://a/1.png'}, 10),
+    ];
+    await editor().load();
+    editor().updateForm(state().form.withText('picture', 'https://a/2.png'));
+    final notifier = editor();
+    relays.queryDelay = const Duration(milliseconds: 50);
+
+    final saving = notifier.save();
+    // The screen was the editor's only listener.
+    screen.close();
+    await saving;
+
+    expect(relays.published, hasLength(1));
+    expect(
+      container.read(nostrProfileProvider(pubkey)).profile?.picture,
+      'https://a/2.png',
+    );
   });
 
   test('a locked vault fails cleanly', () async {
