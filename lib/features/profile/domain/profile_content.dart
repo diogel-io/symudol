@@ -129,10 +129,20 @@ ProfileForm applyEdits(
     if (edited[key] != loaded[key]) form = form.withText(key, edited[key]);
   }
   if (edited.bot != loaded.bot) form = form.copyWith(bot: edited.bot);
-  if (edited.birthday != loaded.birthday) {
-    form = form.copyWith(birthday: edited.birthday);
-  }
-  return form;
+  // Each birthday part on its own, so changing the month keeps a year
+  // another app changed.
+  final birthday = form.birthday.copyWith(
+    year: edited.birthday.year != loaded.birthday.year
+        ? edited.birthday.year
+        : null,
+    month: edited.birthday.month != loaded.birthday.month
+        ? edited.birthday.month
+        : null,
+    day: edited.birthday.day != loaded.birthday.day
+        ? edited.birthday.day
+        : null,
+  );
+  return form.copyWith(birthday: birthday);
 }
 
 /// The content to publish: [latest] as it stands, with only the form's keys

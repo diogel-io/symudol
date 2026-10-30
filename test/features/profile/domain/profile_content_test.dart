@@ -126,6 +126,22 @@ void main() {
       expect(form['picture'], 'changed-elsewhere.png');
     });
 
+    test('birthday parts are applied one by one', () {
+      final loaded = formFromContent({
+        'birthday': {'year': 1990, 'month': 4},
+      });
+      final latest = formFromContent({
+        'birthday': {'year': 1991, 'month': 4},
+      });
+      final edited = loaded.copyWith(
+        birthday: loaded.birthday.copyWith(month: '5'),
+      );
+
+      final form = applyEdits(latest, loaded, edited);
+
+      expect(form.birthday, const ProfileBirthday(year: '1991', month: '5'));
+    });
+
     test('clearing a field is a change', () {
       final loaded = formFromContent({'website': 'https://a'});
       final latest = formFromContent({'website': 'https://b'});
