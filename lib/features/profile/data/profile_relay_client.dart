@@ -49,16 +49,25 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
       ],
     );
 
+    final events = <NostrEvent>[];
+    final completer = Completer<void>();
+    final requested = relays.toSet();
+    final finished = <String>{};
+
     // dart_nostr connects to any relay in [relays] it has not seen yet, and
-    // sends the request only to those relays.
+    // sends the request only to those relays. Wait until every one of them
+    // has sent everything it stores (EOSE), so a slower relay holding a newer
+    // event is not cut off; [timeout] covers relays that never answer.
     final subscription = Nostr.instance.services.relays.startEventsSubscription(
       request: request,
       relays: relays,
+      onEose: (relay, _) {
+        finished.add(relay);
+        if (finished.containsAll(requested) && !completer.isCompleted) {
+          completer.complete();
+        }
+      },
     );
-
-    final events = <NostrEvent>[];
-    final completer = Completer<void>();
-    Timer? graceTimer;
 
     final streamSubscription = subscription.stream.listen((event) {
       // dart_nostr does not check what relays send, so drop any event that
@@ -66,11 +75,6 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
       if (event.kind != kind || event.pubkey != author) return;
       if (!isAuthentic(event)) return;
       events.add(event);
-      // Give other relays a brief moment to respond too, so we can pick
-      // the most recent event, then stop waiting.
-      graceTimer ??= Timer(const Duration(milliseconds: 800), () {
-        if (!completer.isCompleted) completer.complete();
-      });
     });
 
     final timeoutTimer = Timer(timeout, () {
@@ -78,7 +82,6 @@ class DartNostrProfileRelayClient implements ProfileRelayClient {
     });
 
     await completer.future;
-    graceTimer?.cancel();
     timeoutTimer.cancel();
     await streamSubscription.cancel();
     subscription.close();
