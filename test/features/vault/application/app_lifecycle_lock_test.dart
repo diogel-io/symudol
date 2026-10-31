@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:clock/clock.dart';
+
 import 'package:symudol/app/app.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
@@ -250,6 +252,72 @@ void main() {
     expect(state, isA<VaultUnlocked>());
   });
 
+  // ── Timers that do not fire in the background (#128) ─────────────────────
+
+  /// Resumes [after] the app went to the background, as if Android froze
+  /// Symudol meanwhile: the clock moves on but no timer fires. Coming back
+  /// from paused passes through hidden and inactive, as on a device.
+  Future<void> resumeAfterFreeze(WidgetTester tester, Duration after) async {
+    final resumedAt = clock.now().add(after);
+    withClock(Clock.fixed(resumedAt), () {
+      for (final state in [
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+    });
+    await tester.pump();
+  }
+
+  testWidgets(
+    'a resume after the delay expires the session though no timer fired',
+    (tester) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(5);
+      final container = await pumpUnlockedApp(tester, store);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+      await resumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
+    },
+  );
+
+  testWidgets('a resume before the delay leaves the vault unlocked', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(5);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await resumeAfterFreeze(tester, const Duration(minutes: 4, seconds: 59));
+    await tester.pumpAndSettle();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+  });
+
+  testWidgets('never locking in the background stays unlocked after a freeze', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(-1);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await resumeAfterFreeze(tester, const Duration(hours: 2));
+    await tester.pumpAndSettle();
+
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+  });
+
   // ── The native key and pending reviews (#9) ──────────────────────────────
 
   /// Opens a sign_message review, as a client app would.
@@ -354,5 +422,45 @@ void main() {
       contains('NIP-55 request timed out waiting for review'),
     );
     expect(container.read(vaultStateProvider), isA<VaultLocked>());
+  });
+
+  testWidgets('a resume after a deferred review\'s deadline locks the vault', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(0);
+    final container = await pumpUnlockedApp(tester, store);
+    await openReview(tester, container);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+    // Past the review's timeout plus the (zero) lock delay.
+    await resumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+
+    expect(container.read(vaultStateProvider), isA<VaultLocked>());
+  });
+
+  testWidgets('a review settled in the background starts the delay from then', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(1);
+    final container = await pumpUnlockedApp(tester, store);
+    await openReview(tester, container);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await container
+        .read(nip55ControllerProvider.notifier)
+        .rejectCryptoRequest();
+    await tester.pump();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+    await resumeAfterFreeze(tester, const Duration(minutes: 1, seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(container.read(vaultStateProvider), isA<SessionExpired>());
   });
 }
