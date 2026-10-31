@@ -37,6 +37,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   /// The background lock delay ran out while an image was being picked, so
   /// the lock applies as soon as the pick ends (#43).
   bool _lockDueAfterPick = false;
+
+  /// When the lock was deferred for an image pick, so a pick that ends
+  /// early can give the native key the rest of the usual delay (#43).
+  DateTime? _pickDeferredAt;
   bool _inBackground = false;
 
   @override
@@ -140,6 +144,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       final delay = Duration(minutes: delayMinutes);
       diogelLog('Deferring background lock while an image is picked');
       _lockDueAfterPick = false;
+      _pickDeferredAt = DateTime.now();
       unawaited(nativeSync.setLockDeadline(delay + pickingLockGrace));
       _backgroundLockTimer = Timer(delay, () {
         if (!mounted) return;
@@ -239,10 +244,24 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   void _handlePickingChanged(bool? previous, bool next) {
     if (!_inBackground || previous != true || next) return;
     _pickingGraceTimer?.cancel();
+    final delayMinutes = ref
+        .read(vaultControllerProvider)
+        .backgroundLockDelayMinutes;
     if (_lockDueAfterPick) {
       _lockDueAfterPick = false;
-      _lockInBackground(
-        ref.read(vaultControllerProvider).backgroundLockDelayMinutes,
+      _lockInBackground(delayMinutes);
+      return;
+    }
+    // The grace no longer applies: the native key gets only what is left of
+    // the usual delay, as the Dart timer does.
+    final since = _pickDeferredAt;
+    if (since != null && delayMinutes > 0) {
+      final left =
+          Duration(minutes: delayMinutes) - DateTime.now().difference(since);
+      unawaited(
+        ref
+            .read(nip55NativeSyncProvider)
+            .setLockDeadline(left.isNegative ? Duration.zero : left),
       );
     }
   }

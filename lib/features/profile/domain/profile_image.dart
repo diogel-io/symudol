@@ -63,26 +63,29 @@ Uint8List reencodeProfileImage(Uint8List bytes, {required int maxSide}) {
     throw const ProfileImageException("Symudol couldn't read that image.");
   }
 
-  var source = img.bakeOrientation(decoded.frames.first);
-  final longest = source.width > source.height ? source.width : source.height;
+  final source = img.bakeOrientation(decoded.frames.first);
+  // Flattened onto white first, so averaging while scaling can't darken
+  // the edges of transparent areas.
+  var clean = img.Image(width: source.width, height: source.height)
+    ..clear(img.ColorRgb8(255, 255, 255));
+  img.compositeImage(clean, source);
+
+  final longest = clean.width > clean.height ? clean.width : clean.height;
   if (longest > maxSide) {
     // Averaging, not the default nearest-neighbour sampling, so a large
     // photo scaled down does not alias.
-    source = source.width >= source.height
+    clean = clean.width >= clean.height
         ? img.copyResize(
-            source,
+            clean,
             width: maxSide,
             interpolation: img.Interpolation.average,
           )
         : img.copyResize(
-            source,
+            clean,
             height: maxSide,
             interpolation: img.Interpolation.average,
           );
   }
 
-  final clean = img.Image(width: source.width, height: source.height)
-    ..clear(img.ColorRgb8(255, 255, 255));
-  img.compositeImage(clean, source);
   return img.encodeJpg(clean, quality: 85);
 }

@@ -105,6 +105,31 @@ void main() {
       expect(pixel.r, greaterThan(240));
     });
 
+    test('flattens transparency before scaling, so edges stay white', () {
+      // Opaque white columns between fully transparent black ones.
+      final png = img.Image(width: 400, height: 40, numChannels: 4);
+      for (var y = 0; y < png.height; y++) {
+        for (var x = 0; x < png.width; x++) {
+          png.setPixelRgba(
+            x,
+            y,
+            x.isEven ? 255 : 0,
+            x.isEven ? 255 : 0,
+            x.isEven ? 255 : 0,
+            x.isEven ? 255 : 0,
+          );
+        }
+      }
+
+      final out = img.decodeJpg(
+        reencodeProfileImage(img.encodePng(png), maxSide: 100),
+      )!;
+
+      for (var x = 0; x < out.width; x++) {
+        expect(out.getPixel(x, 5).r, greaterThan(235), reason: 'column $x');
+      }
+    });
+
     test('rejects bytes that are not an image', () {
       expect(
         () => reencodeProfileImage(
