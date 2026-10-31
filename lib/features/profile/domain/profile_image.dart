@@ -63,29 +63,45 @@ Uint8List reencodeProfileImage(Uint8List bytes, {required int maxSide}) {
     throw const ProfileImageException("Symudol couldn't read that image.");
   }
 
-  final source = img.bakeOrientation(decoded.frames.first);
-  // Flattened onto white first, so averaging while scaling can't darken
-  // the edges of transparent areas.
-  var clean = img.Image(width: source.width, height: source.height)
+  var source = _rgb8(img.bakeOrientation(decoded.frames.first));
+  // An opaque image is scaled before it is copied, so a large photo isn't
+  // drawn at full size. One with transparency is flattened onto white
+  // first, so averaging can't darken the edges of transparent areas.
+  if (!source.hasAlpha) source = _scaledDown(source, maxSide);
+  final clean = img.Image(width: source.width, height: source.height)
     ..clear(img.ColorRgb8(255, 255, 255));
   img.compositeImage(clean, source);
 
-  final longest = clean.width > clean.height ? clean.width : clean.height;
-  if (longest > maxSide) {
-    // Averaging, not the default nearest-neighbour sampling, so a large
-    // photo scaled down does not alias.
-    clean = clean.width >= clean.height
-        ? img.copyResize(
-            clean,
-            width: maxSide,
-            interpolation: img.Interpolation.average,
-          )
-        : img.copyResize(
-            clean,
-            height: maxSide,
-            interpolation: img.Interpolation.average,
-          );
-  }
+  return img.encodeJpg(_scaledDown(clean, maxSide), quality: 85);
+}
 
-  return img.encodeJpg(clean, quality: 85);
+/// [image] as 8-bit RGB or RGBA. `compositeImage` reads two-channel grey
+/// as opaque and one-channel grey as red, so greyscale, palette and 16-bit
+/// images are converted first (in two steps: one conversion of both the
+/// format and the channels loses 16-bit grey).
+img.Image _rgb8(img.Image image) {
+  var out = image;
+  if (out.format != img.Format.uint8 || out.hasPalette) {
+    out = out.convert(format: img.Format.uint8);
+  }
+  if (out.numChannels < 3) out = out.convert(numChannels: 4);
+  return out;
+}
+
+/// [image] with its longest side at most [maxSide]. Averaging, not the
+/// default nearest-neighbour sampling, so a large photo does not alias.
+img.Image _scaledDown(img.Image image, int maxSide) {
+  final longest = image.width > image.height ? image.width : image.height;
+  if (longest <= maxSide) return image;
+  return image.width >= image.height
+      ? img.copyResize(
+          image,
+          width: maxSide,
+          interpolation: img.Interpolation.average,
+        )
+      : img.copyResize(
+          image,
+          height: maxSide,
+          interpolation: img.Interpolation.average,
+        );
 }

@@ -33,6 +33,25 @@ Uint8List _photoWithExif({
   return img.encodeJpg(photo);
 }
 
+/// A 16-bit greyscale image at [value], set pixel by pixel: `clear` with
+/// an RGB colour leaves a one-channel 16-bit image black.
+img.Image _grey16({
+  required int width,
+  required int height,
+  required int value,
+}) {
+  final grey = img.Image(
+    width: width,
+    height: height,
+    numChannels: 1,
+    format: img.Format.uint16,
+  );
+  for (final pixel in grey) {
+    pixel.r = value;
+  }
+  return grey;
+}
+
 void main() {
   group('reencodeProfileImage (#43)', () {
     test('the fixture carries the EXIF the re-encode must drop', () {
@@ -127,6 +146,37 @@ void main() {
 
       for (var x = 0; x < out.width; x++) {
         expect(out.getPixel(x, 5).r, greaterThan(235), reason: 'column $x');
+      }
+    });
+
+    test('a transparent greyscale PNG comes out white, not black', () {
+      final png = img.Image(width: 10, height: 10, numChannels: 2)
+        ..clear(img.ColorUint8.rgba(0, 0, 0, 0));
+
+      final out = img.decodeJpg(
+        reencodeProfileImage(img.encodePng(png), maxSide: 1024),
+      )!;
+
+      final pixel = out.getPixel(5, 5);
+      expect([pixel.r, pixel.g, pixel.b], everyElement(greaterThan(240)));
+    });
+
+    test('a greyscale image stays grey, not red', () {
+      for (final grey in [
+        img.Image(width: 10, height: 10, numChannels: 1)
+          ..clear(img.ColorUint8.rgb(128, 128, 128)),
+        _grey16(width: 10, height: 10, value: 32896),
+      ]) {
+        final out = img.decodeJpg(
+          reencodeProfileImage(img.encodePng(grey), maxSide: 1024),
+        )!;
+
+        final pixel = out.getPixel(5, 5);
+        expect(
+          [pixel.r, pixel.g, pixel.b],
+          everyElement(inInclusiveRange(118, 138)),
+          reason: '${grey.format} grey',
+        );
       }
     });
 

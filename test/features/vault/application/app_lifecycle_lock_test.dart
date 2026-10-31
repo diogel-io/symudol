@@ -462,10 +462,7 @@ void main() {
       expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
       // The native key loses the grace too: at most the usual delay.
       expect(nativeSync.deadlines.first, const Duration(minutes: 6));
-      expect(
-        nativeSync.deadlines.last,
-        lessThanOrEqualTo(const Duration(minutes: 1)),
-      );
+      expect(nativeSync.deadlines.last, const Duration(seconds: 30));
 
       // One minute after going to the background, not after the pick.
       await tester.pump(const Duration(seconds: 2));

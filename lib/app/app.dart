@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'diogel_log.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -144,7 +145,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       final delay = Duration(minutes: delayMinutes);
       diogelLog('Deferring background lock while an image is picked');
       _lockDueAfterPick = false;
-      _pickDeferredAt = DateTime.now();
+      _pickDeferredAt = clock.now();
       unawaited(nativeSync.setLockDeadline(delay + pickingLockGrace));
       _backgroundLockTimer = Timer(delay, () {
         if (!mounted) return;
@@ -257,7 +258,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     final since = _pickDeferredAt;
     if (since != null && delayMinutes > 0) {
       final left =
-          Duration(minutes: delayMinutes) - DateTime.now().difference(since);
+          Duration(minutes: delayMinutes) - clock.now().difference(since);
       unawaited(
         ref
             .read(nip55NativeSyncProvider)
