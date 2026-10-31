@@ -258,7 +258,7 @@ void main() {
   /// Resumes [after] the app went to the background, as if Android froze
   /// Symudol meanwhile: the clock moves on but no timer fires. Coming back
   /// from paused passes through hidden and inactive, as on a device.
-  Future<void> resumeAfterFreeze(WidgetTester tester, Duration after) async {
+  void sendResumeAfterFreeze(WidgetTester tester, Duration after) {
     final resumedAt = clock.now().add(after);
     withClock(Clock.fixed(resumedAt), () {
       for (final state in [
@@ -269,6 +269,10 @@ void main() {
         tester.binding.handleAppLifecycleStateChanged(state);
       }
     });
+  }
+
+  Future<void> resumeAfterFreeze(WidgetTester tester, Duration after) async {
+    sendResumeAfterFreeze(tester, after);
     await tester.pump();
   }
 
@@ -289,6 +293,28 @@ void main() {
       expect(container.read(vaultStateProvider), isA<SessionExpired>());
     },
   );
+
+  testWidgets('a late resume clears the native key before its deadline', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(5);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    final keysClearedBefore = nativeSync.keysCleared;
+    final deadlinesClearedBefore = nativeSync.deadlinesCleared;
+
+    sendResumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+
+    // The key goes at once, not after the lock's awaits, and the deadline
+    // stays until then.
+    expect(nativeSync.keysCleared, greaterThan(keysClearedBefore));
+    expect(nativeSync.deadlinesCleared, deadlinesClearedBefore);
+    await tester.pumpAndSettle();
+    expect(container.read(vaultStateProvider), isA<SessionExpired>());
+  });
 
   testWidgets('a resume before the delay leaves the vault unlocked', (
     tester,

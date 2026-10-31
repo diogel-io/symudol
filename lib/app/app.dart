@@ -37,6 +37,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   /// counting while the phone sleeps.
   DateTime? _backgroundLockDueAt;
 
+  /// An overdue background lock is under way: the native deadline stays
+  /// until the vault has locked (#128).
+  bool _overdueLockPending = false;
+
   /// Locks at the usual delay plus [pickingLockGrace] while an image pick is
   /// still open (#43).
   Timer? _pickingGraceTimer;
@@ -202,6 +206,9 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   /// Locks on resume if the background lock fell due while its timer did
   /// not fire (#128).
+  ///
+  /// The lock reaches the native key only after a few awaits, so the native
+  /// key is cleared here first.
   void _applyOverdueBackgroundLock() {
     final dueAt = _backgroundLockDueAt;
     _backgroundLockDueAt = null;
@@ -211,6 +218,8 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
     if (delayMinutes < 0) return;
     diogelLog('Background lock fell due while in the background');
+    _overdueLockPending = true;
+    unawaited(ref.read(nip55NativeSyncProvider).clearActiveKey());
     _lockInBackground(delayMinutes);
   }
 
@@ -218,6 +227,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     _inactivityTimer?.cancel();
     _backgroundLockTimer?.cancel();
     _backgroundLockDueAt = null;
+    _overdueLockPending = false;
     _pickingGraceTimer?.cancel();
     _lockDueAfterPick = false;
   }
@@ -334,7 +344,11 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       _backgroundLockTimer?.cancel();
       _pickingGraceTimer?.cancel();
       _lockDueAfterPick = false;
-      unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
+      // An overdue lock keeps the native deadline, which has passed or
+      // soon will; the next unlock replaces it with the key.
+      if (!_overdueLockPending) {
+        unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
+      }
       // A fingerprint may have been added in Android settings meanwhile, so
       // Settings and the unlock screen show what the phone can do now (#23).
       unawaited(
