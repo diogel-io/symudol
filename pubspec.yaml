@@ -41,8 +41,12 @@ dependencies:
   flutter_riverpod: ^3.3.1
   pointycastle: ^3.9.1
   state_notifier: ^1.0.0
-  # Time tests can fake: the unlock screen's lockout countdown (#16) and
-  # when the background lock is due (#128).
+  image_picker: ^1.2.4
+  http: ^1.6.0
+  image: ^4.8.0
+  # Time tests can fake: the unlock screen's lockout countdown (#16), how
+  # long an image pick has held off the background lock (#43), and when the
+  # background lock is due (#128).
   clock: ^1.1.2
 
 dev_dependencies:

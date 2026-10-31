@@ -1,11 +1,18 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
+import 'package:symudol/features/profile/data/blossom_client.dart';
+import 'package:symudol/features/profile/data/profile_image_picker.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
 import 'package:symudol/features/profile/presentation/profile_edit_screen.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
@@ -16,12 +23,39 @@ import '../../../fakes/fake_profile_network_store.dart';
 import '../../../fakes/fake_profile_relay_client.dart';
 import '../../../fakes/fake_vault_store.dart';
 
+/// Returns [image] for every pick, and records the sources asked for.
+class _FakePicker implements ProfileImagePicker {
+  _FakePicker(this.image);
+
+  Uint8List? image;
+
+  /// Whether the camera can be used, as on Android; false as on desktop.
+  bool camera = true;
+
+  /// When set, [pick] throws it, as a failed read of the chosen file does.
+  Object? error;
+  final List<ProfileImageSource> sources = [];
+
+  @override
+  bool supports(ProfileImageSource source) =>
+      source != ProfileImageSource.camera || camera;
+
+  @override
+  Future<Uint8List?> pick(ProfileImageSource source) async {
+    sources.add(source);
+    if (error case final Object error) throw error;
+    return image;
+  }
+}
+
 /// The profile editor asks before reaching relays, before creating a profile
 /// and before publishing (diogel-io/symudol#41, #83).
 void main() {
   late VaultServiceImpl vault;
   late VaultController controller;
   late FakeProfileRelayClient relays;
+  late _FakePicker picker;
+  late List<http.Request> uploads;
 
   setUp(() async {
     vault = VaultServiceImpl(FakeVaultStore());
@@ -32,6 +66,12 @@ void main() {
     await controller.initialize();
     await controller.unlock('123456');
     relays = FakeProfileRelayClient();
+    picker = _FakePicker(
+      img.encodeJpg(
+        img.Image(width: 8, height: 8)..clear(img.ColorRgb8(1, 2, 3)),
+      ),
+    );
+    uploads = [];
   });
 
   Widget app(Widget home) => ProviderScope(
@@ -41,6 +81,22 @@ void main() {
       profileNetworkStoreProvider.overrideWithValue(FakeProfileNetworkStore()),
       relayProfileServiceProvider.overrideWithValue(
         RelayProfileService(client: relays),
+      ),
+      profileImagePickerProvider.overrideWithValue(picker),
+      blossomClientProvider.overrideWithValue(
+        BlossomClient(
+          client: MockClient((request) async {
+            uploads.add(request);
+            final sha = blobSha256(request.bodyBytes);
+            return http.Response(
+              jsonEncode({
+                'url': 'https://cdn.example/$sha.jpg',
+                'sha256': sha,
+              }),
+              200,
+            );
+          }),
+        ),
       ),
     ],
     child: MaterialApp(home: home),
@@ -186,5 +242,150 @@ void main() {
 
     expect(find.byTooltip('Edit profile'), findsOneWidget);
     expect(find.byTooltip('Load profile'), findsNWidgets(2));
+  });
+
+  group('uploading an image (#43)', () {
+    Future<void> openLoaded(WidgetTester tester) async {
+      holdProfile({'name': 'alice'});
+      await openEditor(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Load profile'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> pickFromPhotos(WidgetTester tester, String tooltip) async {
+      await tester.tap(find.byTooltip(tooltip));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose from photos'));
+      await tester.pumpAndSettle();
+    }
+
+    /// Lets the re-encode isolate and the upload finish.
+    Future<void> finishUpload(WidgetTester tester) async {
+      for (
+        var i = 0;
+        i < 100 && find.byType(SnackBar).evaluate().isEmpty;
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('names the server before sending anything', (tester) async {
+      await openLoaded(tester);
+
+      await pickFromPhotos(tester, 'Upload picture');
+
+      expect(picker.sources, [ProfileImageSource.photos]);
+      expect(find.text('Upload to blossom.primal.net?'), findsOneWidget);
+      expect(find.textContaining('location and camera details'), findsOne);
+      expect(uploads, isEmpty);
+    });
+
+    testWidgets('fills the field with the URL, and Save publishes it', (
+      tester,
+    ) async {
+      await openLoaded(tester);
+      await pickFromPhotos(tester, 'Upload picture');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Upload'));
+      await finishUpload(tester);
+
+      final sha = blobSha256(uploads.single.bodyBytes);
+      expect(
+        find.widgetWithText(TextField, 'https://cdn.example/$sha.jpg'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Image uploaded. Save to publish it on your profile.'),
+        findsOneWidget,
+      );
+      expect(relays.published, isEmpty);
+      final save = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Save'),
+      );
+      expect(save.onPressed, isNotNull);
+    });
+
+    testWidgets('the banner field takes a photo from the camera', (
+      tester,
+    ) async {
+      await openLoaded(tester);
+      await tester.scrollUntilVisible(
+        find.byTooltip('Upload banner'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      await tester.tap(find.byTooltip('Upload banner'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Take a photo'));
+      await tester.pumpAndSettle();
+
+      expect(picker.sources, [ProfileImageSource.camera]);
+    });
+
+    testWidgets('offers no camera where there is none', (tester) async {
+      picker.camera = false;
+      await openLoaded(tester);
+
+      await tester.tap(find.byTooltip('Upload picture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose from photos'), findsOneWidget);
+      expect(find.text('Take a photo'), findsNothing);
+    });
+
+    testWidgets('cancelling the confirm uploads nothing', (tester) async {
+      await openLoaded(tester);
+      await pickFromPhotos(tester, 'Upload picture');
+
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(uploads, isEmpty);
+      expect(find.textContaining('https://cdn.example'), findsNothing);
+    });
+
+    testWidgets('a chosen file that cannot be read shows why', (tester) async {
+      picker.error = const FileSystemException('unreadable');
+      await openLoaded(tester);
+
+      await pickFromPhotos(tester, 'Upload picture');
+
+      expect(find.text("Couldn't read that image."), findsOneWidget);
+      expect(find.textContaining('Upload to'), findsNothing);
+      expect(uploads, isEmpty);
+    });
+
+    testWidgets('cancelling the picker asks nothing more', (tester) async {
+      picker.image = null;
+      await openLoaded(tester);
+
+      await pickFromPhotos(tester, 'Upload picture');
+
+      expect(find.textContaining('Upload to'), findsNothing);
+      expect(uploads, isEmpty);
+    });
+
+    testWidgets('a locked vault shows why nothing was uploaded', (
+      tester,
+    ) async {
+      await openLoaded(tester);
+      await pickFromPhotos(tester, 'Upload picture');
+      await vault.lock();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Upload'));
+      await finishUpload(tester);
+
+      expect(
+        find.text('Symudol is locked. Unlock it, then try again.'),
+        findsOneWidget,
+      );
+      expect(uploads, isEmpty);
+    });
   });
 }

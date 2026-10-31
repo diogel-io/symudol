@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,10 +7,12 @@ import '../../requests/domain/nostr_event_draft.dart';
 import '../../requests/domain/signed_nostr_event.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../vault/domain/vault_exceptions.dart';
+import '../data/blossom_client.dart';
 import '../data/profile_relay_client.dart';
 import '../data/relay_profile_service.dart';
 import '../domain/nostr_profile.dart';
 import '../domain/profile_content.dart';
+import '../domain/profile_image.dart';
 import '../domain/profile_load_state.dart';
 import 'profile_providers.dart';
 
@@ -28,6 +31,8 @@ class ProfileEditorState {
     this.saveError,
     this.fieldErrors = const {},
     this.publishResults,
+    this.blossomServers = const [],
+    this.uploading,
   });
 
   final ProfileEditorPhase phase;
@@ -55,6 +60,13 @@ class ProfileEditorState {
   /// How each relay answered the last save; null before any save.
   final Map<String, RelayPublishResult>? publishResults;
 
+  /// The Blossom servers the identity lists, from the last lookup
+  /// (diogel-io/symudol#43).
+  final List<String> blossomServers;
+
+  /// The image being uploaded; null when none is.
+  final ProfileImageKind? uploading;
+
   bool get dirty => form != saved;
 
   ProfileEditorState copyWith({
@@ -68,6 +80,8 @@ class ProfileEditorState {
     bool clearSaveError = false,
     Map<String, String>? fieldErrors,
     Map<String, RelayPublishResult>? publishResults,
+    ProfileImageKind? uploading,
+    bool clearUploading = false,
   }) {
     return ProfileEditorState(
       phase: phase ?? this.phase,
@@ -79,6 +93,8 @@ class ProfileEditorState {
       saveError: clearSaveError ? null : (saveError ?? this.saveError),
       fieldErrors: fieldErrors ?? this.fieldErrors,
       publishResults: publishResults ?? this.publishResults,
+      blossomServers: blossomServers,
+      uploading: clearUploading ? null : (uploading ?? this.uploading),
     );
   }
 }
@@ -91,6 +107,16 @@ class ProfileSaveException implements Exception {
 
   @override
   String toString() => 'ProfileSaveException: $message';
+}
+
+/// An image that was not uploaded, with a message for the user.
+class ProfileUploadException implements Exception {
+  const ProfileUploadException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'ProfileUploadException: $message';
 }
 
 /// The profile editor for one public key, which must be the active
@@ -121,19 +147,31 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
         .load();
     if (!ref.mounted) return;
     state = switch (result) {
-      ProfileLoaded(content: null, :final searchedRelays) => ProfileEditorState(
-        phase: ProfileEditorPhase.noProfile,
-        searchedRelays: searchedRelays,
-      ),
-      ProfileLoaded(:final content, :final searchedRelays) => () {
-        final form = formFromContent(content);
-        return ProfileEditorState(
-          phase: ProfileEditorPhase.editing,
-          form: form,
-          saved: form,
+      ProfileLoaded(
+        content: null,
+        :final searchedRelays,
+        :final blossomServers,
+      ) =>
+        ProfileEditorState(
+          phase: ProfileEditorPhase.noProfile,
           searchedRelays: searchedRelays,
-        );
-      }(),
+          blossomServers: blossomServers,
+        ),
+      ProfileLoaded(
+        :final content,
+        :final searchedRelays,
+        :final blossomServers,
+      ) =>
+        () {
+          final form = formFromContent(content);
+          return ProfileEditorState(
+            phase: ProfileEditorPhase.editing,
+            form: form,
+            saved: form,
+            searchedRelays: searchedRelays,
+            blossomServers: blossomServers,
+          );
+        }(),
       _ => const ProfileEditorState(phase: ProfileEditorPhase.loadFailed),
     };
   }
@@ -148,6 +186,79 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
 
   void updateForm(ProfileForm form) {
     state = state.copyWith(form: form);
+  }
+
+  /// Where an image is uploaded: the first Blossom server the identity
+  /// lists, or else the one chosen in Settings (diogel-io/symudol#43).
+  Future<String> uploadServer() async =>
+      state.blossomServers.firstOrNull ??
+      (await ref.read(profileNetworkSettingsProvider.future)).blossomServer;
+
+  /// Re-encodes [bytes] as a JPEG without metadata, uploads it to [server]
+  /// authorised by the active identity, and returns its URL for the
+  /// [kind]'s field (diogel-io/symudol#43). The form itself is not changed:
+  /// the screen fills the field. Throws [ProfileUploadException].
+  Future<String> uploadImage(
+    ProfileImageKind kind,
+    Uint8List bytes, {
+    required String server,
+  }) async {
+    if (state.uploading != null || state.saving) {
+      throw const ProfileUploadException(
+        'Wait for the current upload or save to finish.',
+      );
+    }
+    state = state.copyWith(uploading: kind);
+    final link = ref.keepAlive();
+    try {
+      final active = ref.read(vaultControllerProvider).activeIdentity;
+      if (active == null || active.publicKey != pubkeyHex) {
+        throw const ProfileUploadException(
+          'This identity is no longer the active one. '
+          'Make it active to upload its images.',
+        );
+      }
+
+      final Uint8List jpeg;
+      try {
+        jpeg = await stripAndResize(bytes, maxSide: kind.maxSide);
+      } on ProfileImageException catch (error) {
+        throw ProfileUploadException(error.message);
+      }
+
+      final SignedNostrEvent auth;
+      try {
+        auth = await ref
+            .read(vaultServiceProvider)
+            .signNostrEvent(
+              identityLocalId: active.localId,
+              draft: blossomUploadAuth(blobSha256(jpeg)),
+            );
+      } on VaultLockedException {
+        throw const ProfileUploadException(
+          'Symudol is locked. Unlock it, then try again.',
+        );
+      } on VaultException {
+        throw const ProfileUploadException("Couldn't sign the upload.");
+      }
+
+      try {
+        return await ref
+            .read(blossomClientProvider)
+            .upload(server: server, bytes: jpeg, auth: auth);
+      } on BlossomException catch (error) {
+        throw ProfileUploadException(error.message);
+      }
+    } on ProfileUploadException {
+      rethrow;
+    } catch (_) {
+      throw const ProfileUploadException(
+        "Couldn't upload the image. Try again.",
+      );
+    } finally {
+      if (ref.mounted) state = state.copyWith(clearUploading: true);
+      link.close();
+    }
   }
 
   /// Checks the form and reads the newest profile, so the user can confirm
@@ -300,6 +411,7 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
             createdAt: draft.createdAt,
             searchedRelays: latest.searchedRelays,
             publishRelays: latest.publishRelays,
+            blossomServers: latest.blossomServers,
           ),
         );
     return results;
