@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/vault/domain/biometric_unlock_status.dart';
@@ -488,6 +490,59 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
   }
 
+  /// A backup file of every identity, encrypted with [passphrase], after
+  /// [pin] is checked like a PIN change (#25). Returns the file, or the
+  /// failure; a wipe after too many PIN attempts is also recorded in the
+  /// state, as for a PIN change.
+  Future<(Uint8List?, VaultFailure?)> exportBackup({
+    required String pin,
+    required String passphrase,
+  }) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    Uint8List? file;
+    VaultFailure? failure;
+    try {
+      file = await _vaultService.exportBackup(pin: pin, passphrase: passphrase);
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a backup failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    if (state.vaultState is VaultUnlocked) await refreshLockout();
+    state = state.copyWith(
+      isLoading: false,
+      failure: failure is VaultWipedFailure ? failure : null,
+    );
+    return (file, failure);
+  }
+
+  /// Imports the identities in the backup [file] (#25).
+  Future<(BackupRestoreResult?, VaultFailure?)> restoreBackup(
+    Uint8List file,
+    String passphrase,
+  ) async {
+    if (state.vaultState is! VaultUnlocked) {
+      return (null, const VaultLockedFailure());
+    }
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    try {
+      final result = await _vaultService.restoreBackup(file, passphrase);
+      await _refreshState();
+      return (result, null);
+    } catch (e) {
+      return (null, _mapExceptionToFailure(e));
+    } finally {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
   Future<void> setActiveIdentity(String localId) async {
     if (state.vaultState is! VaultUnlocked) {
       state = state.copyWith(failure: const VaultLockedFailure());
@@ -544,6 +599,12 @@ class VaultController extends StateNotifier<VaultControllerState> {
     }
     if (e is BiometricFailedException) {
       return BiometricFailure(e.message);
+    }
+    if (e is BackupPassphraseException) {
+      return const BackupPassphraseFailure();
+    }
+    if (e is VaultBackupException) {
+      return VaultBackupFailure(e.message);
     }
     if (e is VaultStorageException) {
       final msg = e.message.toLowerCase();

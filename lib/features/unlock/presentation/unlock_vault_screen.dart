@@ -7,6 +7,7 @@ import 'package:symudol/features/vault/domain/vault_failure.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import '../../../theme/tokens.dart';
+import '../../backup/application/backup_providers.dart';
 import 'pin_lockout_countdown.dart';
 import '../../settings/presentation/widgets/wipe_vault_dialog.dart';
 import 'widgets/forgot_pin_dialog.dart';
@@ -133,12 +134,20 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
   }
 
   Future<void> _forgotPin() async {
-    final erase = await showDialog<bool>(
+    final choice = await showDialog<ForgotPinChoice>(
       context: context,
       builder: (_) => const ForgotPinDialog(),
     );
-    if (erase != true || !mounted) return;
+    if (choice == null || !mounted) return;
+    // Accounts opens the restore once a new vault is set up (#25).
+    final restoreAfter = ref.read(restoreAfterSetupProvider.notifier);
+    if (choice == ForgotPinChoice.restore) restoreAfter.request();
     await confirmAndWipeVault(context, ref);
+    // Still here and not erased (cancelled, or it failed): nothing will be
+    // set up to restore into. A wipe replaces this screen.
+    if (mounted && ref.read(vaultStateProvider) is! NoVault) {
+      restoreAfter.take();
+    }
   }
 
   void _onBackspace() {

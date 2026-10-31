@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:symudol/features/vault/domain/biometric_unlock_status.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
@@ -198,4 +200,38 @@ abstract interface class VaultService {
   /// This is used by the NIP-55 native bridge to sync the key to the
   /// ContentProvider for native auto-approve.
   Future<String?> getActivePrivateKey();
+
+  /// A backup file of every identity, each key encrypted with [passphrase]
+  /// as a NIP-49 `ncryptsec` (#25). [pin] is checked like an unlock: it is
+  /// charged, honours the lockout, and counts towards the wipe-after-N
+  /// limit. No unencrypted key leaves the service.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked,
+  /// [VaultBackupException] if [passphrase] is shorter than
+  /// `minBackupPassphraseLength` or there are no identities, and the PIN
+  /// errors [unlock] throws.
+  Future<Uint8List> exportBackup({
+    required String pin,
+    required String passphrase,
+  });
+
+  /// Imports the identities in the backup [file] (#25). Every key is
+  /// decrypted before any is imported, so a wrong [passphrase] imports
+  /// nothing. An identity already in the vault is skipped.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked,
+  /// [BackupPassphraseException] for a wrong passphrase, and
+  /// [VaultBackupException] for a file it can't read.
+  Future<BackupRestoreResult> restoreBackup(Uint8List file, String passphrase);
+}
+
+/// What a restore imported and skipped (#25).
+class BackupRestoreResult {
+  const BackupRestoreResult({required this.restored, required this.skipped});
+
+  /// The identities imported.
+  final List<VaultIdentity> restored;
+
+  /// How many identities were already in the vault.
+  final int skipped;
 }

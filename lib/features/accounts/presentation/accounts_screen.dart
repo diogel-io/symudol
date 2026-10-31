@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../backup/application/backup_providers.dart';
+import '../../backup/presentation/restore_backup_flow.dart';
 import '../../profile/presentation/profile_edit_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
@@ -20,6 +22,19 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Forgot PIN → Restore from a backup: the new vault is set up, so the
+    // restore opens now (#25).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(restoreAfterSetupProvider.notifier).take()) {
+        restoreFromBackup(context, ref);
+      }
+    });
+  }
+
   Future<void> _showImportIdentityDialog(BuildContext context) async {
     final result = await showDialog<bool>(
       context: context,
@@ -179,6 +194,12 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: DiogelColors.textSecondary,
             ),
+          ),
+          const SizedBox(height: DiogelSpacing.space4),
+          OutlinedButton.icon(
+            onPressed: () => restoreFromBackup(context, ref),
+            icon: const Icon(Icons.restore),
+            label: const Text('Restore from a backup'),
           ),
         ],
       ),

@@ -85,6 +85,9 @@ class MainActivity : FlutterFragmentActivity() {
         val biometricVault = BiometricVault(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BiometricVault.CHANNEL)
             .setMethodCallHandler(biometricVault::handle)
+        // The vault backup's NIP-49 key derivation, which pure Dart runs too slowly (#25).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Scrypt.CHANNEL)
+            .setMethodCallHandler(Scrypt::handle)
         // PIN lockouts are timed on this, not the wall clock (#16).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MonotonicClock.CHANNEL).setMethodCallHandler { call, result ->
             if (call.method != "now") return@setMethodCallHandler result.notImplemented()

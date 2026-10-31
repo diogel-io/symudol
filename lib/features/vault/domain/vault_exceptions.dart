@@ -61,6 +61,21 @@ class VaultStorageException extends VaultException {
   String toString() => 'VaultStorageException: $message';
 }
 
+/// The passphrase does not open a vault backup (#25).
+class BackupPassphraseException extends VaultException {
+  const BackupPassphraseException()
+    : super("That passphrase doesn't open this backup.");
+}
+
+/// A file that is not a vault backup this build can restore, or a backup
+/// that could not be made (#25).
+class VaultBackupException extends VaultException {
+  const VaultBackupException(super.message);
+
+  @override
+  String toString() => 'VaultBackupException: $message';
+}
+
 /// Biometric unlock is not turned on, or this phone cannot use it (#23).
 class BiometricUnavailableException extends VaultException {
   const BiometricUnavailableException()

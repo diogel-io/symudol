@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/app/app.dart';
+import 'package:symudol/features/backup/application/backup_providers.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
@@ -17,6 +18,7 @@ import 'package:symudol/features/vault/domain/vault_lockout.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:symudol/features/vault/presentation/setup_vault_screen.dart';
 
+import '../../../fakes/fake_backup_files.dart';
 import '../../../fakes/fake_nip46_session_store.dart';
 import '../../../fakes/fake_nip55_permission_store.dart';
 import '../../../fakes/fake_vault_store.dart';
@@ -94,8 +96,10 @@ void main() {
   late _UnreadableIdentitiesStore store;
   late _AnsweringGateway gateway;
   late String pubkey;
+  late FakeBackupFiles backupFiles;
 
   setUp(() async {
+    backupFiles = FakeBackupFiles();
     PinLockoutCountdown.stopwatchFactory = () => clock.stopwatch();
     store = _UnreadableIdentitiesStore();
     gateway = _AnsweringGateway(store);
@@ -123,6 +127,7 @@ void main() {
           ),
           nip46SessionStoreProvider.overrideWithValue(FakeNip46SessionStore()),
           nip55NativeSyncProvider.overrideWithValue(_QuietNativeSync()),
+          backupFilesProvider.overrideWithValue(backupFiles),
         ],
         child: const DiogelApp(),
       ),
@@ -164,6 +169,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ForgotPinDialog), findsNothing);
     expect(find.byType(UnlockVaultScreen), findsOneWidget);
+    expect(await store.getWrappedDek(), isNotNull);
+  });
+
+  testWidgets('Restore from a backup erases, then opens the restore after a '
+      'new PIN (#25)', (tester) async {
+    await pumpApp(tester);
+    await openForgotPin(tester);
+
+    await tester.tap(find.text('Restore from a backup'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('wipeVaultConfirmationField')),
+      'WIPE',
+    );
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Wipe vault'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SetupVaultScreen), findsOneWidget);
+    expect(backupFiles.picks, 0);
+
+    for (var round = 0; round < 2; round++) {
+      for (var digit = 1; digit <= 6; digit++) {
+        await tester.tap(find.text('$digit'));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    // The file picker opens on the new, empty vault.
+    expect(backupFiles.picks, 1);
+  });
+
+  testWidgets('a restore whose wipe is cancelled is forgotten (#25)', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    await openForgotPin(tester);
+
+    await tester.tap(find.text('Restore from a backup'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(UnlockVaultScreen)),
+    );
+    expect(container.read(restoreAfterSetupProvider), isFalse);
     expect(await store.getWrappedDek(), isNotNull);
   });
 

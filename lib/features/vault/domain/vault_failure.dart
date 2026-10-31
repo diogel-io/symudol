@@ -90,3 +90,14 @@ class BiometricKeyInvalidatedFailure extends VaultFailure {
 class BiometricFailure extends VaultFailure {
   const BiometricFailure(super.message);
 }
+
+/// The passphrase does not open a vault backup (#25).
+class BackupPassphraseFailure extends VaultFailure {
+  const BackupPassphraseFailure()
+    : super("That passphrase doesn't open this backup.");
+}
+
+/// A backup could not be made or read; [message] says why (#25).
+class VaultBackupFailure extends VaultFailure {
+  const VaultBackupFailure(super.message);
+}

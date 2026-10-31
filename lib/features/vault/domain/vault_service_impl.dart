@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/backup/data/scrypt_kdf.dart';
+import 'package:symudol/features/backup/domain/nip49.dart';
+import 'package:symudol/features/backup/domain/vault_backup.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
@@ -115,6 +118,7 @@ class VaultServiceImpl implements VaultService {
     Nip55PermissionStore? nip55PermissionStore,
     Nip46SessionStore? nip46SessionStore,
     Future<void> Function()? wipeNativeState,
+    Nip49KeyDeriver keyDeriver = const PlatformNip49KeyDeriver(),
   }) : _cryptoService = cryptoService,
        _vaultCryptoService =
            vaultCryptoService ?? const PointyCastleVaultCryptoService(),
@@ -122,7 +126,11 @@ class VaultServiceImpl implements VaultService {
        _biometricVault = biometricVault,
        _nip55PermissionStore = nip55PermissionStore,
        _nip46SessionStore = nip46SessionStore,
-       _wipeNativeState = wipeNativeState;
+       _wipeNativeState = wipeNativeState,
+       _keyDeriver = keyDeriver;
+
+  /// Derives the vault backup's passphrase key (#25).
+  final Nip49KeyDeriver _keyDeriver;
 
   @override
   VaultState get state => _state;
@@ -740,7 +748,23 @@ class VaultServiceImpl implements VaultService {
       );
     }
 
-    final now = DateTime.now();
+    return _saveImported(
+      hexPrivateKey: hexPrivateKey,
+      publicKey: publicKey,
+      displayName: displayName,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Stores an imported key that has been checked and is not a duplicate,
+  /// and makes it active when no identity is.
+  Future<VaultIdentity> _saveImported({
+    required String hexPrivateKey,
+    required String publicKey,
+    required String? displayName,
+    required DateTime createdAt,
+  }) async {
+    final now = createdAt;
     final localId = publicKey;
 
     final encryptedSecretPayload = await ConcurrencyUtils.runTask(
@@ -765,6 +789,103 @@ class VaultServiceImpl implements VaultService {
     }
 
     return identity;
+  }
+
+  @override
+  Future<Uint8List> exportBackup({
+    required String pin,
+    required String passphrase,
+  }) async {
+    _checkUnlocked();
+    if (passphrase.length < minBackupPassphraseLength) {
+      throw const VaultBackupException(
+        'The passphrase must be at least $minBackupPassphraseLength characters.',
+      );
+    }
+    return _queued(() async {
+      // The DEK comes from the envelope, as for a PIN change, so the PIN is
+      // checked like an unlock.
+      final (envelope: _, :dek) = await _checkPin(pin);
+      final records = await _store.getIdentities();
+      if (records.isEmpty) {
+        throw const VaultBackupException('There are no identities to back up.');
+      }
+      final keys = [
+        for (final record in records)
+          VaultBackupKey(
+            privateKeyHex: await ConcurrencyUtils.runTask(
+              () => _vaultCryptoService.decrypt(
+                record.encryptedSecretPayload,
+                dek,
+              ),
+            ),
+            name: record.displayName,
+            createdAt: record.createdAt,
+          ),
+      ];
+      try {
+        return buildVaultBackup(keys, await _keyDeriver.derive(passphrase));
+      } catch (e, stack) {
+        diogelLog(
+          'VaultService: could not build the backup',
+          error: e,
+          stackTrace: stack,
+        );
+        throw const VaultBackupException("Couldn't make the backup. Try again.");
+      }
+    });
+  }
+
+  @override
+  Future<BackupRestoreResult> restoreBackup(
+    Uint8List file,
+    String passphrase,
+  ) async {
+    _checkUnlocked();
+    final List<RestoredKey> keys;
+    try {
+      keys = await decryptVaultBackup(
+        file,
+        passphrase,
+        deriver: _keyDeriver,
+      );
+    } on Nip49Exception {
+      throw const BackupPassphraseException();
+    } on VaultBackupFormatException catch (e) {
+      throw VaultBackupException(e.message);
+    }
+
+    final nostr = Nostr.instance;
+    final known = {
+      for (final record in await _store.getIdentities()) record.publicKey,
+    };
+    final restored = <VaultIdentity>[];
+    var skipped = 0;
+    for (final key in keys) {
+      final String publicKey;
+      try {
+        publicKey = await ConcurrencyUtils.runTask(
+          () => nostr.services.keys
+              .generateKeyPairFromExistingPrivateKey(key.privateKeyHex)
+              .public,
+        );
+      } catch (_) {
+        throw const VaultBackupException('This backup is damaged.');
+      }
+      if (!known.add(publicKey)) {
+        skipped++;
+        continue;
+      }
+      restored.add(
+        await _saveImported(
+          hexPrivateKey: key.privateKeyHex,
+          publicKey: publicKey,
+          displayName: key.name,
+          createdAt: key.createdAt ?? DateTime.now(),
+        ),
+      );
+    }
+    return BackupRestoreResult(restored: restored, skipped: skipped);
   }
 
   @override
