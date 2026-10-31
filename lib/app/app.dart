@@ -9,6 +9,7 @@ import '../features/navigation/presentation/main_navigation_screen.dart';
 import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
 import '../features/nip46/application/nip46_providers.dart';
+import '../features/profile/application/profile_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
 import '../features/vault/domain/vault_state.dart';
@@ -119,6 +120,23 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    // The photo picker or camera the user opened from Edit profile sends
+    // Symudol to the background; locking then would close Edit profile and
+    // lose the edit (#43). The lock waits for the pick, but only up to
+    // [pickingLockGrace] past the usual delay, and the native key gets the
+    // same deadline.
+    if (ref.read(pickingProfileImageProvider)) {
+      final bound = Duration(minutes: delayMinutes) + pickingLockGrace;
+      diogelLog('Deferring background lock while an image is picked');
+      unawaited(nativeSync.setLockDeadline(bound));
+      _backgroundLockTimer = Timer(bound, () {
+        if (!mounted) return;
+        diogelLog('Image pick outlasted the background lock');
+        ref.read(vaultControllerProvider.notifier).expireSession();
+      });
+      return;
+    }
+
     if (delayMinutes == 0) {
       diogelLog('Background lock delay is 0, locking immediately');
       ref.read(vaultControllerProvider.notifier).lock();
@@ -132,6 +150,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       ref.read(vaultControllerProvider.notifier).expireSession();
     });
   }
+
+  /// How much longer than the background lock delay the vault stays
+  /// unlocked while the user picks an image (#43).
+  static const Duration pickingLockGrace = Duration(minutes: 5);
 
   void _cancelLockTimers() {
     _inactivityTimer?.cancel();
@@ -181,6 +203,12 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   /// A NIP-55 request settled (or its review timed out) while in the
   /// background: the deferred background lock applies now.
+  void _handlePickingChanged(bool? previous, bool next) {
+    if (_inBackground && previous == true && !next) {
+      _scheduleBackgroundLock();
+    }
+  }
+
   void _handleNip55Changed(Nip55State? previous, Nip55State next) {
     if (_inBackground &&
         previous?.hasPendingExternalRequest == true &&
@@ -235,6 +263,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     diogelLog('App build');
     ref.listen(vaultControllerProvider, _handleVaultControllerChanged);
     ref.listen(nip55ControllerProvider, _handleNip55Changed);
+    ref.listen(pickingProfileImageProvider, _handlePickingChanged);
 
     final controllerState = ref.watch(vaultControllerProvider);
     final vaultState = controllerState.vaultState;

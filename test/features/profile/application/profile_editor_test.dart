@@ -1,19 +1,27 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dart_nostr/dart_nostr.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:symudol/features/profile/application/profile_editor.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
+import 'package:symudol/features/profile/data/blossom_client.dart';
 import 'package:symudol/features/profile/data/profile_relay_client.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
+import 'package:symudol/features/profile/domain/profile_image.dart';
 import 'package:symudol/features/profile/domain/profile_load_state.dart';
+import 'package:symudol/features/profile/domain/profile_network_settings.dart';
 import 'package:symudol/features/profile/domain/profile_relays.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 
+import '../../../fakes/fake_profile_network_store.dart';
 import '../../../fakes/fake_profile_relay_client.dart';
 import '../../../fakes/fake_vault_store.dart';
 
@@ -30,6 +38,10 @@ void main() {
   late String pubkey;
   late ProviderSubscription<ProfileEditorState> screen;
 
+  /// What the Blossom server received, and how it answers.
+  late List<http.Request> uploads;
+  late Future<http.Response> Function(http.Request request) blossom;
+
   setUp(() async {
     vault = VaultServiceImpl(FakeVaultStore());
     await vault.createVault('123456');
@@ -40,12 +52,35 @@ void main() {
     pubkey = controller.state.activeIdentity!.publicKey;
 
     relays = FakeProfileRelayClient();
+    uploads = [];
+    blossom = (request) async => http.Response(
+      jsonEncode({
+        'url': 'https://cdn.example/${blobSha256(request.bodyBytes)}.jpg',
+        'sha256': blobSha256(request.bodyBytes),
+      }),
+      200,
+    );
     container = ProviderContainer(
       overrides: [
         vaultServiceProvider.overrideWithValue(vault),
         vaultControllerProvider.overrideWith((ref) => controller),
         relayProfileServiceProvider.overrideWithValue(
           RelayProfileService(client: relays),
+        ),
+        profileNetworkStoreProvider.overrideWithValue(
+          FakeProfileNetworkStore(
+            ProfileNetworkSettings.defaults().copyWith(
+              blossomServer: 'https://settings.example',
+            ),
+          ),
+        ),
+        blossomClientProvider.overrideWithValue(
+          BlossomClient(
+            client: MockClient((request) {
+              uploads.add(request);
+              return blossom(request);
+            }),
+          ),
         ),
       ],
     );
@@ -426,5 +461,142 @@ void main() {
     expect(state().saveError, contains('locked'));
     expect(state().saving, isFalse);
     expect(relays.published, isEmpty);
+  });
+
+  group('uploading an image (#43)', () {
+    final photo = img.encodeJpg(
+      img.Image(width: 64, height: 32)..clear(img.ColorRgb8(10, 20, 30)),
+    );
+
+    NostrEvent serverList(List<String> servers) => NostrEvent(
+      id: 'kind10063',
+      kind: 10063,
+      content: '',
+      sig: 'sig',
+      pubkey: pubkey,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(5000),
+      tags: [
+        for (final server in servers) ['server', server],
+      ],
+    );
+
+    test('goes to the identity\'s own server when it lists one', () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice'}, 10),
+        serverList(['https://own-media.example']),
+      ];
+      await editor().load();
+
+      expect(await editor().uploadServer(), 'https://own-media.example');
+    });
+
+    test('goes to the Settings server otherwise', () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice'}, 10),
+      ];
+      await editor().load();
+
+      expect(await editor().uploadServer(), 'https://settings.example');
+    });
+
+    test('uploads the re-encoded JPEG signed by the identity', () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice'}, 10),
+      ];
+      await editor().load();
+
+      final url = await editor().uploadImage(
+        ProfileImageKind.picture,
+        photo,
+        server: 'https://settings.example',
+      );
+
+      final request = uploads.single;
+      final sha = blobSha256(request.bodyBytes);
+      expect(url, 'https://cdn.example/$sha.jpg');
+      expect(request.url.toString(), 'https://settings.example/upload');
+      final auth = jsonDecode(
+        utf8.decode(
+          base64.decode(
+            request.headers['Authorization']!.substring('Nostr '.length),
+          ),
+        ),
+      );
+      expect(auth['kind'], 24242);
+      expect(auth['pubkey'], pubkey);
+      expect(auth['tags'], contains(equals(['x', sha])));
+      expect(state().uploading, isNull);
+      // The screen fills the field; nothing is published.
+      expect(relays.published, isEmpty);
+    });
+
+    test(
+      'a server refusal is a message, and nothing is left running',
+      () async {
+        relays.held[indexer] = [
+          profileEvent({'name': 'alice'}, 10),
+        ];
+        await editor().load();
+        blossom = (_) async =>
+            http.Response('', 401, headers: {'x-reason': 'Not allowed'});
+
+        await expectLater(
+          editor().uploadImage(
+            ProfileImageKind.banner,
+            photo,
+            server: 'https://settings.example',
+          ),
+          throwsA(
+            isA<ProfileUploadException>().having(
+              (error) => error.message,
+              'message',
+              'settings.example refused the upload: Not allowed',
+            ),
+          ),
+        );
+        expect(state().uploading, isNull);
+      },
+    );
+
+    test('an image it cannot read is a message, and nothing is sent', () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice'}, 10),
+      ];
+      await editor().load();
+
+      await expectLater(
+        editor().uploadImage(
+          ProfileImageKind.picture,
+          Uint8List.fromList([1, 2, 3]),
+          server: 'https://settings.example',
+        ),
+        throwsA(isA<ProfileUploadException>()),
+      );
+      expect(uploads, isEmpty);
+    });
+
+    test('a locked vault signs nothing and sends nothing', () async {
+      relays.held[indexer] = [
+        profileEvent({'name': 'alice'}, 10),
+      ];
+      await editor().load();
+      await vault.lock();
+
+      await expectLater(
+        editor().uploadImage(
+          ProfileImageKind.picture,
+          photo,
+          server: 'https://settings.example',
+        ),
+        throwsA(
+          isA<ProfileUploadException>().having(
+            (error) => error.message,
+            'message',
+            contains('locked'),
+          ),
+        ),
+      );
+      expect(uploads, isEmpty);
+    });
   });
 }

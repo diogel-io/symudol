@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/route_pop.dart';
@@ -6,8 +7,11 @@ import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/load_profile_action.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../application/profile_editor.dart';
+import '../application/profile_providers.dart';
+import '../data/profile_image_picker.dart';
 import '../data/profile_relay_client.dart';
 import '../domain/profile_content.dart';
+import '../domain/profile_image.dart';
 import '../domain/profile_relays.dart';
 
 /// Labels for the text fields, by kind 0 key.
@@ -20,6 +24,11 @@ const Map<String, String> _labels = {
   'banner': 'Banner URL',
   'nip05': 'NIP-05 identifier',
   'lud16': 'Lightning address',
+};
+
+/// The fields an image can be uploaded for, by kind 0 key.
+final Map<String, ProfileImageKind> _uploadKinds = {
+  for (final kind in ProfileImageKind.values) kind.field: kind,
 };
 
 /// Edits and publishes the active identity's profile (diogel-io/symudol#41).
@@ -140,6 +149,66 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     }
   }
 
+  /// Picks or takes an image, confirms the server, uploads it without its
+  /// metadata and puts its URL in [kind]'s field (diogel-io/symudol#43).
+  /// Nothing is published until the user saves.
+  Future<void> _upload(ProfileImageKind kind) async {
+    final source = await showModalBottomSheet<ProfileImageSource>(
+      context: context,
+      builder: (context) => const _ImageSourceSheet(),
+    );
+    if (source == null || !mounted) return;
+
+    final Uint8List? bytes;
+    try {
+      bytes = await ref
+          .read(pickingProfileImageProvider.notifier)
+          .during(() => ref.read(profileImagePickerProvider).pick(source));
+    } on PlatformException {
+      if (mounted) {
+        _showError(
+          source == ProfileImageSource.camera
+              ? "Couldn't open the camera."
+              : "Couldn't open your photos.",
+        );
+      }
+      return;
+    }
+    if (bytes == null || !mounted) return;
+
+    final editor = ref.read(profileEditorProvider(_pubkey).notifier);
+    final server = await editor.uploadServer();
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => _UploadDialog(host: Uri.parse(server).host),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final url = await editor.uploadImage(kind, bytes, server: server);
+      if (!mounted) return;
+      _text[kind.field]!.text = url;
+      _changed();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image uploaded. Save to publish it on your profile.'),
+        ),
+      );
+    } on ProfileUploadException catch (error) {
+      if (mounted) _showError(error.message);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: DiogelColors.stateError,
+      ),
+    );
+  }
+
   Future<void> _confirmDiscard() async {
     final discard = await showDialog<bool>(
       context: context,
@@ -177,7 +246,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           actions: [
             if (editing)
               TextButton(
-                onPressed: editor.saving ? null : _save,
+                onPressed: editor.saving || editor.uploading != null
+                    ? null
+                    : _save,
                 child: const Text('Save'),
               ),
           ],
@@ -229,6 +300,16 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 decoration: InputDecoration(
                   labelText: _labels[key],
                   errorText: editor.fieldErrors[key],
+                  suffixIcon: switch (_uploadKinds[key]) {
+                    final ProfileImageKind kind => _UploadButton(
+                      kind: kind,
+                      uploading: editor.uploading == kind,
+                      onPressed: editor.uploading != null || editor.saving
+                          ? null
+                          : () => _upload(kind),
+                    ),
+                    null => null,
+                  },
                 ),
               ),
               const SizedBox(height: DiogelSpacing.space4),
@@ -471,6 +552,94 @@ class _Preview extends StatelessWidget {
 }
 
 /// Asks before signing and publishing, naming the relays.
+/// The upload button in an image URL field, or a spinner while uploading.
+class _UploadButton extends StatelessWidget {
+  const _UploadButton({
+    required this.kind,
+    required this.uploading,
+    required this.onPressed,
+  });
+
+  final ProfileImageKind kind;
+  final bool uploading;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uploading) {
+      return const Padding(
+        padding: EdgeInsets.all(DiogelSpacing.space3),
+        child: SizedBox.square(
+          dimension: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: kind == ProfileImageKind.picture
+          ? 'Upload picture'
+          : 'Upload banner',
+      icon: const Icon(Icons.upload_outlined),
+      onPressed: onPressed,
+    );
+  }
+}
+
+/// Asks where the image comes from.
+class _ImageSourceSheet extends StatelessWidget {
+  const _ImageSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose from photos'),
+            onTap: () => Navigator.of(context).pop(ProfileImageSource.photos),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined),
+            title: const Text('Take a photo'),
+            onTap: () => Navigator.of(context).pop(ProfileImageSource.camera),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Confirms the upload and names the server before anything is sent.
+class _UploadDialog extends StatelessWidget {
+  const _UploadDialog({required this.host});
+
+  final String host;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Upload to $host?'),
+      content: const Text(
+        'The image is re-encoded first, so its location and camera details '
+        'are removed. Anyone with the link can see it, even if you do not '
+        'save the profile.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Upload'),
+        ),
+      ],
+    );
+  }
+}
+
 class _PublishDialog extends StatelessWidget {
   const _PublishDialog({required this.identityName, required this.relays});
 
