@@ -177,6 +177,10 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         );
       }
       return;
+    } catch (_) {
+      // Reading the chosen file failed after the picker closed.
+      if (mounted) _showError("Couldn't read that image.");
+      return;
     }
     if (bytes == null || !mounted) return;
 

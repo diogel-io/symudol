@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_nostr/dart_nostr.dart';
@@ -30,6 +31,9 @@ class _FakePicker implements ProfileImagePicker {
 
   /// Whether the camera can be used, as on Android; false as on desktop.
   bool camera = true;
+
+  /// When set, [pick] throws it, as a failed read of the chosen file does.
+  Object? error;
   final List<ProfileImageSource> sources = [];
 
   @override
@@ -39,6 +43,7 @@ class _FakePicker implements ProfileImagePicker {
   @override
   Future<Uint8List?> pick(ProfileImageSource source) async {
     sources.add(source);
+    if (error case final Object error) throw error;
     return image;
   }
 }
@@ -343,6 +348,17 @@ void main() {
 
       expect(uploads, isEmpty);
       expect(find.textContaining('https://cdn.example'), findsNothing);
+    });
+
+    testWidgets('a chosen file that cannot be read shows why', (tester) async {
+      picker.error = const FileSystemException('unreadable');
+      await openLoaded(tester);
+
+      await pickFromPhotos(tester, 'Upload picture');
+
+      expect(find.text("Couldn't read that image."), findsOneWidget);
+      expect(find.textContaining('Upload to'), findsNothing);
+      expect(uploads, isEmpty);
     });
 
     testWidgets('cancelling the picker asks nothing more', (tester) async {
