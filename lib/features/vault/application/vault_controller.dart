@@ -13,7 +13,6 @@ class VaultControllerState {
   final VaultIdentity? activeIdentity;
   final int inactivityTimeoutMinutes;
   final int backgroundLockDelayMinutes;
-  final int approvalSessionDurationMinutes;
 
   /// Consecutive failed PIN attempts, read while locked (#16).
   final int failedUnlockAttempts;
@@ -35,7 +34,6 @@ class VaultControllerState {
     this.activeIdentity,
     this.inactivityTimeoutMinutes = 5,
     this.backgroundLockDelayMinutes = 5,
-    this.approvalSessionDurationMinutes = 0,
     this.failedUnlockAttempts = 0,
     this.wipeAfterFailures,
     this.lockoutRemaining = Duration.zero,
@@ -50,7 +48,6 @@ class VaultControllerState {
     VaultIdentity? activeIdentity,
     int? inactivityTimeoutMinutes,
     int? backgroundLockDelayMinutes,
-    int? approvalSessionDurationMinutes,
     int? failedUnlockAttempts,
     int? wipeAfterFailures,
     bool clearWipeAfterFailures = false,
@@ -71,8 +68,6 @@ class VaultControllerState {
           inactivityTimeoutMinutes ?? this.inactivityTimeoutMinutes,
       backgroundLockDelayMinutes:
           backgroundLockDelayMinutes ?? this.backgroundLockDelayMinutes,
-      approvalSessionDurationMinutes:
-          approvalSessionDurationMinutes ?? this.approvalSessionDurationMinutes,
       failedUnlockAttempts: failedUnlockAttempts ?? this.failedUnlockAttempts,
       wipeAfterFailures: clearWipeAfterFailures
           ? null
@@ -134,7 +129,6 @@ class VaultController extends StateNotifier<VaultControllerState> {
     VaultIdentity? activeIdentity;
     int timeout = 5;
     int backgroundLockDelay = 5;
-    int approvalSessionDuration = 0;
     int failedUnlockAttempts = 0;
     int? wipeAfterFailures;
     Duration lockoutRemaining = Duration.zero;
@@ -144,8 +138,6 @@ class VaultController extends StateNotifier<VaultControllerState> {
       activeIdentity = _vaultService.activeIdentity;
       timeout = await _vaultService.getInactivityTimeout();
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
-      approvalSessionDuration = await _vaultService
-          .getApprovalSessionDurationMinutes();
       wipeAfterFailures = await _vaultService.getWipeAfterFailures();
       // The count and lockout are read on demand (refreshLockout) while
       // unlocked: only Change PIN needs them (#21).
@@ -158,8 +150,6 @@ class VaultController extends StateNotifier<VaultControllerState> {
       // but getInactivityTimeout is just a simple read from store for now.
       timeout = await _vaultService.getInactivityTimeout();
       backgroundLockDelay = await _vaultService.getBackgroundLockDelayMinutes();
-      approvalSessionDuration = await _vaultService
-          .getApprovalSessionDurationMinutes();
       // For the unlock screen's countdown and erase warning (#16).
       failedUnlockAttempts = await _vaultService.getFailedUnlockAttempts();
       wipeAfterFailures = await _vaultService.getWipeAfterFailures();
@@ -197,7 +187,6 @@ class VaultController extends StateNotifier<VaultControllerState> {
       clearActiveIdentity: activeIdentity == null,
       inactivityTimeoutMinutes: timeout,
       backgroundLockDelayMinutes: backgroundLockDelay,
-      approvalSessionDurationMinutes: approvalSessionDuration,
       failedUnlockAttempts: failedUnlockAttempts,
       wipeAfterFailures: wipeAfterFailures,
       clearWipeAfterFailures: wipeAfterFailures == null,
@@ -242,18 +231,6 @@ class VaultController extends StateNotifier<VaultControllerState> {
     state = state.copyWith(isLoading: true, clearFailure: true);
     try {
       await _vaultService.setBackgroundLockDelayMinutes(minutes);
-      await _refreshState();
-    } catch (e) {
-      state = state.copyWith(failure: _mapExceptionToFailure(e));
-    } finally {
-      state = state.copyWith(isLoading: false);
-    }
-  }
-
-  Future<void> setApprovalSessionDurationMinutes(int minutes) async {
-    state = state.copyWith(isLoading: true, clearFailure: true);
-    try {
-      await _vaultService.setApprovalSessionDurationMinutes(minutes);
       await _refreshState();
     } catch (e) {
       state = state.copyWith(failure: _mapExceptionToFailure(e));

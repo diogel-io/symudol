@@ -40,7 +40,6 @@ class Nip55State {
   final bool isLoading;
   final Nip55Failure? failure;
   final String? lastSuccessMessage;
-  final DateTime? approvalSessionExpiresAt;
 
   const Nip55State({
     this.pendingIncoming,
@@ -50,7 +49,6 @@ class Nip55State {
     this.isLoading = false,
     this.failure,
     this.lastSuccessMessage,
-    this.approvalSessionExpiresAt,
   });
 
   bool get hasPendingExternalRequest =>
@@ -74,14 +72,12 @@ class Nip55State {
     bool? isLoading,
     Nip55Failure? failure,
     String? lastSuccessMessage,
-    DateTime? approvalSessionExpiresAt,
     bool clearPendingIncoming = false,
     bool clearPendingSigningRequestId = false,
     bool clearPendingPublicKeyRequest = false,
     bool clearPendingCryptoRequest = false,
     bool clearFailure = false,
     bool clearSuccess = false,
-    bool clearApprovalSession = false,
   }) {
     return Nip55State(
       pendingIncoming: clearPendingIncoming
@@ -101,9 +97,6 @@ class Nip55State {
       lastSuccessMessage: clearSuccess
           ? null
           : (lastSuccessMessage ?? this.lastSuccessMessage),
-      approvalSessionExpiresAt: clearApprovalSession
-          ? null
-          : (approvalSessionExpiresAt ?? this.approvalSessionExpiresAt),
     );
   }
 }
@@ -252,11 +245,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
   /// always lands after the unlock before it and the native key can't be put
   /// back once cleared (#13).
   void _onVaultStateChanged(VaultControllerState state) {
-    // A wiped vault (#20) leaves no approval session behind for a new one.
-    if (state.vaultState is NoVault &&
-        this.state.approvalSessionExpiresAt != null) {
-      this.state = this.state.copyWith(clearApprovalSession: true);
-    }
     final previousVaultState = _lastVaultState;
     _lastVaultState = state.vaultState;
     if (previousVaultState != null &&
@@ -384,10 +372,10 @@ class Nip55Controller extends StateNotifier<Nip55State> {
       if (busyRequest == null) return;
       // When still parsing the previous intent (_isParsingIntent == true),
       // skip async permission lookups — the first intent hasn't produced any
-      // pending UI or approval session yet, so auto-completion is impossible
-      // and the async _decide call could block indefinitely (e.g. slow store).
+      // pending UI yet, so auto-completion is impossible and the async
+      // _decide call could block indefinitely (e.g. slow store).
       // Only try auto-completion when a pending request already exists in
-      // the UI, meaning an approval session may be active.
+      // the UI.
       if (!_isParsingIntent) {
         if (await _tryCompleteRememberedBusyRequest(busyRequest)) return;
       }
@@ -801,14 +789,11 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         incoming: request,
       ),
     );
-    final approvalSessionExpiresAt = _nextApprovalSessionExpiry();
     state = state.copyWith(
       clearPendingIncoming: true,
       clearPendingPublicKeyRequest: true,
       clearPendingCryptoRequest: true,
       clearPendingSigningRequestId: true,
-      approvalSessionExpiresAt: approvalSessionExpiresAt,
-      clearApprovalSession: approvalSessionExpiresAt == null,
       lastSuccessMessage: timeframe != Nip55ApprovalTimeframe.justOnce
           ? 'Public key shared and permission remembered.'
           : 'Public key shared with requesting Android app.',
@@ -861,7 +846,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
 
     try {
       await _completeCryptoOperation(request, timeframe: timeframe);
-      _extendApprovalSession();
     } on VaultException catch (error) {
       await _gateway.rejectNip55Intent(
         requestToken: request.requestToken,
@@ -1069,7 +1053,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     }
     await completeApprovedSigningRequest(requestId);
     if (signedEvent != null) {
-      _extendApprovalSession();
       if (remember) {
         await _completeDeferredClientAuthenticationRequests();
       } else {
@@ -1465,21 +1448,14 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     return 'NIP-55 ${incoming.method.wireName} result';
   }
 
-  bool _canUseApprovalSession(Nip55PermissionGrant grant) {
-    if (grant.scope.isSensitive || grant.scope.isBroad) return false;
-    final expiresAt = state.approvalSessionExpiresAt;
-    return expiresAt != null && expiresAt.isAfter(_now());
-  }
-
   bool _canUseRememberedGrantWithoutReview(Nip55PermissionGrant grant) {
     // The policy already matched [grant] to [incoming] (expiry, client,
     // identity and scope, the rules the shared case table checks against the
-    // Kotlin mirror, #17), so any non-broad grant can auto-approve without a
-    // live approval session.
-    if (!grant.scope.isBroad) return true;
-    // Broad scopes (wildcard sign_event with null kind) still require the
-    // approval session as a safety gate.
-    return _canUseApprovalSession(grant);
+    // Kotlin mirror, #17), so any non-broad grant can auto-approve.
+    // A broad allow (sign_event for any kind) is never remembered
+    // ([Nip55PermissionGrant.isRememberable], #5); this is the backstop that
+    // sends one to review if it ever got through.
+    return !grant.scope.isBroad;
   }
 
   bool _canRememberCryptoRequest(Nip55IncomingRequest request) {
@@ -1524,21 +1500,6 @@ class Nip55Controller extends StateNotifier<Nip55State> {
         incoming.method == Nip55Method.decryptZapEvent;
   }
 
-  DateTime? _nextApprovalSessionExpiry() {
-    final minutes = _vaultController.state.approvalSessionDurationMinutes;
-    if (minutes <= 0) return null;
-    return _now().add(Duration(minutes: minutes));
-  }
-
-  void _extendApprovalSession() {
-    final expiresAt = _nextApprovalSessionExpiry();
-    if (expiresAt == null) {
-      state = state.copyWith(clearApprovalSession: true);
-      return;
-    }
-    state = state.copyWith(approvalSessionExpiresAt: expiresAt);
-  }
-
   void _startPendingUnlockTimer(Nip55IncomingRequest incoming) {
     _pendingUnlockTimer?.cancel();
     _pendingUnlockTimer = Timer(_pendingUnlockTimeout, () {
@@ -1575,7 +1536,7 @@ class Nip55Controller extends StateNotifier<Nip55State> {
     // Defer any request that has a remembered grant (not just kind 22242).
     if (!_isAutoCompletableMethod(incoming)) return false;
     // Do not defer while still parsing the previous intent. At this point no
-    // pending UI or approval session exists yet, so we don't know whether
+    // pending UI exists yet, so we don't know whether
     // the first request will be auto-completed, rejected, or shown to the
     // user. Deferring would leave the caller hanging without a response,
     // which can cause deadlocks (e.g. slow permission store).

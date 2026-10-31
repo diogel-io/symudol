@@ -331,7 +331,7 @@ void main() {
     );
 
     test(
-      'remembered allow grant auto-approves without an active approval session',
+      'remembered allow grant auto-approves without review',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         permissionStore.grants.add(
@@ -359,14 +359,14 @@ void main() {
           'callerCertificateSha256': 'AA:BB',
         });
 
-        // Bug fix: saved grants now auto-approve outside the approval session.
+        // A saved grant alone is enough to auto-approve.
         expect(gateway.completedExtras?['event'], contains('"sig"'));
         expect(permissionController.state.pendingSigningRequestId, isNull);
       },
     );
 
     test(
-      'remembered kind 22242 signs immediately outside approval session',
+      'remembered kind 22242 signs immediately',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         permissionStore.grants.add(
@@ -557,9 +557,8 @@ void main() {
     );
 
     test(
-      'manual approval opens short session for remembered low-risk approvals',
+      'an Always approval auto-approves the next matching request',
       () async {
-        await vaultController.setApprovalSessionDurationMinutes(5);
         final permissionStore = FakeNip55PermissionStore();
         final permissionController = Nip55Controller(
           gateway: gateway,
@@ -580,7 +579,6 @@ void main() {
           timeframe: Nip55ApprovalTimeframe.always,
         );
 
-        expect(permissionController.state.approvalSessionExpiresAt, isNotNull);
         expect(permissionStore.grants, hasLength(1));
         gateway.completedExtras = null;
         gateway.completedToken = null;
@@ -1769,7 +1767,7 @@ void main() {
     );
 
     test(
-      'provider sign_event defers to foreground without remembered approval session',
+      'provider sign_event defers to foreground without a remembered grant',
       () async {
         final result = await controller.handleProviderQuery(signEventRaw());
 
@@ -1795,7 +1793,7 @@ void main() {
     );
 
     test(
-      'provider sign_event returns signed event during approval session',
+      'provider sign_event returns signed event for a remembered grant',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         final providerController = Nip55Controller(
@@ -1815,11 +1813,6 @@ void main() {
             scope: const SignEventScope(1),
             decision: Nip55PermissionDecision.allow,
             createdAt: DateTime.utc(2026, 5, 1),
-          ),
-        );
-        providerController.state = providerController.state.copyWith(
-          approvalSessionExpiresAt: DateTime.now().add(
-            const Duration(minutes: 1),
           ),
         );
 
@@ -1892,11 +1885,6 @@ void main() {
             createdAt: DateTime.utc(2026, 5, 1),
           ),
         );
-        providerController.state = providerController.state.copyWith(
-          approvalSessionExpiresAt: DateTime.now().add(
-            const Duration(minutes: 1),
-          ),
-        );
 
         // An error reaches the ContentProvider as no answer: the client falls back to the
         // intent, and no signature is returned.
@@ -1913,7 +1901,7 @@ void main() {
     );
 
     test(
-      'provider nip44_encrypt returns result during approval session',
+      'provider nip44_encrypt returns result for a remembered grant',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         final providerController = Nip55Controller(
@@ -1937,11 +1925,6 @@ void main() {
             scope: const Nip44EncryptScope(),
             decision: Nip55PermissionDecision.allow,
             createdAt: DateTime.utc(2026, 5, 1),
-          ),
-        );
-        providerController.state = providerController.state.copyWith(
-          approvalSessionExpiresAt: DateTime.now().add(
-            const Duration(minutes: 1),
           ),
         );
 
@@ -1968,7 +1951,7 @@ void main() {
     );
 
     test(
-      'provider sign_message returns signature during approval session',
+      'provider sign_message returns signature for a remembered grant',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         final providerController = Nip55Controller(
@@ -1988,11 +1971,6 @@ void main() {
             scope: const SignMessageScope(),
             decision: Nip55PermissionDecision.allow,
             createdAt: DateTime.utc(2026, 5, 1),
-          ),
-        );
-        providerController.state = providerController.state.copyWith(
-          approvalSessionExpiresAt: DateTime.now().add(
-            const Duration(minutes: 1),
           ),
         );
 
@@ -2038,11 +2016,6 @@ void main() {
             scope: const SignMessageScope(),
             decision: Nip55PermissionDecision.allow,
             createdAt: DateTime.utc(2026, 5, 1),
-          ),
-        );
-        providerController.state = providerController.state.copyWith(
-          approvalSessionExpiresAt: DateTime.now().add(
-            const Duration(minutes: 1),
           ),
         );
 
@@ -2241,7 +2214,7 @@ void main() {
     );
 
     test(
-      'non-expired saved grant auto-approves without an approval session',
+      'non-expired saved grant auto-approves',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         permissionStore.grants.add(
@@ -2271,8 +2244,7 @@ void main() {
           'callerCertificateSha256': 'AA:BB',
         });
 
-        // No approval session set — grant alone should suffice.
-        expect(permissionController.state.approvalSessionExpiresAt, isNull);
+        // The remembered grant alone is enough.
         expect(gateway.completedToken, 'pk-auto');
         expect(permissionController.state.pendingPublicKeyRequest, isNull);
       },
@@ -2317,7 +2289,7 @@ void main() {
     );
 
     test(
-      'broad sign_event (null kind) grant still requires approval session',
+      'a broad sign_event (null kind) allow still goes to review',
       () async {
         final permissionStore = FakeNip55PermissionStore();
         permissionStore.grants.add(
@@ -2345,7 +2317,7 @@ void main() {
           'callerCertificateSha256': 'AA:BB',
         });
 
-        // Broad wildcard scope: no active session → must show review.
+        // A broad allow is never used, even if one got into the store (#5).
         expect(gateway.completedExtras, isNull);
         expect(permissionController.state.pendingSigningRequestId, isNotNull);
       },

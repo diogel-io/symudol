@@ -24,7 +24,6 @@ class FakeVaultStore implements VaultStore {
   String? _activeIdentityId;
   int? _inactivityTimeout;
   int? _backgroundLockDelayMinutes;
-  int? _approvalSessionDurationMinutes;
   final Map<String, VaultIdentityRecord> _identities = {};
 
   /// Simulates a storage error when set to true.
@@ -241,18 +240,6 @@ class FakeVaultStore implements VaultStore {
   }
 
   @override
-  Future<int?> getApprovalSessionDurationMinutes() async {
-    _checkError();
-    return _approvalSessionDurationMinutes;
-  }
-
-  @override
-  Future<void> setApprovalSessionDurationMinutes(int minutes) async {
-    _checkError();
-    _approvalSessionDurationMinutes = minutes;
-  }
-
-  @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
     _checkError();
     return _identities.values.toList();
@@ -302,7 +289,6 @@ class FakeVaultStore implements VaultStore {
     _activeIdentityId = null;
     _inactivityTimeout = null;
     _backgroundLockDelayMinutes = null;
-    _approvalSessionDurationMinutes = null;
     _identities.clear();
   }
 }

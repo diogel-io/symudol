@@ -7,12 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 void main() {
-  test('formats approval session duration choices', () {
-    expect(formatApprovalSessionDuration(0), 'Ask every time');
-    expect(formatApprovalSessionDuration(1), '1 minute');
-    expect(formatApprovalSessionDuration(5), '5 minutes');
-  });
-
   // Off Android (here, the test host) biometric unlock is unavailable; the
   // tile says so and can't be turned on (#23).
   testWidgets('biometric unlock is disabled where the phone cannot use it', (
@@ -34,7 +28,8 @@ void main() {
     expect(biometricSwitch.onChanged, isNull);
   });
 
-  testWidgets('approval session setting exposes explicit short choices', (
+  // Nothing read the approval session duration, so the setting is gone (#33).
+  testWidgets('no approval session duration setting is shown', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1080, 2400);
@@ -50,22 +45,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Approval session duration'), findsOneWidget);
-    expect(find.textContaining('Not currently used'), findsOneWidget);
+    expect(find.text('Approval session duration'), findsNothing);
+    expect(find.textContaining('Not currently used'), findsNothing);
     expect(
       find.textContaining(
         'They apply whenever the vault is unlocked',
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('Ask every time'), findsOneWidget);
-
-    await tester.tap(find.text('Approval session duration'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Ask every time'), findsWidgets);
-    expect(find.text('1 minute'), findsOneWidget);
-    expect(find.text('5 minutes'), findsOneWidget);
-    expect(find.text('15 minutes'), findsOneWidget);
   });
 }

@@ -27,8 +27,6 @@ class SecureStorageVaultStore implements VaultStore {
   static const String _keyActiveIdentityId = 'active_identity_id';
   static const String _keyInactivityTimeout = 'inactivity_timeout';
   static const String _keyBackgroundLockDelay = 'background_lock_delay_minutes';
-  static const String _keyApprovalSessionDuration =
-      'approval_session_duration_minutes';
   static const String _keyIdentitiesPrefix = 'identity_';
 
   // In-memory cache
@@ -201,18 +199,6 @@ class SecureStorageVaultStore implements VaultStore {
   @override
   Future<void> setBackgroundLockDelayMinutes(int minutes) =>
       _writeCached(_keyBackgroundLockDelay, minutes.toString());
-
-  @override
-  Future<int?> getApprovalSessionDurationMinutes() async {
-    final value = await _readCached(_keyApprovalSessionDuration);
-    return value != null ? int.tryParse(value) : null;
-  }
-
-  @override
-  Future<void> setApprovalSessionDurationMinutes(int minutes) => _writeCached(
-    _keyApprovalSessionDuration,
-    minutes.toString(),
-  );
 
   @override
   Future<List<VaultIdentityRecord>> getIdentities() async {
