@@ -31,6 +31,16 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
 
+  /// When the background lock is due. Android can freeze or delay Symudol
+  /// in the background, so the timer may not have fired by the time it
+  /// resumes; resuming checks this too (#128). Wall time, which keeps
+  /// counting while the phone sleeps.
+  DateTime? _backgroundLockDueAt;
+
+  /// An overdue background lock is under way: the native deadline stays
+  /// until the vault has locked (#128).
+  bool _overdueLockPending = false;
+
   /// Locks at the usual delay plus [pickingLockGrace] while an image pick is
   /// still open (#43).
   Timer? _pickingGraceTimer;
@@ -94,6 +104,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   void _scheduleBackgroundLock() {
     _backgroundLockTimer?.cancel();
+    _backgroundLockDueAt = null;
     _pickingGraceTimer?.cancel();
     _inactivityTimer?.cancel();
 
@@ -120,12 +131,11 @@ class DiogelAppState extends ConsumerState<DiogelApp>
         final reviewLeft = expiresAt == null
             ? nip55.reviewTimeout
             : expiresAt.difference(DateTime.now());
-        unawaited(
-          nativeSync.setLockDeadline(
+        final deadline =
             (reviewLeft.isNegative ? Duration.zero : reviewLeft) +
-                Duration(minutes: delayMinutes),
-          ),
-        );
+            Duration(minutes: delayMinutes);
+        _backgroundLockDueAt = clock.now().add(deadline);
+        unawaited(nativeSync.setLockDeadline(deadline));
       }
       return;
     }
@@ -146,6 +156,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       diogelLog('Deferring background lock while an image is picked');
       _lockDueAfterPick = false;
       _pickDeferredAt = clock.now();
+      _backgroundLockDueAt = clock.now().add(delay + pickingLockGrace);
       unawaited(nativeSync.setLockDeadline(delay + pickingLockGrace));
       _backgroundLockTimer = Timer(delay, () {
         if (!mounted) return;
@@ -170,6 +181,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     }
 
     unawaited(nativeSync.setLockDeadline(Duration(minutes: delayMinutes)));
+    _backgroundLockDueAt = clock.now().add(Duration(minutes: delayMinutes));
     _backgroundLockTimer = Timer(Duration(minutes: delayMinutes), () {
       if (!mounted) return;
       diogelLog('Background lock timer expired');
@@ -192,9 +204,30 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     }
   }
 
+  /// Locks on resume if the background lock fell due while its timer did
+  /// not fire (#128).
+  ///
+  /// The lock reaches the native key only after a few awaits, so the native
+  /// key is cleared here first.
+  void _applyOverdueBackgroundLock() {
+    final dueAt = _backgroundLockDueAt;
+    _backgroundLockDueAt = null;
+    if (dueAt == null || clock.now().isBefore(dueAt)) return;
+    final vaultControllerState = ref.read(vaultControllerProvider);
+    if (vaultControllerState.vaultState is! VaultUnlocked) return;
+    final delayMinutes = vaultControllerState.backgroundLockDelayMinutes;
+    if (delayMinutes < 0) return;
+    diogelLog('Background lock fell due while in the background');
+    _overdueLockPending = true;
+    unawaited(ref.read(nip55NativeSyncProvider).clearActiveKey());
+    _lockInBackground(delayMinutes);
+  }
+
   void _cancelLockTimers() {
     _inactivityTimer?.cancel();
     _backgroundLockTimer?.cancel();
+    _backgroundLockDueAt = null;
+    _overdueLockPending = false;
     _pickingGraceTimer?.cancel();
     _lockDueAfterPick = false;
   }
@@ -253,9 +286,13 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       _lockInBackground(delayMinutes);
       return;
     }
-    // The grace no longer applies: the native key gets only what is left of
-    // the usual delay, as the Dart timer does.
+    // The grace no longer applies: the native key, and a resume after a
+    // freeze (#128), get only what is left of the usual delay, as the Dart
+    // timer does.
     final since = _pickDeferredAt;
+    if (since != null && delayMinutes >= 0) {
+      _backgroundLockDueAt = since.add(Duration(minutes: delayMinutes));
+    }
     if (since != null && delayMinutes > 0) {
       final left =
           Duration(minutes: delayMinutes) - clock.now().difference(since);
@@ -294,15 +331,24 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
+      // Leaving passes through hidden then paused, and coming back from
+      // paused through hidden again: only the first starts the delay, or a
+      // return would restart it just before resuming checks it (#128).
+      if (_inBackground) return;
       _inBackground = true;
       _scheduleBackgroundLock();
     } else if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive) {
       _inBackground = false;
+      _applyOverdueBackgroundLock();
       _backgroundLockTimer?.cancel();
       _pickingGraceTimer?.cancel();
       _lockDueAfterPick = false;
-      unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
+      // An overdue lock keeps the native deadline, which has passed or
+      // soon will; the next unlock replaces it with the key.
+      if (!_overdueLockPending) {
+        unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
+      }
       // A fingerprint may have been added in Android settings meanwhile, so
       // Settings and the unlock screen show what the phone can do now (#23).
       unawaited(

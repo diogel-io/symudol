@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:clock/clock.dart';
+
 import 'package:symudol/app/app.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
@@ -251,6 +253,98 @@ void main() {
     expect(state, isA<VaultUnlocked>());
   });
 
+  // ── Timers that do not fire in the background (#128) ─────────────────────
+
+  /// Resumes [after] the app went to the background, as if Android froze
+  /// Symudol meanwhile: the clock moves on but no timer fires. Coming back
+  /// from paused passes through hidden and inactive, as on a device.
+  void sendResumeAfterFreeze(WidgetTester tester, Duration after) {
+    final resumedAt = clock.now().add(after);
+    withClock(Clock.fixed(resumedAt), () {
+      for (final state in [
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+    });
+  }
+
+  Future<void> resumeAfterFreeze(WidgetTester tester, Duration after) async {
+    sendResumeAfterFreeze(tester, after);
+    await tester.pump();
+  }
+
+  testWidgets(
+    'a resume after the delay expires the session though no timer fired',
+    (tester) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(5);
+      final container = await pumpUnlockedApp(tester, store);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+      await resumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
+    },
+  );
+
+  testWidgets('a late resume clears the native key before its deadline', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(5);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    final keysClearedBefore = nativeSync.keysCleared;
+    final deadlinesClearedBefore = nativeSync.deadlinesCleared;
+
+    sendResumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+
+    // The key goes at once, not after the lock's awaits, and the deadline
+    // stays until then.
+    expect(nativeSync.keysCleared, greaterThan(keysClearedBefore));
+    expect(nativeSync.deadlinesCleared, deadlinesClearedBefore);
+    await tester.pumpAndSettle();
+    expect(container.read(vaultStateProvider), isA<SessionExpired>());
+  });
+
+  testWidgets('a resume before the delay leaves the vault unlocked', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(5);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await resumeAfterFreeze(tester, const Duration(minutes: 4, seconds: 59));
+    await tester.pumpAndSettle();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+  });
+
+  testWidgets('never locking in the background stays unlocked after a freeze', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(-1);
+    final container = await pumpUnlockedApp(tester, store);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await resumeAfterFreeze(tester, const Duration(hours: 2));
+    await tester.pumpAndSettle();
+
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+  });
+
   // ── The native key and pending reviews (#9) ──────────────────────────────
 
   /// Opens a sign_message review, as a client app would.
@@ -355,6 +449,46 @@ void main() {
       contains('NIP-55 request timed out waiting for review'),
     );
     expect(container.read(vaultStateProvider), isA<VaultLocked>());
+  });
+
+  testWidgets('a resume after a deferred review\'s deadline locks the vault', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(0);
+    final container = await pumpUnlockedApp(tester, store);
+    await openReview(tester, container);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+    // Past the review's timeout plus the (zero) lock delay.
+    await resumeAfterFreeze(tester, const Duration(minutes: 5, seconds: 1));
+
+    expect(container.read(vaultStateProvider), isA<VaultLocked>());
+  });
+
+  testWidgets('a review settled in the background starts the delay from then', (
+    tester,
+  ) async {
+    final store = FakeVaultStore();
+    await store.setBackgroundLockDelayMinutes(1);
+    final container = await pumpUnlockedApp(tester, store);
+    await openReview(tester, container);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    await container
+        .read(nip55ControllerProvider.notifier)
+        .rejectCryptoRequest();
+    await tester.pump();
+    expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+    await resumeAfterFreeze(tester, const Duration(minutes: 1, seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(container.read(vaultStateProvider), isA<SessionExpired>());
   });
 
   group('picking a profile image (#43)', () {
@@ -483,6 +617,61 @@ void main() {
 
       expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
       expect(nativeSync.deadlines, isEmpty);
+    });
+
+    testWidgets('a pick left open past its grace locks on a late resume', (
+      tester,
+    ) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(1);
+      final container = await pumpUnlockedApp(tester, store);
+      startPick(container);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      // Past the delay plus five minutes, with no timer fired (#128).
+      await resumeAfterFreeze(tester, const Duration(minutes: 6, seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
+    });
+
+    testWidgets('a pick back within its grace stays unlocked on a late resume', (
+      tester,
+    ) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(1);
+      await store.setInactivityTimeout(0);
+      final container = await pumpUnlockedApp(tester, store);
+      final pick = startPick(container);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+
+      await resumeAfterFreeze(tester, const Duration(minutes: 5));
+      pick.complete();
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+    });
+
+    testWidgets('a pick that ended in the background keeps the usual delay '
+        'on a late resume', (tester) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(5);
+      final container = await pumpUnlockedApp(tester, store);
+      final pick = startPick(container);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(seconds: 30));
+      pick.complete();
+      await tester.pump();
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+      // Five and a half minutes after the pick began: past the usual delay,
+      // though within the grace the pick no longer has (#128).
+      await resumeAfterFreeze(tester, const Duration(minutes: 5));
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
     });
   });
 }
