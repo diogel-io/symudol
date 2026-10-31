@@ -29,6 +29,14 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   final _navigatorKey = GlobalKey<NavigatorState>();
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
+
+  /// Locks at the usual delay plus [pickingLockGrace] while an image pick is
+  /// still open (#43).
+  Timer? _pickingGraceTimer;
+
+  /// The background lock delay ran out while an image was being picked, so
+  /// the lock applies as soon as the pick ends (#43).
+  bool _lockDueAfterPick = false;
   bool _inBackground = false;
 
   @override
@@ -44,6 +52,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   void dispose() {
     _inactivityTimer?.cancel();
     _backgroundLockTimer?.cancel();
+    _pickingGraceTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -80,6 +89,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
   void _scheduleBackgroundLock() {
     _backgroundLockTimer?.cancel();
+    _pickingGraceTimer?.cancel();
     _inactivityTimer?.cancel();
 
     final vaultControllerState = ref.read(vaultControllerProvider);
@@ -122,14 +132,24 @@ class DiogelAppState extends ConsumerState<DiogelApp>
 
     // The photo picker or camera the user opened from Edit profile sends
     // Symudol to the background; locking then would close Edit profile and
-    // lose the edit (#43). The lock waits for the pick, but only up to
-    // [pickingLockGrace] past the usual delay, and the native key gets the
-    // same deadline.
+    // lose the edit (#43). The usual delay still runs from now: if it ends
+    // during the pick, the lock applies when the pick ends. A pick still
+    // open [pickingLockGrace] after the delay locks anyway, and the native
+    // key gets that deadline.
     if (ref.read(pickingProfileImageProvider)) {
-      final bound = Duration(minutes: delayMinutes) + pickingLockGrace;
+      final delay = Duration(minutes: delayMinutes);
       diogelLog('Deferring background lock while an image is picked');
-      unawaited(nativeSync.setLockDeadline(bound));
-      _backgroundLockTimer = Timer(bound, () {
+      _lockDueAfterPick = false;
+      unawaited(nativeSync.setLockDeadline(delay + pickingLockGrace));
+      _backgroundLockTimer = Timer(delay, () {
+        if (!mounted) return;
+        if (ref.read(pickingProfileImageProvider)) {
+          _lockDueAfterPick = true;
+        } else {
+          _lockInBackground(delayMinutes);
+        }
+      });
+      _pickingGraceTimer = Timer(delay + pickingLockGrace, () {
         if (!mounted) return;
         diogelLog('Image pick outlasted the background lock');
         ref.read(vaultControllerProvider.notifier).expireSession();
@@ -155,9 +175,22 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   /// unlocked while the user picks an image (#43).
   static const Duration pickingLockGrace = Duration(minutes: 5);
 
+  /// Applies the background lock: a zero delay locks, a timed one expires
+  /// the session, as when no pick deferred it.
+  void _lockInBackground(int delayMinutes) {
+    final vault = ref.read(vaultControllerProvider.notifier);
+    if (delayMinutes == 0) {
+      vault.lock();
+    } else {
+      vault.expireSession();
+    }
+  }
+
   void _cancelLockTimers() {
     _inactivityTimer?.cancel();
     _backgroundLockTimer?.cancel();
+    _pickingGraceTimer?.cancel();
+    _lockDueAfterPick = false;
   }
 
   void _handleVaultControllerChanged(
@@ -201,14 +234,21 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     }
   }
 
-  /// A NIP-55 request settled (or its review timed out) while in the
-  /// background: the deferred background lock applies now.
+  /// An image pick ended while still in the background: the lock applies
+  /// now if the delay already ran out, or when its timer ends (#43).
   void _handlePickingChanged(bool? previous, bool next) {
-    if (_inBackground && previous == true && !next) {
-      _scheduleBackgroundLock();
+    if (!_inBackground || previous != true || next) return;
+    _pickingGraceTimer?.cancel();
+    if (_lockDueAfterPick) {
+      _lockDueAfterPick = false;
+      _lockInBackground(
+        ref.read(vaultControllerProvider).backgroundLockDelayMinutes,
+      );
     }
   }
 
+  /// A NIP-55 request settled (or its review timed out) while in the
+  /// background: the deferred background lock applies now.
   void _handleNip55Changed(Nip55State? previous, Nip55State next) {
     if (_inBackground &&
         previous?.hasPendingExternalRequest == true &&
@@ -240,6 +280,8 @@ class DiogelAppState extends ConsumerState<DiogelApp>
         state == AppLifecycleState.inactive) {
       _inBackground = false;
       _backgroundLockTimer?.cancel();
+      _pickingGraceTimer?.cancel();
+      _lockDueAfterPick = false;
       unawaited(ref.read(nip55NativeSyncProvider).clearLockDeadline());
       // A fingerprint may have been added in Android settings meanwhile, so
       // Settings and the unlock screen show what the phone can do now (#23).

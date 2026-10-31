@@ -66,9 +66,19 @@ Uint8List reencodeProfileImage(Uint8List bytes, {required int maxSide}) {
   var source = img.bakeOrientation(decoded.frames.first);
   final longest = source.width > source.height ? source.width : source.height;
   if (longest > maxSide) {
+    // Averaging, not the default nearest-neighbour sampling, so a large
+    // photo scaled down does not alias.
     source = source.width >= source.height
-        ? img.copyResize(source, width: maxSide)
-        : img.copyResize(source, height: maxSide);
+        ? img.copyResize(
+            source,
+            width: maxSide,
+            interpolation: img.Interpolation.average,
+          )
+        : img.copyResize(
+            source,
+            height: maxSide,
+            interpolation: img.Interpolation.average,
+          );
   }
 
   final clean = img.Image(width: source.width, height: source.height)

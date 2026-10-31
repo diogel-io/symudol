@@ -429,6 +429,44 @@ void main() {
       expect(container.read(vaultStateProvider), isA<SessionExpired>());
     });
 
+    testWidgets('a pick that ends after the delay locks at once', (
+      tester,
+    ) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(1);
+      final container = await pumpUnlockedApp(tester, store);
+      final pick = startPick(container);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(minutes: 3));
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+      // The delay ran out during the pick, so it does not start again.
+      pick.complete();
+      await tester.pumpAndSettle();
+
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
+    });
+
+    testWidgets('a pick that ends before the delay keeps the delay', (
+      tester,
+    ) async {
+      final store = FakeVaultStore();
+      await store.setBackgroundLockDelayMinutes(1);
+      final container = await pumpUnlockedApp(tester, store);
+      final pick = startPick(container);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(seconds: 30));
+
+      pick.complete();
+      await tester.pump(const Duration(seconds: 29));
+      expect(container.read(vaultStateProvider), isA<VaultUnlocked>());
+
+      // One minute after going to the background, not after the pick.
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(container.read(vaultStateProvider), isA<SessionExpired>());
+    });
+
     testWidgets('never locking in the background stays so while picking', (
       tester,
     ) async {
