@@ -27,7 +27,14 @@ class _FakePicker implements ProfileImagePicker {
   _FakePicker(this.image);
 
   Uint8List? image;
+
+  /// Whether the camera can be used, as on Android; false as on desktop.
+  bool camera = true;
   final List<ProfileImageSource> sources = [];
+
+  @override
+  bool supports(ProfileImageSource source) =>
+      source != ProfileImageSource.camera || camera;
 
   @override
   Future<Uint8List?> pick(ProfileImageSource source) async {
@@ -314,6 +321,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(picker.sources, [ProfileImageSource.camera]);
+    });
+
+    testWidgets('offers no camera where there is none', (tester) async {
+      picker.camera = false;
+      await openLoaded(tester);
+
+      await tester.tap(find.byTooltip('Upload picture'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose from photos'), findsOneWidget);
+      expect(find.text('Take a photo'), findsNothing);
     });
 
     testWidgets('cancelling the confirm uploads nothing', (tester) async {

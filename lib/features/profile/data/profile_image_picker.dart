@@ -9,6 +9,10 @@ enum ProfileImageSource { photos, camera }
 abstract class ProfileImagePicker {
   /// The chosen image's bytes, or null when the user cancelled.
   Future<Uint8List?> pick(ProfileImageSource source);
+
+  /// Whether [source] can be used on this platform. Desktop builds have no
+  /// camera capture.
+  bool supports(ProfileImageSource source);
 }
 
 /// [ProfileImagePicker] through the system photo picker and the camera
@@ -24,16 +28,23 @@ class SystemProfileImagePicker implements ProfileImagePicker {
 
   final ImagePicker _picker;
 
+  @override
+  bool supports(ProfileImageSource source) =>
+      _picker.supportsImageSource(_imageSource(source));
+
+  static ImageSource _imageSource(ProfileImageSource source) =>
+      switch (source) {
+        ProfileImageSource.photos => ImageSource.gallery,
+        ProfileImageSource.camera => ImageSource.camera,
+      };
+
   /// The longest side, in pixels, of the image the picker hands over.
   static const double maxPickedSide = 4096;
 
   @override
   Future<Uint8List?> pick(ProfileImageSource source) async {
     final file = await _picker.pickImage(
-      source: switch (source) {
-        ProfileImageSource.photos => ImageSource.gallery,
-        ProfileImageSource.camera => ImageSource.camera,
-      },
+      source: _imageSource(source),
       maxWidth: maxPickedSide,
       maxHeight: maxPickedSide,
       imageQuality: 95,

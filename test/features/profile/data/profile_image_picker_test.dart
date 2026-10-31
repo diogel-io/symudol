@@ -6,6 +6,12 @@ import 'package:symudol/features/profile/data/profile_image_picker.dart';
 class _RecordingImagePicker extends ImagePicker {
   final calls = <Map<String, Object?>>[];
 
+  /// The sources this platform supports.
+  Set<ImageSource> supported = {ImageSource.gallery, ImageSource.camera};
+
+  @override
+  bool supportsImageSource(ImageSource source) => supported.contains(source);
+
   @override
   Future<XFile?> pickImage({
     required ImageSource source,
@@ -48,4 +54,12 @@ void main() {
       });
     });
   }
+
+  test('reports the camera missing where the platform has none', () {
+    final picker = _RecordingImagePicker()..supported = {ImageSource.gallery};
+    final system = SystemProfileImagePicker(picker: picker);
+
+    expect(system.supports(ProfileImageSource.photos), isTrue);
+    expect(system.supports(ProfileImageSource.camera), isFalse);
+  });
 }

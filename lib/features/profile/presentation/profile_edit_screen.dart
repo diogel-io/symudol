@@ -155,7 +155,11 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   Future<void> _upload(ProfileImageKind kind) async {
     final source = await showModalBottomSheet<ProfileImageSource>(
       context: context,
-      builder: (context) => const _ImageSourceSheet(),
+      builder: (context) => _ImageSourceSheet(
+        canTakePhoto: ref
+            .read(profileImagePickerProvider)
+            .supports(ProfileImageSource.camera),
+      ),
     );
     if (source == null || !mounted) return;
 
@@ -593,7 +597,10 @@ class _UploadButton extends StatelessWidget {
 
 /// Asks where the image comes from.
 class _ImageSourceSheet extends StatelessWidget {
-  const _ImageSourceSheet();
+  const _ImageSourceSheet({required this.canTakePhoto});
+
+  /// False where there is no camera capture, such as desktop builds.
+  final bool canTakePhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -606,11 +613,12 @@ class _ImageSourceSheet extends StatelessWidget {
             title: const Text('Choose from photos'),
             onTap: () => Navigator.of(context).pop(ProfileImageSource.photos),
           ),
-          ListTile(
-            leading: const Icon(Icons.photo_camera_outlined),
-            title: const Text('Take a photo'),
-            onTap: () => Navigator.of(context).pop(ProfileImageSource.camera),
-          ),
+          if (canTakePhoto)
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.of(context).pop(ProfileImageSource.camera),
+            ),
         ],
       ),
     );
