@@ -40,7 +40,7 @@ void main() {
 
       expect(client.queries, hasLength(1));
       final first = client.queries.single;
-      expect(first.kinds, [0, 10002]);
+      expect(first.kinds, [0, 10002, 10063]);
       expect(first.author, alice);
       expect(first.relays, [...defaultProfileRelays, ...defaultIndexerRelays]);
     },
@@ -58,7 +58,7 @@ void main() {
       final lookup = await service.fetchProfile(alice);
 
       final second = client.queries.last;
-      expect(second.kinds, [0]);
+      expect(second.kinds, [0, 10063]);
       expect(second.relays, [own]);
       expect(lookup.profile?.name, 'own');
       expect(lookup.searchedRelays, [
@@ -205,6 +205,58 @@ void main() {
     });
   });
 
+  group('the identity\'s Blossom servers (#43)', () {
+    test('are read from its kind 10063 list, in order', () async {
+      client.held[indexer] = [
+        _serverList(alice, ['https://old.example'], 1),
+        _serverList(alice, [
+          'https://Media.Example/',
+          'https://second.example',
+        ], 5),
+      ];
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(lookup.blossomServers, [
+        'https://media.example',
+        'https://second.example',
+      ]);
+    });
+
+    test('drop entries that are not https', () async {
+      client.held[indexer] = [
+        _serverList(alice, ['http://plain.example', 'https://ok.example'], 1),
+      ];
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(lookup.blossomServers, ['https://ok.example']);
+    });
+
+    test('are found on the identity\'s own relays', () async {
+      client.held[indexer] = [
+        _relayList(alice, [own], 1),
+      ];
+      client.held[own] = [
+        _serverList(alice, ['https://own-media.example'], 2),
+      ];
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(lookup.blossomServers, ['https://own-media.example']);
+    });
+
+    test('ignore a list signed by another key', () async {
+      client.held[indexer] = [
+        _serverList(mallory, ['https://evil.example'], 9),
+      ];
+
+      final lookup = await service.fetchProfile(alice);
+
+      expect(lookup.blossomServers, isEmpty);
+    });
+  });
+
   test('no relay answering is a fetch failure, not no profile', () async {
     client.unreachable.addAll([
       ...defaultProfileRelays,
@@ -311,6 +363,16 @@ NostrEvent _relayList(String pubkey, List<String> relays, int createdAt) =>
       createdAt,
       tags: [
         for (final relay in relays) ['r', relay],
+      ],
+    );
+
+NostrEvent _serverList(String pubkey, List<String> servers, int createdAt) =>
+    _event(
+      pubkey,
+      10063,
+      createdAt,
+      tags: [
+        for (final server in servers) ['server', server],
       ],
     );
 

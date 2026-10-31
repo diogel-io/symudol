@@ -119,3 +119,14 @@ String? normaliseBlossomUrl(String? value) {
   final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
   return 'https://$host$port$path';
 }
+
+/// The `server` tags of a Blossom server list (BUD-03, kind 10063), in order
+/// and normalised; entries that are not https are dropped
+/// (diogel-io/symudol#43).
+List<String> blossomServers(List<List<String>>? tags) {
+  if (tags == null) return const [];
+  return {
+    for (final tag in tags)
+      if (tag.length >= 2 && tag[0] == 'server') ?normaliseBlossomUrl(tag[1]),
+  }.toList();
+}
