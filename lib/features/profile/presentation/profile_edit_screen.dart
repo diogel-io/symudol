@@ -177,7 +177,13 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     if (bytes == null || !mounted) return;
 
     final editor = ref.read(profileEditorProvider(_pubkey).notifier);
-    final server = await editor.uploadServer();
+    final String server;
+    try {
+      server = await editor.uploadServer();
+    } catch (_) {
+      if (mounted) _showError("Couldn't read the media server setting.");
+      return;
+    }
     if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
