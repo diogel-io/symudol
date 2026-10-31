@@ -34,14 +34,6 @@ String formatBackgroundLockDelay(int minutes) {
   };
 }
 
-String formatApprovalSessionDuration(int minutes) {
-  return switch (minutes) {
-    0 => 'Ask every time',
-    1 => '1 minute',
-    _ => '$minutes minutes',
-  };
-}
-
 String formatWipeAfterFailures(int? attempts) =>
     attempts == null ? 'Off' : 'After $attempts failed attempts';
 
@@ -77,8 +69,6 @@ class SettingsScreen extends ConsumerWidget {
     final timeoutMinutes = vaultControllerState.inactivityTimeoutMinutes;
     final backgroundLockDelayMinutes =
         vaultControllerState.backgroundLockDelayMinutes;
-    final approvalSessionDurationMinutes =
-        vaultControllerState.approvalSessionDurationMinutes;
     final wipeAfterFailures = vaultControllerState.wipeAfterFailures;
     final biometricUnlock = vaultControllerState.biometricUnlock;
 
@@ -181,37 +171,6 @@ class SettingsScreen extends ConsumerWidget {
                 ref
                     .read(vaultControllerProvider.notifier)
                     .setBackgroundLockDelayMinutes(newValue);
-              }
-            },
-          ),
-          SettingsTile(
-            icon: Icons.verified_user_outlined,
-            title: 'Approval session duration',
-            // Says what the code does (#5): remembered decisions for a specific
-            // kind or action do not depend on an approval session, and a
-            // request to sign any kind is never remembered.
-            subtitle:
-                'Not currently used: remembered decisions apply whenever the '
-                'vault is unlocked. Set to: '
-                '${formatApprovalSessionDuration(approvalSessionDurationMinutes)}',
-            onTap: () async {
-              final newValue = await showDialog<int>(
-                context: context,
-                builder: (context) => _TimeoutPickerDialog(
-                  title: 'Approval session duration',
-                  initialValue: approvalSessionDurationMinutes,
-                  options: const [
-                    _TimeoutOption(0, 'Ask every time'),
-                    _TimeoutOption(1, '1 minute'),
-                    _TimeoutOption(5, '5 minutes'),
-                    _TimeoutOption(15, '15 minutes'),
-                  ],
-                ),
-              );
-              if (newValue != null) {
-                ref
-                    .read(vaultControllerProvider.notifier)
-                    .setApprovalSessionDurationMinutes(newValue);
               }
             },
           ),
