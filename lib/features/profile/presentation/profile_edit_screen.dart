@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/route_pop.dart';
 import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/load_profile_action.dart';
 import '../../identity/domain/vault_identity.dart';
@@ -65,7 +66,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     );
     if (!mounted) return;
     if (confirmed != true) {
-      Navigator.of(context).pop();
+      // A lock closes the dialog and this screen together (#123).
+      popIfCurrent(context);
       return;
     }
     await _load();

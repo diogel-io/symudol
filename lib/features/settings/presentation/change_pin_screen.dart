@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/route_pop.dart';
 import '../../../theme/tokens.dart';
 import '../../unlock/presentation/pin_lockout_countdown.dart';
 import '../../unlock/presentation/widgets/pin_button.dart';
@@ -138,7 +139,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen>
         .changePin(_current, _new);
     if (!mounted) return;
     if (failure == null) {
-      Navigator.of(context).pop(true);
+      popIfCurrent(context, true);
       return;
     }
     // A wrong current PIN (or a lockout) starts again from the current PIN.

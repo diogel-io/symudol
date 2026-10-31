@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/route_pop.dart';
 import 'package:symudol/app/sensitive_clipboard.dart';
 import 'package:symudol/app/sensitive_selection.dart';
 
@@ -106,11 +107,14 @@ class _Nip46ConnectionQrSheetState
       final token = await ref
           .read(nip46ControllerProvider.notifier)
           .initiateBunkerSession();
+      // A vault lock can close the sheet meanwhile (#123).
+      if (!mounted) return;
       setState(() {
         _generatedToken = token;
         _isGenerating = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _generateError = e.toString();
         _isGenerating = false;
@@ -136,8 +140,9 @@ class _Nip46ConnectionQrSheetState
       await ref
           .read(nip46ControllerProvider.notifier)
           .importNostrconnectToken(uri);
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) popIfCurrent(context);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _importError = e.toString();
         _isImporting = false;

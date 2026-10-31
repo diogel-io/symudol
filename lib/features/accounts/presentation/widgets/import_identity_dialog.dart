@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:symudol/app/route_pop.dart';
 import 'package:symudol/app/sensitive_selection.dart';
 import 'package:symudol/features/vault/presentation/vault_failure_messages.dart';
 import 'package:symudol/theme/tokens.dart';
@@ -55,6 +56,9 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
       displayName: name.isEmpty ? null : name,
     );
     
+    // A vault lock can close the dialog during the import (#123).
+    if (!mounted) return;
+
     // The controller update is async, and it updates the state.
     // We should check the state for failures.
     final state = ref.read(vaultControllerProvider);
@@ -73,7 +77,7 @@ class _ImportIdentityDialogState extends ConsumerState<ImportIdentityDialog> {
     _nameController.clear();
 
     if (mounted) {
-      Navigator.of(context).pop(true);
+      popIfCurrent(context, true);
     }
   }
 
