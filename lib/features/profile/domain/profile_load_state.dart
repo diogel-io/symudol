@@ -26,6 +26,7 @@ class ProfileLoaded extends ProfileLoadState {
     this.createdAt,
     this.searchedRelays = const [],
     this.publishRelays = const [],
+    this.blossomServers = const [],
   });
 
   final NostrProfile? _profile;
@@ -43,6 +44,10 @@ class ProfileLoaded extends ProfileLoadState {
   /// Where a new or edited profile should be published: the identity's own
   /// write relays plus the defaults.
   final List<String> publishRelays;
+
+  /// The https Blossom servers the identity lists (kind 10063), in its order
+  /// of preference (diogel-io/symudol#43).
+  final List<String> blossomServers;
 
   @override
   NostrProfile? get profile => _profile;

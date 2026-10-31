@@ -28,10 +28,14 @@ class RelayProfileService {
   static const int _relayListKind = 10002;
   static const int _profileKind = 0;
 
+  /// The identity's Blossom server list (BUD-03, diogel-io/symudol#43).
+  static const int _blossomListKind = 10063;
+
   /// Looks up the most recent profile metadata for [pubkeyHex]. The profile
-  /// and indexer relays are asked for both the identity's relay list (kind
-  /// 10002) and its profile (kind 0) at once; the list's write relays not
-  /// already asked are then asked for the profile too.
+  /// and indexer relays are asked for the identity's relay list (kind 10002),
+  /// its profile (kind 0) and its Blossom server list (kind 10063) at once;
+  /// the list's write relays not already asked are then asked for the
+  /// profile and the server list too.
   ///
   /// Throws [ProfileFetchException] when no relay answered or the profile
   /// cannot be read, so callers can tell a failure from no profile: a
@@ -49,7 +53,7 @@ class RelayProfileService {
         settings.indexerRelays,
       );
       final first = await _client.query(
-        kinds: const [_profileKind, _relayListKind],
+        kinds: const [_profileKind, _relayListKind, _blossomListKind],
         author: pubkeyHex,
         relays: base,
       );
@@ -63,7 +67,7 @@ class RelayProfileService {
       if (unasked.isNotEmpty) {
         try {
           final second = await _client.query(
-            kinds: const [_profileKind],
+            kinds: const [_profileKind, _blossomListKind],
             author: pubkeyHex,
             relays: unasked,
           );
@@ -101,6 +105,9 @@ class RelayProfileService {
           settings.indexerRelays,
         ).where(answered.contains).toList(),
         publishRelays: profileRelays(own, settings.profileRelays),
+        blossomServers: blossomServers(
+          _newest(events, _blossomListKind, pubkeyHex)?.tags,
+        ),
       );
     } catch (error) {
       throw ProfileFetchException(error);
@@ -142,6 +149,7 @@ class ProfileLookup {
     this.createdAt,
     this.searchedRelays = const [],
     this.publishRelays = const [],
+    this.blossomServers = const [],
   });
 
   /// The newest profile found, or null when no relay held one.
@@ -161,6 +169,10 @@ class ProfileLookup {
   /// Where a new or edited profile should be published: the identity's own
   /// write relays plus the defaults.
   final List<String> publishRelays;
+
+  /// The https Blossom servers the identity lists (kind 10063), in its order
+  /// of preference; empty when it lists none.
+  final List<String> blossomServers;
 }
 
 /// The profile could not be fetched or read.

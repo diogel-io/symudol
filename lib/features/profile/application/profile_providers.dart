@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../vault/application/vault_providers.dart';
 import '../../vault/domain/vault_state.dart';
+import '../data/blossom_client.dart';
+import '../data/profile_image_picker.dart';
 import '../data/profile_relay_client.dart';
 import '../data/relay_profile_service.dart';
 import '../data/secure_storage_profile_network_store.dart';
@@ -23,6 +25,40 @@ final relayProfileServiceProvider = Provider<RelayProfileService>((ref) {
 final profileRelayClientProvider = Provider<ProfileRelayClient>((ref) {
   return DartNostrProfileRelayClient();
 });
+
+/// The Blossom server connection images are uploaded through
+/// (diogel-io/symudol#43).
+final blossomClientProvider = Provider<BlossomClient>((ref) {
+  return BlossomClient();
+});
+
+/// The photo picker and camera profile images come from.
+final profileImagePickerProvider = Provider<ProfileImagePicker>((ref) {
+  return SystemProfileImagePicker();
+});
+
+/// Whether the photo picker or camera is open over Symudol. Opening either
+/// sends Symudol to the background, so the background lock waits for it, up
+/// to a bound (diogel-io/symudol#43).
+final pickingProfileImageProvider =
+    NotifierProvider<PickingProfileImageNotifier, bool>(
+      PickingProfileImageNotifier.new,
+    );
+
+class PickingProfileImageNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// Runs [pick] with the flag set.
+  Future<T> during<T>(Future<T> Function() pick) async {
+    state = true;
+    try {
+      return await pick();
+    } finally {
+      state = false;
+    }
+  }
+}
 
 /// Where the profile network settings are kept.
 final profileNetworkStoreProvider = Provider<ProfileNetworkStore>((ref) {
@@ -95,6 +131,7 @@ class NostrProfileNotifier extends Notifier<ProfileLoadState> {
         createdAt: lookup.createdAt,
         searchedRelays: lookup.searchedRelays,
         publishRelays: lookup.publishRelays,
+        blossomServers: lookup.blossomServers,
       );
     } catch (_) {
       next = const ProfileLoadFailed();
