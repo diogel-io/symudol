@@ -41,10 +41,13 @@ class Nip05Result {
 typedef Nip05Identifier = ({String name, String domain});
 
 /// Splits [identifier] into its name and domain, or returns null when it is
-/// not `name@domain`. A bare word is not a domain, and a port, path or user
+/// not `name@domain`. NIP-05 names use only `a-z0-9-_.`, read here without
+/// regard to case. A bare word is not a domain, and a port, path or user
 /// would change where the request goes, so those are refused too.
 Nip05Identifier? parseNip05Identifier(String identifier) {
-  final match = RegExp(r'^([^@\s]+)@([^@\s]+)$').firstMatch(identifier.trim());
+  final match = RegExp(
+    r'^([A-Za-z0-9._-]+)@([^@\s]+)$',
+  ).firstMatch(identifier.trim());
   if (match == null) return null;
   final name = match.group(1)!;
   final domain = match.group(2)!;

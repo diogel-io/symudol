@@ -21,6 +21,10 @@ void main() {
       expect(parsed?.domain, 'example.com');
     });
 
+    test('accepts every character NIP-05 allows in a name', () {
+      expect(parseNip05Identifier('a.b-c_9@example.com')?.name, 'a.b-c_9');
+    });
+
     test('accepts the root name', () {
       expect(parseNip05Identifier('_@example.com')?.name, '_');
     });
@@ -37,6 +41,8 @@ void main() {
       'bob@example.com/path',
       'bob@user:pw@example.com',
       'bob@foo..example.com',
+      'bob+tag@example.com',
+      'bøb@example.com',
       'bob@.example.com',
     ]) {
       test('refuses "$bad"', () {
