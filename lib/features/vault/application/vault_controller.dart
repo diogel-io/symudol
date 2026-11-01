@@ -532,15 +532,26 @@ class VaultController extends StateNotifier<VaultControllerState> {
       return (null, const VaultLockedFailure());
     }
     state = state.copyWith(isLoading: true, clearFailure: true);
+    (BackupRestoreResult?, VaultFailure?) outcome;
     try {
-      final result = await _vaultService.restoreBackup(file, passphrase);
-      await _refreshState();
-      return (result, null);
+      outcome = (await _vaultService.restoreBackup(file, passphrase), null);
     } catch (e) {
-      return (null, _mapExceptionToFailure(e));
+      outcome = (null, _mapExceptionToFailure(e));
+    }
+    // Refreshed either way: a restore that fails partway through may already
+    // have saved some identities.
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a restore failed',
+        error: e,
+        stackTrace: stack,
+      );
     } finally {
       state = state.copyWith(isLoading: false);
     }
+    return outcome;
   }
 
   Future<void> setActiveIdentity(String localId) async {
