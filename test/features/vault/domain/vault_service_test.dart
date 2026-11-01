@@ -1790,7 +1790,7 @@ void main() {
     });
 
     test('a lock that starts during the export hands out nothing', () async {
-      final gatedStore = _GatedWrappedDekStore();
+      final gatedStore = _GatedStore();
       vaultService = VaultServiceImpl(
         gatedStore,
         clock: clock,
@@ -1799,17 +1799,23 @@ void main() {
       await vaultService.createVault(pin);
       final created = await vaultService.createIdentity();
 
-      // lock() drops the DEK at once, then waits on its storage read, so the
-      // state still says unlocked while the export finishes.
-      gatedStore.gate = Completer<void>();
+      // The export starts first and stops at its PIN check's envelope read.
+      gatedStore.envelopeGate = Completer<void>();
+      final export = vaultService.exportPrivateKey(
+        pin: pin,
+        identityLocalId: created.localId,
+      );
+      await gatedStore.envelopeReached.future;
+
+      // lock() drops the DEK at once, then waits on its own storage read, so
+      // the state still says unlocked while the export finishes.
+      gatedStore.wrappedDekGate = Completer<void>();
       unawaited(vaultService.lock());
       expect(vaultService.state, isA<VaultUnlocked>());
 
-      await expectLater(
-        vaultService.exportPrivateKey(pin: pin, identityLocalId: created.localId),
-        throwsA(isA<VaultLockedException>()),
-      );
-      gatedStore.gate!.complete();
+      gatedStore.envelopeGate!.complete();
+      await expectLater(export, throwsA(isA<VaultLockedException>()));
+      gatedStore.wrappedDekGate!.complete();
     });
 
     test('a locked vault exports nothing', () async {
@@ -1860,13 +1866,26 @@ class _RecordingCryptoService extends _CheapKdfCryptoService {
   }
 }
 
-/// Holds [getWrappedDek] until [gate] completes, to catch lock() mid-way.
-class _GatedWrappedDekStore extends FakeVaultStore {
-  Completer<void>? gate;
+/// Holds [getKeyEnvelope] and [getWrappedDek] at their gates, to stop an
+/// export and a lock part-way.
+class _GatedStore extends FakeVaultStore {
+  Completer<void>? envelopeGate;
+  final envelopeReached = Completer<void>();
+  Completer<void>? wrappedDekGate;
+
+  @override
+  Future<VaultKeyEnvelope?> getKeyEnvelope() async {
+    final gate = envelopeGate;
+    if (gate != null) {
+      if (!envelopeReached.isCompleted) envelopeReached.complete();
+      await gate.future;
+    }
+    return super.getKeyEnvelope();
+  }
 
   @override
   Future<String?> getWrappedDek() async {
-    await gate?.future;
+    await wrappedDekGate?.future;
     return super.getWrappedDek();
   }
 }
