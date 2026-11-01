@@ -74,7 +74,12 @@ class MainActivity : FlutterFragmentActivity() {
             val text = call.argument<String>("text")
             if (text == null) return@setMethodCallHandler result.error("INVALID_ARGS", "text required", null)
             try {
-                SensitiveClipboard.copy(applicationContext, call.argument<String>("label") ?: "Symudol", text)
+                SensitiveClipboard.copy(
+                    applicationContext,
+                    call.argument<String>("label") ?: "Symudol",
+                    text,
+                    clearAfterMs = call.argument<Number>("clearAfterMs")?.toLong(),
+                )
             } catch (e: Exception) {
                 DiogelLog.w(TAG, "copySensitiveText: clipboard copy failed", e)
                 return@setMethodCallHandler result.error("COPY_FAILED", "copy failed", null)

@@ -1659,6 +1659,127 @@ void main() {
       expect(nativeWipes, 0);
     });
   });
+
+  group('exporting a private key (#24)', () {
+    const pin = '123456';
+    const hexKey =
+        '3501454135014541350145413501453fefb02227e449e57cf4d3a3ce05378683';
+    late FakeMonotonicClock clock;
+
+    setUp(() async {
+      clock = FakeMonotonicClock();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+      );
+      await vaultService.createVault(pin);
+    });
+
+    test(
+      'returns the identity\'s nsec, any identity, not only the active one',
+      () async {
+        final imported = await vaultService.importIdentity(hexKey);
+        final other = await vaultService.createIdentity();
+        await vaultService.setActiveIdentity(other.localId);
+
+        final nsec = await vaultService.exportPrivateKey(
+          pin: pin,
+          identityLocalId: imported.localId,
+        );
+
+        expect(
+          nsec,
+          Nostr.instance.services.bech32.encodePrivateKeyToNsec(hexKey),
+        );
+        expect(nsec, startsWith('nsec1'));
+      },
+    );
+
+    test('an exported key re-imports as the same identity', () async {
+      final created = await vaultService.createIdentity();
+      final nsec = await vaultService.exportPrivateKey(
+        pin: pin,
+        identityLocalId: created.localId,
+      );
+
+      await vaultService.wipe();
+      await vaultService.createVault(pin);
+      final restored = await vaultService.importIdentity(nsec);
+
+      expect(restored.publicKey, created.publicKey);
+    });
+
+    test('a wrong PIN is refused and charged', () async {
+      final created = await vaultService.createIdentity();
+
+      await expectLater(
+        vaultService.exportPrivateKey(
+          pin: '654321',
+          identityLocalId: created.localId,
+        ),
+        throwsA(isA<InvalidPinException>()),
+      );
+      expect(await vaultService.getFailedUnlockAttempts(), 1);
+    });
+
+    test('the PIN lockout applies', () async {
+      final created = await vaultService.createIdentity();
+      for (var i = 0; i < 5; i++) {
+        await expectLater(
+          vaultService.exportPrivateKey(
+            pin: '654321',
+            identityLocalId: created.localId,
+          ),
+          throwsA(isA<InvalidPinException>()),
+        );
+        if (i < 4) clock.advance(VaultServiceImpl.lockoutFor(i + 1));
+      }
+
+      await expectLater(
+        vaultService.exportPrivateKey(
+          pin: pin,
+          identityLocalId: created.localId,
+        ),
+        throwsA(isA<VaultLockedOutException>()),
+      );
+    });
+
+    test('wrong PINs count towards wipe-after-N', () async {
+      final created = await vaultService.createIdentity();
+      await vaultService.setWipeAfterFailures(10);
+      await fakeStore.setFailedUnlockAttempts(9);
+
+      await expectLater(
+        vaultService.exportPrivateKey(
+          pin: '654321',
+          identityLocalId: created.localId,
+        ),
+        throwsA(isA<VaultWipedException>()),
+      );
+    });
+
+    test('an unknown identity is refused without charging the PIN', () async {
+      await expectLater(
+        vaultService.exportPrivateKey(pin: '654321', identityLocalId: 'nope'),
+        throwsA(isA<IdentityNotFoundException>()),
+      );
+      expect(await vaultService.getFailedUnlockAttempts(), 0);
+    });
+
+    test('a locked vault exports nothing', () async {
+      final created = await vaultService.createIdentity();
+      await vaultService.lock();
+
+      await expectLater(
+        vaultService.exportPrivateKey(
+          pin: pin,
+          identityLocalId: created.localId,
+        ),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+  });
 }
 
 /// The real AES-GCM wrapping over a trivially cheap Argon2id, so tests can

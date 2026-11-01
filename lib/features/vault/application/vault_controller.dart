@@ -523,6 +523,40 @@ class VaultController extends StateNotifier<VaultControllerState> {
     return (file, failure);
   }
 
+  /// The `nsec` of the identity with [identityLocalId], after checking [pin]
+  /// (#24). A failed PIN refreshes the lockout, as for a backup.
+  Future<(String?, VaultFailure?)> exportPrivateKey({
+    required String pin,
+    required String identityLocalId,
+  }) async {
+    state = state.copyWith(isLoading: true, clearFailure: true);
+    String? nsec;
+    VaultFailure? failure;
+    try {
+      nsec = await _vaultService.exportPrivateKey(
+        pin: pin,
+        identityLocalId: identityLocalId,
+      );
+    } catch (e) {
+      failure = _mapExceptionToFailure(e);
+    }
+    try {
+      await _refreshState();
+    } catch (e, stack) {
+      diogelLog(
+        'VaultController: refresh after a key export failed',
+        error: e,
+        stackTrace: stack,
+      );
+    }
+    if (state.vaultState is VaultUnlocked) await refreshLockout();
+    state = state.copyWith(
+      isLoading: false,
+      failure: failure is VaultWipedFailure ? failure : null,
+    );
+    return (nsec, failure);
+  }
+
   /// Imports the identities in the backup [file] (#25).
   Future<(BackupRestoreResult?, VaultFailure?)> restoreBackup(
     Uint8List file,

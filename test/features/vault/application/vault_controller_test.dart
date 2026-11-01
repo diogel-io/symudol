@@ -237,6 +237,38 @@ void main() {
   });
 
   backgroundLockDelayControllerTests();
+
+  group('exportPrivateKey (#24)', () {
+    test('returns the nsec for the right PIN', () async {
+      await controller.createVault('123456');
+      await controller.createIdentity(displayName: 'Work');
+      final identity = controller.state.activeIdentity!;
+
+      final (nsec, failure) = await controller.exportPrivateKey(
+        pin: '123456',
+        identityLocalId: identity.localId,
+      );
+
+      expect(failure, isNull);
+      expect(nsec, startsWith('nsec1'));
+      expect(controller.state.isLoading, isFalse);
+    });
+
+    test('maps a wrong PIN to InvalidPinFailure and returns no key', () async {
+      await controller.createVault('123456');
+      await controller.createIdentity();
+      final identity = controller.state.activeIdentity!;
+
+      final (nsec, failure) = await controller.exportPrivateKey(
+        pin: '654321',
+        identityLocalId: identity.localId,
+      );
+
+      expect(nsec, isNull);
+      expect(failure, isA<InvalidPinFailure>());
+      expect(controller.state.vaultState, isA<VaultUnlocked>());
+    });
+  });
 }
 
 void backgroundLockDelayControllerTests() {
