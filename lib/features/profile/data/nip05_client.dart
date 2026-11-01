@@ -44,9 +44,7 @@ typedef Nip05Identifier = ({String name, String domain});
 /// not `name@domain`. A bare word is not a domain, and a port, path or user
 /// would change where the request goes, so those are refused too.
 Nip05Identifier? parseNip05Identifier(String identifier) {
-  final match = RegExp(
-    r'^([^@\s]+)@([^@\s]+)$',
-  ).firstMatch(identifier.trim());
+  final match = RegExp(r'^([^@\s]+)@([^@\s]+)$').firstMatch(identifier.trim());
   if (match == null) return null;
   final name = match.group(1)!;
   final domain = match.group(2)!;
@@ -56,7 +54,11 @@ Nip05Identifier? parseNip05Identifier(String identifier) {
   } on FormatException {
     return null;
   }
-  if (!uri.host.contains('.') || uri.host != domain.toLowerCase()) return null;
+  if (!uri.host.contains('.') ||
+      uri.host != domain.toLowerCase() ||
+      uri.host.split('.').any((label) => label.isEmpty)) {
+    return null;
+  }
   return (name: name, domain: domain);
 }
 
@@ -138,11 +140,15 @@ class Nip05Client {
     http.BaseRequest request,
   ) async {
     final response = await _client.send(request);
-    if (response.statusCode == 404) {
-      return (status: Nip05Status.notFound, body: null);
-    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      return (status: Nip05Status.networkError, body: null);
+      // Release the unread body, so the connection isn't left open.
+      unawaited(response.stream.listen(null).cancel());
+      return (
+        status: response.statusCode == 404
+            ? Nip05Status.notFound
+            : Nip05Status.networkError,
+        body: null,
+      );
     }
     final bytes = <int>[];
     await for (final chunk in response.stream) {

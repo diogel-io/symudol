@@ -36,6 +36,8 @@ void main() {
       'bob@example.com:8443',
       'bob@example.com/path',
       'bob@user:pw@example.com',
+      'bob@foo..example.com',
+      'bob@.example.com',
     ]) {
       test('refuses "$bad"', () {
         expect(parseNip05Identifier(bad), isNull);
@@ -188,6 +190,39 @@ void main() {
         await expectLater(sent!.abortTrigger, completes);
       },
     );
+
+    test('the same deadline covers slow headers and the body', () async {
+      final body = StreamController<List<int>>();
+      addTearDown(body.close);
+      final watch = Stopwatch()..start();
+      final result = await Nip05Client(
+        client: MockClient.streaming((request, _) async {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          return http.StreamedResponse(body.stream, 200);
+        }),
+        timeout: const Duration(milliseconds: 400),
+      ).verify('bob@example.com', _pubkey);
+
+      expect(result.status, Nip05Status.networkError);
+      // Separate deadlines for the headers and the body would take 700 ms.
+      expect(watch.elapsed, lessThan(const Duration(milliseconds: 650)));
+    });
+
+    test('an error status releases the unread body', () async {
+      var cancelled = false;
+      final body = StreamController<List<int>>(
+        onCancel: () => cancelled = true,
+      );
+      addTearDown(body.close);
+      final result = await Nip05Client(
+        client: MockClient.streaming(
+          (request, _) async => http.StreamedResponse(body.stream, 404),
+        ),
+      ).verify('bob@example.com', _pubkey);
+
+      expect(result.status, Nip05Status.notFound);
+      expect(cancelled, isTrue);
+    });
 
     final invalid = <String, String>{
       'a body that is not JSON': '<html>',
