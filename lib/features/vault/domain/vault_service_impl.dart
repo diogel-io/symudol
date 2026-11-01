@@ -814,6 +814,13 @@ class VaultServiceImpl implements VaultService {
             'There are no identities to back up.',
           );
         }
+        // A file restore would refuse is no backup.
+        if (records.length > maxVaultBackupIdentities) {
+          throw const VaultBackupException(
+            'A backup holds at most $maxVaultBackupIdentities identities, and '
+            'this vault has more.',
+          );
+        }
         keys = [
           for (final record in records)
             VaultBackupKey(
@@ -859,8 +866,8 @@ class VaultServiceImpl implements VaultService {
       );
     } on Nip49DerivationException {
       throw const VaultBackupException(
-        "This phone couldn't open this backup: it needs more memory than is "
-        'available.',
+        "Symudol couldn't open this backup on this phone. Try again, or "
+        'restore it on another device.',
       );
     } on Nip49Exception {
       throw const BackupPassphraseException();

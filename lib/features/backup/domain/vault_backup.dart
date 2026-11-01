@@ -72,6 +72,11 @@ Uint8List buildVaultBackup(
   if (keys.isEmpty) {
     throw const VaultBackupFormatException('There is nothing to back up.');
   }
+  if (keys.length > maxVaultBackupIdentities) {
+    throw const VaultBackupFormatException(
+      'A backup holds at most $maxVaultBackupIdentities identities.',
+    );
+  }
   final json = {
     'type': vaultBackupType,
     'version': vaultBackupVersion,

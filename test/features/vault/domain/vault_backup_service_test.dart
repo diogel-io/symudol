@@ -193,7 +193,7 @@ void main() {
           isA<VaultBackupException>().having(
             (e) => e.message,
             'message',
-            contains('needs more memory'),
+            contains("couldn't open this backup on this phone"),
           ),
         ),
       );
@@ -223,6 +223,26 @@ void main() {
       throwsA(isA<VaultBackupException>()),
     );
     expect(await target.listIdentities(), isEmpty);
+  });
+
+  test('a vault with more identities than a backup holds is refused', () async {
+    final source = await newVault();
+    for (var i = 0; i <= 100; i++) {
+      await source.importIdentity(
+        (i + 1).toRadixString(16).padLeft(64, '0'),
+      );
+    }
+
+    await expectLater(
+      source.exportBackup(pin: _pin, passphrase: _passphrase),
+      throwsA(
+        isA<VaultBackupException>().having(
+          (e) => e.message,
+          'message',
+          contains('at most 100 identities'),
+        ),
+      ),
+    );
   });
 }
 
