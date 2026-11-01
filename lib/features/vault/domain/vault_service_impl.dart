@@ -885,6 +885,8 @@ class VaultServiceImpl implements VaultService {
           'Stored identity key material is invalid',
         );
       }
+      // The vault may have locked during the checks above: hand out nothing.
+      _checkUnlocked();
       return Nostr.instance.services.bech32.encodePrivateKeyToNsec(privateKey);
     });
   }

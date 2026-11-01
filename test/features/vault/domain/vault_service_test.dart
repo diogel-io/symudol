@@ -10,6 +10,7 @@ import 'package:symudol/features/nip55/domain/nip55_permission_scope.dart';
 import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/data/pointycastle_vault_crypto_service.dart';
+import 'package:symudol/features/vault/data/vault_identity_record.dart';
 import 'package:symudol/features/vault/domain/biometric_vault.dart';
 import 'package:symudol/features/vault/domain/vault_crypto_service.dart';
 import 'package:symudol/features/vault/domain/vault_exceptions.dart';
@@ -1765,6 +1766,27 @@ void main() {
         throwsA(isA<IdentityNotFoundException>()),
       );
       expect(await vaultService.getFailedUnlockAttempts(), 0);
+    });
+
+    test('a stored key that is not the identity\'s is refused', () async {
+      final a = await vaultService.createIdentity();
+      final b = await vaultService.createIdentity();
+      final recordA = (await fakeStore.getIdentityRecord(a.localId))!;
+      final recordB = (await fakeStore.getIdentityRecord(b.localId))!;
+      await fakeStore.saveIdentityRecord(
+        VaultIdentityRecord(
+          identityId: recordA.identityId,
+          publicKey: recordA.publicKey,
+          encryptedSecretPayload: recordB.encryptedSecretPayload,
+          origin: recordA.origin,
+          createdAt: recordA.createdAt,
+        ),
+      );
+
+      await expectLater(
+        vaultService.exportPrivateKey(pin: pin, identityLocalId: a.localId),
+        throwsA(isA<VaultSigningException>()),
+      );
     });
 
     test('a locked vault exports nothing', () async {

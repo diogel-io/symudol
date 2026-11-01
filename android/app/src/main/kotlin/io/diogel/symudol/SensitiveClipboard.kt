@@ -39,9 +39,10 @@ internal object SensitiveClipboard {
     fun copy(context: Context, label: String, text: String, clearAfterMs: Long? = null) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: throw IllegalStateException("no clipboard service")
+        clipboard.setPrimaryClip(clip(label, text))
+        // Only a copy that happened replaces the earlier one, and its clear.
         pendingClear?.let(handler::removeCallbacks)
         pendingClear = null
-        clipboard.setPrimaryClip(clip(label, text))
         if (clearAfterMs == null || clearAfterMs <= 0) return
         // A digest, so the text itself isn't kept until the clear.
         val digest = sha256(text)
