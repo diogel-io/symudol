@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:clock/clock.dart';
 
 import 'package:symudol/app/app.dart';
+import 'package:symudol/app/system_picker.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
@@ -497,7 +498,7 @@ void main() {
       final pick = Completer<void>();
       unawaited(
         container
-            .read(pickingProfileImageProvider.notifier)
+            .read(systemPickerOpenProvider.notifier)
             .during(() => pick.future),
       );
       return pick;

@@ -60,13 +60,44 @@ Backup option 3 and screen-capture option 2.
 
 ## Consequences
 
-- **Moving to a new phone.** Keys move only through an export the user asks for (SR-22). Until
-  that export ships (#24, the nsec export, and #25, the encrypted vault backup file), a user who
-  moves phones re-imports their nsec, and loses remembered decisions and NIP-46 pairings. The
-  1.0.0 release notes and the Play listing must say so (tracked in #39).
+- **Moving to a new phone.** Keys move only through an export the user asks for (SR-22). The
+  encrypted vault backup file (#25) is that export; see below. Remembered decisions and NIP-46
+  pairings are not in it, so a user who moves phones grants them again. The 1.0.0 release notes
+  and the Play listing must say so (tracked in #39).
 - **Old backups.** Turning backup off does not delete backups taken by earlier builds. They expire
   on Android's own schedule, which the app cannot control.
 - **Screenshots.** Users cannot screenshot any Symudol screen, including harmless ones such as the
   account list. `adb exec-out screencap` returns a black frame, so review walkthroughs and store
   screenshots need another way to capture, or a debug-only opt-out decided separately. Such an
   opt-out must never be reachable from an intent, because any app can send one.
+
+## The vault backup file (#25)
+
+Settings → Backup Vault makes a file the user hands to the share sheet themselves, and Restore from
+a backup reads one back (from Settings, an empty Accounts screen, or Forgot PIN). It does not
+contradict the decision above: nothing leaves the phone unless the user asks, the file is
+encrypted, and Android backup and transfer stay off.
+
+- **What is in it.** A JSON file (`symudol-vault-backup`, version 1) with one NIP-49 `ncryptsec`
+  per identity, plus each identity's name and creation time. The names and the number of
+  identities are readable without the passphrase (decided on #25); keys and pubkeys are not.
+  Remembered decisions, NIP-46 sessions and settings are not backed up.
+- **Encryption.** NIP-49: scrypt (`log_n` 16, `r` 8, `p` 1) on the NFKC-normalised passphrase,
+  then XChaCha20-Poly1305 with the key-security byte (`0x02`, not tracked) as associated data.
+  One scrypt salt is shared by every key in a file, so a backup costs one derivation; each key has
+  its own nonce, and each `ncryptsec` still decrypts on its own in any NIP-49 reader.
+- **Where scrypt runs.** Pure-Dart scrypt took 12–14 s at `log_n` 16 on the low-end test
+  emulator, so Android runs it natively (`Scrypt.kt`, over the `io.diogel.symudol/scrypt`
+  channel, off the main thread). It is checked against RFC 7914's vectors and gives the same key
+  as the Dart version for NIP-49's test vector; Dart's scrypt remains the fallback where the
+  channel is missing. A backup asking for more than `log_n` 20 (1 GiB) is refused.
+- **Who can make one.** The vault must be unlocked, and the PIN is checked again like an unlock
+  (charged, lockout, wipe-after-N). The passphrase must be at least 12 characters; the 6-digit PIN
+  is never used, because an offline file can be attacked without the attempt limit.
+- **Keys in memory.** `VaultService.exportBackup` decrypts the keys and encrypts them inside the
+  service; the screens only ever hold the encrypted file.
+- **Restore.** Every key is decrypted before any is imported, so a wrong passphrase imports
+  nothing. Identities already in the vault are skipped. The file is read through the system
+  document picker and shared through the share sheet, so Symudol asks for no storage permission.
+  For the share sheet, `share_plus` writes the encrypted file to the app's private cache
+  (`cache/share_plus/`), where it stays until the next share or until Android clears the cache.

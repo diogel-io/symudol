@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/route_pop.dart';
+import '../../../app/system_picker.dart';
 import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/load_profile_action.dart';
 import '../../identity/domain/vault_identity.dart';
@@ -166,7 +167,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     final Uint8List? bytes;
     try {
       bytes = await ref
-          .read(pickingProfileImageProvider.notifier)
+          .read(systemPickerOpenProvider.notifier)
           .during(() => ref.read(profileImagePickerProvider).pick(source));
     } on PlatformException {
       if (mounted) {

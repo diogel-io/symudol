@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
+import '../../backup/presentation/backup_vault_screen.dart';
 import '../../nip46/application/nip46_feature.dart';
 import '../../nip46/presentation/nip46_connections_screen.dart';
 import '../../vault/application/vault_providers.dart';
@@ -257,10 +258,13 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: DiogelSpacing.space2),
-          const SettingsTile(
+          SettingsTile(
             icon: Icons.backup_outlined,
             title: 'Backup Vault',
             subtitle: 'Export your recovery data',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BackupVaultScreen()),
+            ),
           ),
           SettingsTile(
             icon: Icons.delete_forever_outlined,

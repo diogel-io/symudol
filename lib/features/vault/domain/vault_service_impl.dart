@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/backup/data/scrypt_kdf.dart';
+import 'package:symudol/features/backup/domain/nip49.dart';
+import 'package:symudol/features/backup/domain/vault_backup.dart';
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_store.dart';
@@ -115,6 +118,7 @@ class VaultServiceImpl implements VaultService {
     Nip55PermissionStore? nip55PermissionStore,
     Nip46SessionStore? nip46SessionStore,
     Future<void> Function()? wipeNativeState,
+    Nip49KeyDeriver keyDeriver = const PlatformNip49KeyDeriver(),
   }) : _cryptoService = cryptoService,
        _vaultCryptoService =
            vaultCryptoService ?? const PointyCastleVaultCryptoService(),
@@ -122,7 +126,11 @@ class VaultServiceImpl implements VaultService {
        _biometricVault = biometricVault,
        _nip55PermissionStore = nip55PermissionStore,
        _nip46SessionStore = nip46SessionStore,
-       _wipeNativeState = wipeNativeState;
+       _wipeNativeState = wipeNativeState,
+       _keyDeriver = keyDeriver;
+
+  /// Derives the vault backup's passphrase key (#25).
+  final Nip49KeyDeriver _keyDeriver;
 
   @override
   VaultState get state => _state;
@@ -740,7 +748,23 @@ class VaultServiceImpl implements VaultService {
       );
     }
 
-    final now = DateTime.now();
+    return _saveImported(
+      hexPrivateKey: hexPrivateKey,
+      publicKey: publicKey,
+      displayName: displayName,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Stores an imported key that has been checked and is not a duplicate,
+  /// and makes it active when no identity is.
+  Future<VaultIdentity> _saveImported({
+    required String hexPrivateKey,
+    required String publicKey,
+    required String? displayName,
+    required DateTime createdAt,
+  }) async {
+    final now = createdAt;
     final localId = publicKey;
 
     final encryptedSecretPayload = await ConcurrencyUtils.runTask(
@@ -765,6 +789,148 @@ class VaultServiceImpl implements VaultService {
     }
 
     return identity;
+  }
+
+  @override
+  Future<Uint8List> exportBackup({
+    required String pin,
+    required String passphrase,
+  }) async {
+    _checkUnlocked();
+    if (passphrase.length < minBackupPassphraseLength) {
+      throw const VaultBackupException(
+        'The passphrase must be at least $minBackupPassphraseLength characters.',
+      );
+    }
+    return _queued(() async {
+      // The DEK comes from the envelope, as for a PIN change, so the PIN is
+      // checked like an unlock.
+      final (envelope: _, :dek) = await _checkPin(pin);
+      final List<VaultBackupKey> keys;
+      try {
+        final records = await _store.getIdentities();
+        if (records.isEmpty) {
+          throw const VaultBackupException(
+            'There are no identities to back up.',
+          );
+        }
+        // A file restore would refuse is no backup.
+        if (records.length > maxVaultBackupIdentities) {
+          throw const VaultBackupException(
+            'A backup holds at most $maxVaultBackupIdentities identities, and '
+            'this vault has more.',
+          );
+        }
+        keys = [
+          for (final record in records)
+            VaultBackupKey(
+              privateKeyHex: await ConcurrencyUtils.runTask(
+                () => _vaultCryptoService.decrypt(
+                  record.encryptedSecretPayload,
+                  dek,
+                ),
+              ),
+              name: record.displayName,
+              createdAt: record.createdAt,
+            ),
+        ];
+      } finally {
+        // A copy unwrapped from the envelope; the session keeps its own.
+        dek.fillRange(0, dek.length, 0);
+      }
+      try {
+        return buildVaultBackup(keys, await _keyDeriver.derive(passphrase));
+      } on VaultBackupFormatException catch (e) {
+        throw VaultBackupException(e.message);
+      } catch (e, stack) {
+        diogelLog(
+          'VaultService: could not build the backup',
+          error: e,
+          stackTrace: stack,
+        );
+        throw const VaultBackupException("Couldn't make the backup. Try again.");
+      }
+    });
+  }
+
+  @override
+  Future<BackupRestoreResult> restoreBackup(
+    Uint8List file,
+    String passphrase,
+  ) async {
+    _checkUnlocked();
+    final List<RestoredKey> keys;
+    try {
+      keys = await decryptVaultBackup(
+        file,
+        passphrase,
+        deriver: _keyDeriver,
+      );
+    } on Nip49DerivationException {
+      throw const VaultBackupException(
+        "Symudol couldn't open this backup on this phone. Try again, or "
+        'restore it on another device.',
+      );
+    } on Nip49Exception {
+      throw const BackupPassphraseException();
+    } on VaultBackupFormatException catch (e) {
+      throw VaultBackupException(e.message);
+    }
+
+    // Every key is checked before any is saved, so a damaged entry imports
+    // nothing.
+    final nostr = Nostr.instance;
+    final checked = <(RestoredKey, String)>[];
+    for (final key in keys) {
+      if (!_isSecretKey(key.privateKeyHex)) {
+        throw const VaultBackupException('This backup is damaged.');
+      }
+      final String publicKey;
+      try {
+        publicKey = await ConcurrencyUtils.runTask(
+          () => nostr.services.keys
+              .generateKeyPairFromExistingPrivateKey(key.privateKeyHex)
+              .public,
+        );
+      } catch (_) {
+        throw const VaultBackupException('This backup is damaged.');
+      }
+      checked.add((key, publicKey));
+    }
+
+    final known = {
+      for (final record in await _store.getIdentities()) record.publicKey,
+    };
+    final restored = <VaultIdentity>[];
+    var skipped = 0;
+    for (final (key, publicKey) in checked) {
+      if (!known.add(publicKey)) {
+        skipped++;
+        continue;
+      }
+      restored.add(
+        await _saveImported(
+          hexPrivateKey: key.privateKeyHex,
+          publicKey: publicKey,
+          displayName: key.name,
+          createdAt: key.createdAt ?? DateTime.now(),
+        ),
+      );
+    }
+    return BackupRestoreResult(restored: restored, skipped: skipped);
+  }
+
+  /// The order of secp256k1: a secret key is in [1, n).
+  static final BigInt _secp256k1Order = BigInt.parse(
+    'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141',
+    radix: 16,
+  );
+
+  /// Whether [hex] is 64 hex digits naming a valid secp256k1 secret key.
+  static bool _isSecretKey(String hex) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hex)) return false;
+    final value = BigInt.parse(hex, radix: 16);
+    return value > BigInt.zero && value < _secp256k1Order;
   }
 
   @override

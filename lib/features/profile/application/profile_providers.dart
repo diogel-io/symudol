@@ -37,29 +37,6 @@ final profileImagePickerProvider = Provider<ProfileImagePicker>((ref) {
   return SystemProfileImagePicker();
 });
 
-/// Whether the photo picker or camera is open over Symudol. Opening either
-/// sends Symudol to the background, so the background lock waits for it, up
-/// to a bound (diogel-io/symudol#43).
-final pickingProfileImageProvider =
-    NotifierProvider<PickingProfileImageNotifier, bool>(
-      PickingProfileImageNotifier.new,
-    );
-
-class PickingProfileImageNotifier extends Notifier<bool> {
-  @override
-  bool build() => false;
-
-  /// Runs [pick] with the flag set.
-  Future<T> during<T>(Future<T> Function() pick) async {
-    state = true;
-    try {
-      return await pick();
-    } finally {
-      state = false;
-    }
-  }
-}
-
 /// Where the profile network settings are kept.
 final profileNetworkStoreProvider = Provider<ProfileNetworkStore>((ref) {
   return SecureStorageProfileNetworkStore();

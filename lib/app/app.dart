@@ -10,10 +10,10 @@ import '../features/navigation/presentation/main_navigation_screen.dart';
 import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
 import '../features/nip46/application/nip46_providers.dart';
-import '../features/profile/application/profile_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
 import '../features/vault/domain/vault_state.dart';
+import 'system_picker.dart';
 import '../theme/app_theme.dart';
 
 class DiogelApp extends ConsumerStatefulWidget {
@@ -151,7 +151,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     // during the pick, the lock applies when the pick ends. A pick still
     // open [pickingLockGrace] after the delay locks anyway, and the native
     // key gets that deadline.
-    if (ref.read(pickingProfileImageProvider)) {
+    if (ref.read(systemPickerOpenProvider)) {
       final delay = Duration(minutes: delayMinutes);
       diogelLog('Deferring background lock while an image is picked');
       _lockDueAfterPick = false;
@@ -160,7 +160,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       unawaited(nativeSync.setLockDeadline(delay + pickingLockGrace));
       _backgroundLockTimer = Timer(delay, () {
         if (!mounted) return;
-        if (ref.read(pickingProfileImageProvider)) {
+        if (ref.read(systemPickerOpenProvider)) {
           _lockDueAfterPick = true;
         } else {
           _lockInBackground(delayMinutes);
@@ -371,7 +371,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     diogelLog('App build');
     ref.listen(vaultControllerProvider, _handleVaultControllerChanged);
     ref.listen(nip55ControllerProvider, _handleNip55Changed);
-    ref.listen(pickingProfileImageProvider, _handlePickingChanged);
+    ref.listen(systemPickerOpenProvider, _handlePickingChanged);
 
     final controllerState = ref.watch(vaultControllerProvider);
     final vaultState = controllerState.vaultState;
