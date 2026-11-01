@@ -204,7 +204,8 @@ abstract interface class VaultService {
   /// A backup file of every identity, each key encrypted with [passphrase]
   /// as a NIP-49 `ncryptsec` (#25). [pin] is checked like an unlock: it is
   /// charged, honours the lockout, and counts towards the wipe-after-N
-  /// limit. No unencrypted key leaves the service.
+  /// limit. No unencrypted key leaves the service here; [exportPrivateKey]
+  /// is the one method that hands one out.
   ///
   /// Throws [VaultLockedException] if the vault is locked,
   /// [VaultBackupException] if [passphrase] is shorter than
@@ -213,6 +214,20 @@ abstract interface class VaultService {
   Future<Uint8List> exportBackup({
     required String pin,
     required String passphrase,
+  });
+
+  /// The private key of the identity with [identityLocalId], as an `nsec`,
+  /// for the user to copy out of Symudol (#24). It is the one method that
+  /// hands out an unencrypted key, so [pin] is checked like an unlock: it is
+  /// charged, honours the lockout, and counts towards the wipe-after-N limit.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked,
+  /// [IdentityNotFoundException] if there is no such identity (no PIN attempt
+  /// is charged), [VaultSigningException] if the stored key doesn't match the
+  /// identity's public key, and the PIN errors [unlock] throws.
+  Future<String> exportPrivateKey({
+    required String pin,
+    required String identityLocalId,
   });
 
   /// Imports the identities in the backup [file] (#25). Every key is

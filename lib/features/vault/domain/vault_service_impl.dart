@@ -854,6 +854,47 @@ class VaultServiceImpl implements VaultService {
   }
 
   @override
+  Future<String> exportPrivateKey({
+    required String pin,
+    required String identityLocalId,
+  }) async {
+    _checkUnlocked();
+    return _queued(() async {
+      // Looked up first, so asking for an identity that isn't there costs no
+      // PIN attempt.
+      final record = await _store.getIdentityRecord(identityLocalId);
+      if (record == null) throw const IdentityNotFoundException();
+
+      final (envelope: _, :dek) = await _checkPin(pin);
+      final String privateKey;
+      try {
+        privateKey = await ConcurrencyUtils.runTask(
+          () => _vaultCryptoService.decrypt(record.encryptedSecretPayload, dek),
+        );
+      } finally {
+        // A copy unwrapped from the envelope; the session keeps its own.
+        dek.fillRange(0, dek.length, 0);
+      }
+
+      // Never hand out a key that isn't this identity's.
+      final derivedPublicKey = await ConcurrencyUtils.runTask(
+        () => _cryptoService.derivePublicKey(privateKey),
+      );
+      if (derivedPublicKey != record.publicKey) {
+        throw const VaultSigningException(
+          'Stored identity key material is invalid',
+        );
+      }
+      // The vault may have locked during the checks above: hand out nothing.
+      // lock() and expireSession() drop the session DEK at once but change
+      // the state only after a storage read, so check both.
+      _checkUnlocked();
+      _dekOrThrow();
+      return Nostr.instance.services.bech32.encodePrivateKeyToNsec(privateKey);
+    });
+  }
+
+  @override
   Future<BackupRestoreResult> restoreBackup(
     Uint8List file,
     String passphrase,

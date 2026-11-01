@@ -34,6 +34,115 @@ void main() {
     });
   });
 
+  test('on Android a timed copy sends its delay to the native side', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(sensitiveClipboardChannel, (call) async {
+      calls.add(call);
+      return null;
+    });
+
+    await copySensitiveText(
+      'nsec1abc',
+      label: 'Nostr private key',
+      clearAfter: const Duration(seconds: 60),
+    );
+
+    expect(calls.single.arguments, {
+      'label': 'Nostr private key',
+      'text': 'nsec1abc',
+      'clearAfterMs': 60000,
+    });
+  });
+
+  group('off Android (#24)', () {
+    late String? clipboard;
+
+    setUp(() {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      clipboard = null;
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = (call.arguments as Map)['text'] as String?;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': clipboard};
+        return null;
+      });
+    });
+
+    tearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    test('a timed copy is cleared after the delay', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      expect(clipboard, 'nsec1abc');
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, '');
+    });
+
+    test('a failed copy keeps the earlier copy\'s clear', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final next = (call.arguments as Map)['text'] as String?;
+          if (next != '') throw PlatformException(code: 'FAILED');
+          clipboard = next;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': clipboard};
+        return null;
+      });
+
+      await expectLater(
+        copySensitiveText('other', label: 'test'),
+        throwsA(isA<PlatformException>()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, '');
+    });
+
+    test('an unreadable clipboard is cleared anyway', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = (call.arguments as Map)['text'] as String?;
+        }
+        if (call.method == 'Clipboard.getData') {
+          throw PlatformException(code: 'DENIED');
+        }
+        return null;
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, '');
+    });
+
+    test('a newer copy is not cleared by an earlier timer', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      await copySensitiveText('bunker://abc', label: 'bunker URI');
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, 'bunker://abc');
+    });
+  });
+
   test('on Android a failed copy throws and is not retried unmarked', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     messenger.setMockMethodCallHandler(sensitiveClipboardChannel, (call) async {

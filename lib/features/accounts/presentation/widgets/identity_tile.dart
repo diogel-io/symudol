@@ -6,6 +6,7 @@ import '../../../../theme/tokens.dart';
 import '../../../identity/domain/vault_identity.dart';
 import '../../../profile/application/profile_providers.dart';
 import '../../../profile/domain/profile_load_state.dart';
+import '../export_key_screen.dart';
 import 'load_profile_action.dart';
 
 class IdentityTile extends ConsumerWidget {
@@ -126,6 +127,16 @@ class IdentityTile extends ConsumerWidget {
                   color: DiogelColors.textTertiary,
                   onPressed: onEditProfile,
                 ),
+              IconButton(
+                tooltip: 'Export private key',
+                icon: const Icon(Icons.key_outlined),
+                color: DiogelColors.textTertiary,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ExportKeyScreen(identity: identity),
+                  ),
+                ),
+              ),
               IconButton(
                 tooltip: 'Load profile',
                 icon: const Icon(Icons.cloud_download_outlined),
