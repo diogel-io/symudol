@@ -886,7 +886,10 @@ class VaultServiceImpl implements VaultService {
         );
       }
       // The vault may have locked during the checks above: hand out nothing.
+      // lock() and expireSession() drop the session DEK at once but change
+      // the state only after a storage read, so check both.
       _checkUnlocked();
+      _dekOrThrow();
       return Nostr.instance.services.bech32.encodePrivateKeyToNsec(privateKey);
     });
   }

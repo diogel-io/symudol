@@ -1789,6 +1789,29 @@ void main() {
       );
     });
 
+    test('a lock that starts during the export hands out nothing', () async {
+      final gatedStore = _GatedWrappedDekStore();
+      vaultService = VaultServiceImpl(
+        gatedStore,
+        clock: clock,
+        vaultCryptoService: const _CheapKdfCryptoService(),
+      );
+      await vaultService.createVault(pin);
+      final created = await vaultService.createIdentity();
+
+      // lock() drops the DEK at once, then waits on its storage read, so the
+      // state still says unlocked while the export finishes.
+      gatedStore.gate = Completer<void>();
+      unawaited(vaultService.lock());
+      expect(vaultService.state, isA<VaultUnlocked>());
+
+      await expectLater(
+        vaultService.exportPrivateKey(pin: pin, identityLocalId: created.localId),
+        throwsA(isA<VaultLockedException>()),
+      );
+      gatedStore.gate!.complete();
+    });
+
     test('a locked vault exports nothing', () async {
       final created = await vaultService.createIdentity();
       await vaultService.lock();
@@ -1834,5 +1857,16 @@ class _RecordingCryptoService extends _CheapKdfCryptoService {
     final dek = super.unwrapDek(wrapped, kek);
     unwrapped.add(dek);
     return dek;
+  }
+}
+
+/// Holds [getWrappedDek] until [gate] completes, to catch lock() mid-way.
+class _GatedWrappedDekStore extends FakeVaultStore {
+  Completer<void>? gate;
+
+  @override
+  Future<String?> getWrappedDek() async {
+    await gate?.future;
+    return super.getWrappedDek();
   }
 }
