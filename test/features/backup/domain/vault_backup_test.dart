@@ -117,6 +117,22 @@ void main() {
     );
   });
 
+  test('refuses to write a file larger than restore reads', () {
+    expect(
+      () => buildVaultBackup([
+        for (var i = 0; i < maxVaultBackupIdentities; i++)
+          VaultBackupKey(privateKeyHex: _key, name: 'n' * 11000),
+      ], _key4('a long passphrase')),
+      throwsA(
+        isA<VaultBackupFormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('too large to restore'),
+        ),
+      ),
+    );
+  });
+
   test('says so when a backup has too many identities', () {
     expect(
       () => parseVaultBackup(

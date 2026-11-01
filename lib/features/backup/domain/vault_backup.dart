@@ -90,7 +90,15 @@ Uint8List buildVaultBackup(
         },
     ],
   };
-  return Uint8List.fromList(utf8.encode(jsonEncode(json)));
+  final file = Uint8List.fromList(utf8.encode(jsonEncode(json)));
+  // A file restore would refuse is no backup.
+  if (file.length > maxVaultBackupBytes) {
+    throw const VaultBackupFormatException(
+      'This backup would be too large to restore. Shorten the longest '
+      'identity names, then back up again.',
+    );
+  }
+  return file;
 }
 
 /// The entries of the backup [file]. Throws [VaultBackupFormatException].

@@ -840,6 +840,8 @@ class VaultServiceImpl implements VaultService {
       }
       try {
         return buildVaultBackup(keys, await _keyDeriver.derive(passphrase));
+      } on VaultBackupFormatException catch (e) {
+        throw VaultBackupException(e.message);
       } catch (e, stack) {
         diogelLog(
           'VaultService: could not build the backup',
