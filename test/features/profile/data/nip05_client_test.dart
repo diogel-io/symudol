@@ -25,6 +25,13 @@ void main() {
       expect(parseNip05Identifier('a.b-c_9@example.com')?.name, 'a.b-c_9');
     });
 
+    test('accepts a punycode top-level domain', () {
+      expect(
+        parseNip05Identifier('bob@example.xn--p1ai')?.domain,
+        'example.xn--p1ai',
+      );
+    });
+
     test('accepts the root name', () {
       expect(parseNip05Identifier('_@example.com')?.name, '_');
     });
@@ -44,6 +51,12 @@ void main() {
       'bob+tag@example.com',
       'bøb@example.com',
       'bob@.example.com',
+      'bob@192.168.1.1',
+      'bob@10.255.255.1',
+      'bob@127.1',
+      'bob@0x7f.0x1',
+      'bob@[::1]',
+      'bob@[fe80::1]',
     ]) {
       test('refuses "$bad"', () {
         expect(parseNip05Identifier(bad), isNull);

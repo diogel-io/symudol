@@ -43,7 +43,9 @@ typedef Nip05Identifier = ({String name, String domain});
 /// Splits [identifier] into its name and domain, or returns null when it is
 /// not `name@domain`. NIP-05 names use only `a-z0-9-_.`, read here without
 /// regard to case. A bare word is not a domain, and a port, path or user
-/// would change where the request goes, so those are refused too.
+/// would change where the request goes, so those are refused too. So is an
+/// IP address, in any spelling: a top-level domain is letters, or punycode,
+/// so a tap on Verify can't send a request into the local network.
 Nip05Identifier? parseNip05Identifier(String identifier) {
   final match = RegExp(
     r'^([A-Za-z0-9._-]+)@([^@\s]+)$',
@@ -59,7 +61,10 @@ Nip05Identifier? parseNip05Identifier(String identifier) {
   }
   if (!uri.host.contains('.') ||
       uri.host != domain.toLowerCase() ||
-      uri.host.split('.').any((label) => label.isEmpty)) {
+      uri.host.split('.').any((label) => label.isEmpty) ||
+      !RegExp(
+        r'^(?:[a-z]{2,63}|xn--[a-z0-9-]+)$',
+      ).hasMatch(uri.host.split('.').last)) {
     return null;
   }
   return (name: name, domain: domain);
