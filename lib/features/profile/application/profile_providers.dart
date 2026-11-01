@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../vault/domain/vault_state.dart';
 import '../data/blossom_client.dart';
+import '../data/nip05_client.dart';
 import '../data/profile_image_picker.dart';
 import '../data/profile_relay_client.dart';
 import '../data/relay_profile_service.dart';
@@ -30,6 +31,12 @@ final profileRelayClientProvider = Provider<ProfileRelayClient>((ref) {
 /// (diogel-io/symudol#43).
 final blossomClientProvider = Provider<BlossomClient>((ref) {
   return BlossomClient();
+});
+
+/// Checks a NIP-05 identifier, only when the user asks
+/// (diogel-io/symudol#44).
+final nip05ClientProvider = Provider<Nip05Client>((ref) {
+  return Nip05Client();
 });
 
 /// The photo picker and camera profile images come from.
