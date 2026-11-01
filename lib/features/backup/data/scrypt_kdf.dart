@@ -47,10 +47,10 @@ class PlatformNip49KeyDeriver implements Nip49KeyDeriver {
         () => nip49DeriveKey(passphrase, logN: logN, salt: usedSalt),
       );
     } on PlatformException catch (e) {
-      throw Nip49Exception("Couldn't derive the key: ${e.message}");
+      throw Nip49DerivationException("Couldn't derive the key: ${e.message}");
     }
     if (key == null || key.length != 32) {
-      throw const Nip49Exception("Couldn't derive the key.");
+      throw const Nip49DerivationException("Couldn't derive the key.");
     }
     return Nip49Key(logN, usedSalt, key);
   }

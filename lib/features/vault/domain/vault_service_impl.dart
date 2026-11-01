@@ -806,23 +806,31 @@ class VaultServiceImpl implements VaultService {
       // The DEK comes from the envelope, as for a PIN change, so the PIN is
       // checked like an unlock.
       final (envelope: _, :dek) = await _checkPin(pin);
-      final records = await _store.getIdentities();
-      if (records.isEmpty) {
-        throw const VaultBackupException('There are no identities to back up.');
-      }
-      final keys = [
-        for (final record in records)
-          VaultBackupKey(
-            privateKeyHex: await ConcurrencyUtils.runTask(
-              () => _vaultCryptoService.decrypt(
-                record.encryptedSecretPayload,
-                dek,
+      final List<VaultBackupKey> keys;
+      try {
+        final records = await _store.getIdentities();
+        if (records.isEmpty) {
+          throw const VaultBackupException(
+            'There are no identities to back up.',
+          );
+        }
+        keys = [
+          for (final record in records)
+            VaultBackupKey(
+              privateKeyHex: await ConcurrencyUtils.runTask(
+                () => _vaultCryptoService.decrypt(
+                  record.encryptedSecretPayload,
+                  dek,
+                ),
               ),
+              name: record.displayName,
+              createdAt: record.createdAt,
             ),
-            name: record.displayName,
-            createdAt: record.createdAt,
-          ),
-      ];
+        ];
+      } finally {
+        // A copy unwrapped from the envelope; the session keeps its own.
+        dek.fillRange(0, dek.length, 0);
+      }
       try {
         return buildVaultBackup(keys, await _keyDeriver.derive(passphrase));
       } catch (e, stack) {
@@ -849,19 +857,25 @@ class VaultServiceImpl implements VaultService {
         passphrase,
         deriver: _keyDeriver,
       );
+    } on Nip49DerivationException {
+      throw const VaultBackupException(
+        "This phone couldn't open this backup: it needs more memory than is "
+        'available.',
+      );
     } on Nip49Exception {
       throw const BackupPassphraseException();
     } on VaultBackupFormatException catch (e) {
       throw VaultBackupException(e.message);
     }
 
+    // Every key is checked before any is saved, so a damaged entry imports
+    // nothing.
     final nostr = Nostr.instance;
-    final known = {
-      for (final record in await _store.getIdentities()) record.publicKey,
-    };
-    final restored = <VaultIdentity>[];
-    var skipped = 0;
+    final checked = <(RestoredKey, String)>[];
     for (final key in keys) {
+      if (!_isSecretKey(key.privateKeyHex)) {
+        throw const VaultBackupException('This backup is damaged.');
+      }
       final String publicKey;
       try {
         publicKey = await ConcurrencyUtils.runTask(
@@ -872,6 +886,15 @@ class VaultServiceImpl implements VaultService {
       } catch (_) {
         throw const VaultBackupException('This backup is damaged.');
       }
+      checked.add((key, publicKey));
+    }
+
+    final known = {
+      for (final record in await _store.getIdentities()) record.publicKey,
+    };
+    final restored = <VaultIdentity>[];
+    var skipped = 0;
+    for (final (key, publicKey) in checked) {
       if (!known.add(publicKey)) {
         skipped++;
         continue;
@@ -886,6 +909,19 @@ class VaultServiceImpl implements VaultService {
       );
     }
     return BackupRestoreResult(restored: restored, skipped: skipped);
+  }
+
+  /// The order of secp256k1: a secret key is in [1, n).
+  static final BigInt _secp256k1Order = BigInt.parse(
+    'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141',
+    radix: 16,
+  );
+
+  /// Whether [hex] is 64 hex digits naming a valid secp256k1 secret key.
+  static bool _isSecretKey(String hex) {
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hex)) return false;
+    final value = BigInt.parse(hex, radix: 16);
+    return value > BigInt.zero && value < _secp256k1Order;
   }
 
   @override

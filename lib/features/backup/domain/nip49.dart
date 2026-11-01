@@ -47,6 +47,18 @@ class Nip49Exception implements Exception {
   String toString() => 'Nip49Exception: $message';
 }
 
+/// The key could not be derived from the passphrase at all, for example
+/// because the phone lacks the memory the backup's scrypt cost needs. Not a
+/// wrong passphrase: entering it again won't help.
+class Nip49DerivationException implements Exception {
+  const Nip49DerivationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'Nip49DerivationException: $message';
+}
+
 /// A passphrase-derived key, kept so several keys can share one scrypt run.
 class Nip49Key {
   const Nip49Key(this.logN, this.salt, this.symmetricKey);

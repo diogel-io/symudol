@@ -112,10 +112,14 @@ List<VaultBackupEntry> parseVaultBackup(Uint8List file) {
     );
   }
   final identities = json['identities'];
-  if (identities is! List ||
-      identities.isEmpty ||
-      identities.length > maxVaultBackupIdentities) {
+  if (identities is! List || identities.isEmpty) {
     throw const VaultBackupFormatException('This backup has no identities.');
+  }
+  if (identities.length > maxVaultBackupIdentities) {
+    throw const VaultBackupFormatException(
+      'This backup has more than $maxVaultBackupIdentities identities, '
+      'which Symudol does not restore.',
+    );
   }
   return [
     for (final item in identities)
@@ -123,11 +127,7 @@ List<VaultBackupEntry> parseVaultBackup(Uint8List file) {
         VaultBackupEntry(
           ncryptsec: item['ncryptsec'] as String,
           name: item['name'] is String ? item['name'] as String : null,
-          createdAt: item['created_at'] is int
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  (item['created_at'] as int) * 1000,
-                )
-              : null,
+          createdAt: _createdAt(item['created_at']),
         )
       else
         throw const VaultBackupFormatException('This backup is damaged.'),
@@ -183,6 +183,19 @@ String vaultBackupFileName(DateTime now) {
 }
 
 int _seconds(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
+
+/// The latest seconds-since-epoch a DateTime can hold (±8.64e15 ms).
+const int _maxSeconds = 8640000000000;
+
+/// [value] as a creation time; null when absent or not a plain int. A time
+/// out of DateTime's range means the file is damaged.
+DateTime? _createdAt(Object? value) {
+  if (value is! int) return null;
+  if (value.abs() > _maxSeconds) {
+    throw const VaultBackupFormatException('This backup is damaged.');
+  }
+  return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+}
 
 Uint8List _bytes(String hex) => Uint8List.fromList([
   for (var i = 0; i < hex.length; i += 2)

@@ -170,4 +170,70 @@ void main() {
       throwsA(isA<VaultLockedException>()),
     );
   });
+
+  test(
+    'a key that cannot be derived is not called a wrong passphrase',
+    () async {
+      final source = await newVault();
+      await source.createIdentity();
+      final file = await source.exportBackup(
+        pin: _pin,
+        passphrase: _passphrase,
+      );
+
+      final target = VaultServiceImpl(
+        FakeVaultStore(),
+        keyDeriver: const _FailingDeriver(),
+      );
+      await target.createVault(_pin);
+
+      await expectLater(
+        target.restoreBackup(file, _passphrase),
+        throwsA(
+          isA<VaultBackupException>().having(
+            (e) => e.message,
+            'message',
+            contains('needs more memory'),
+          ),
+        ),
+      );
+    },
+  );
+
+  test('an invalid key anywhere in the file imports nothing', () async {
+    final key = nip49DeriveKey(_passphrase, logN: 4);
+    final valid = Uint8List.fromList(List.generate(32, (i) => i + 1));
+    final file = Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'type': 'symudol-vault-backup',
+          'version': 1,
+          'identities': [
+            {'ncryptsec': nip49Encrypt(valid, key), 'name': 'Good'},
+            // Zero is not a secp256k1 secret key.
+            {'ncryptsec': nip49Encrypt(Uint8List(32), key), 'name': 'Bad'},
+          ],
+        }),
+      ),
+    );
+    final target = await newVault();
+
+    await expectLater(
+      target.restoreBackup(file, _passphrase),
+      throwsA(isA<VaultBackupException>()),
+    );
+    expect(await target.listIdentities(), isEmpty);
+  });
+}
+
+/// Fails as the native scrypt does when the phone lacks the memory.
+class _FailingDeriver implements Nip49KeyDeriver {
+  const _FailingDeriver();
+
+  @override
+  Future<Nip49Key> derive(
+    String passphrase, {
+    int logN = nip49DefaultLogN,
+    Uint8List? salt,
+  }) async => throw const Nip49DerivationException('OUT_OF_MEMORY');
 }

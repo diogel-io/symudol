@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/route_pop.dart';
+import '../../../app/system_picker.dart';
 import '../../vault/application/vault_providers.dart';
 import '../../vault/domain/vault_failure.dart';
 import '../../vault/domain/vault_service.dart';
@@ -16,7 +17,10 @@ import '../domain/vault_backup.dart';
 Future<void> restoreFromBackup(BuildContext context, WidgetRef ref) async {
   final Uint8List? file;
   try {
-    file = await ref.read(backupFilesProvider).pick();
+    // The document picker sends Symudol to the background; the lock waits.
+    file = await ref
+        .read(systemPickerOpenProvider.notifier)
+        .during(() => ref.read(backupFilesProvider).pick());
   } on VaultBackupFormatException catch (error) {
     if (context.mounted) _showError(context, error.message);
     return;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/system_picker.dart';
 import '../../../theme/tokens.dart';
 import '../../settings/presentation/widgets/confirm_pin_dialog.dart';
 import '../../vault/application/vault_providers.dart';
@@ -78,9 +79,14 @@ class _BackupVaultScreenState extends ConsumerState<BackupVaultScreen> {
 
     final bool shared;
     try {
+      // The share sheet sends Symudol to the background; the lock waits.
       shared = await ref
-          .read(backupFilesProvider)
-          .share(file, vaultBackupFileName(DateTime.now()));
+          .read(systemPickerOpenProvider.notifier)
+          .during(
+            () => ref
+                .read(backupFilesProvider)
+                .share(file, vaultBackupFileName(DateTime.now())),
+          );
     } on PlatformException {
       if (mounted) _showMessage("Couldn't open the share sheet.");
       return;

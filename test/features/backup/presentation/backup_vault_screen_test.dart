@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:symudol/app/system_picker.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
 import 'package:symudol/features/backup/application/backup_providers.dart';
@@ -156,6 +157,24 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Backup made.'), findsNothing);
+  });
+
+  testWidgets('the background lock waits while the share sheet and the '
+      'document picker are open', (tester) async {
+    final open = <bool>[];
+    await pump(tester, const BackupVaultScreen());
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(BackupVaultScreen)),
+    );
+    files.whileOpen = () => open.add(container.read(systemPickerOpenProvider));
+    await enterPassphrase(tester, _passphrase, _passphrase);
+
+    await backUpWithPin(tester, _pin);
+    await tester.tap(find.text('Restore from a backup'));
+    await tester.pumpAndSettle();
+
+    expect(open, [true, true]);
+    expect(container.read(systemPickerOpenProvider), isFalse);
   });
 
   testWidgets('a wrong PIN shares nothing', (tester) async {

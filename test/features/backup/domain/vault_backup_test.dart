@@ -117,6 +117,48 @@ void main() {
     );
   });
 
+  test('says so when a backup has too many identities', () {
+    expect(
+      () => parseVaultBackup(
+        _json({
+          'type': vaultBackupType,
+          'version': 1,
+          'identities': List.filled(maxVaultBackupIdentities + 1, {
+            'ncryptsec': 'x',
+          }),
+        }),
+      ),
+      throwsA(
+        isA<VaultBackupFormatException>().having(
+          (e) => e.message,
+          'message',
+          contains('more than $maxVaultBackupIdentities identities'),
+        ),
+      ),
+    );
+  });
+
+  test('a creation time out of range is damage, not a crash', () {
+    expect(
+      () => parseVaultBackup(
+        _json({
+          'type': vaultBackupType,
+          'version': 1,
+          'identities': [
+            {'ncryptsec': 'ncryptsec1x', 'created_at': 10000000000000},
+          ],
+        }),
+      ),
+      throwsA(
+        isA<VaultBackupFormatException>().having(
+          (e) => e.message,
+          'message',
+          'This backup is damaged.',
+        ),
+      ),
+    );
+  });
+
   test('names the file by date', () {
     expect(
       vaultBackupFileName(DateTime(2026, 3, 7)),

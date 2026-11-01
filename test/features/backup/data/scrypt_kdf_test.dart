@@ -64,15 +64,18 @@ void main() {
     },
   );
 
-  test('a native failure is a NIP-49 failure', () async {
-    messenger.setMockMethodCallHandler(
-      scryptChannel,
-      (_) async => throw PlatformException(code: 'OUT_OF_MEMORY'),
-    );
+  test(
+    'a native failure is a derivation failure, not a wrong passphrase',
+    () async {
+      messenger.setMockMethodCallHandler(
+        scryptChannel,
+        (_) async => throw PlatformException(code: 'OUT_OF_MEMORY'),
+      );
 
-    await expectLater(
-      const PlatformNip49KeyDeriver().derive('a long passphrase', salt: salt),
-      throwsA(isA<Nip49Exception>()),
-    );
-  });
+      await expectLater(
+        const PlatformNip49KeyDeriver().derive('a long passphrase', salt: salt),
+        throwsA(isA<Nip49DerivationException>()),
+      );
+    },
+  );
 }
