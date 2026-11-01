@@ -60,7 +60,11 @@ void main() {
         http.Response(jsonEncode(body), status);
 
     test('asks the domain for the name, without following redirects', () async {
-      final nip05 = client((_) async => json({'names': {'bob': _pubkey}}));
+      final nip05 = client(
+        (_) async => json({
+          'names': {'bob': _pubkey},
+        }),
+      );
 
       await nip05.verify('bob@example.com', _pubkey);
 
@@ -77,7 +81,9 @@ void main() {
 
     test('verified when the domain lists this key', () async {
       final result = await client(
-        (_) async => json({'names': {'bob': _pubkey}}),
+        (_) async => json({
+          'names': {'bob': _pubkey},
+        }),
       ).verify('bob@example.com', _pubkey);
 
       expect(result.status, Nip05Status.verified);
@@ -87,7 +93,9 @@ void main() {
 
     test('compares keys whatever their case', () async {
       final result = await client(
-        (_) async => json({'names': {'bob': _pubkey.toUpperCase()}}),
+        (_) async => json({
+          'names': {'bob': _pubkey.toUpperCase()},
+        }),
       ).verify('bob@example.com', _pubkey);
 
       expect(result.status, Nip05Status.verified);
@@ -95,7 +103,9 @@ void main() {
 
     test('falls back to the lowercase name', () async {
       final result = await client(
-        (_) async => json({'names': {'bob': _pubkey}}),
+        (_) async => json({
+          'names': {'bob': _pubkey},
+        }),
       ).verify('Bob@example.com', _pubkey);
 
       expect(result.status, Nip05Status.verified);
@@ -103,7 +113,9 @@ void main() {
 
     test('mismatch when the domain lists another key', () async {
       final result = await client(
-        (_) async => json({'names': {'bob': _other}}),
+        (_) async => json({
+          'names': {'bob': _other},
+        }),
       ).verify('bob@example.com', _pubkey);
 
       expect(result.status, Nip05Status.mismatch);
@@ -111,7 +123,9 @@ void main() {
 
     test('not found when the name is missing', () async {
       final result = await client(
-        (_) async => json({'names': {'alice': _pubkey}}),
+        (_) async => json({
+          'names': {'alice': _pubkey},
+        }),
       ).verify('bob@example.com', _pubkey);
 
       expect(result.status, Nip05Status.notFound);
@@ -151,6 +165,29 @@ void main() {
 
       expect(result.status, Nip05Status.networkError);
     });
+
+    test(
+      'one deadline covers a body that never finishes, then aborts',
+      () async {
+        final body = StreamController<List<int>>();
+        addTearDown(body.close);
+        http.AbortableRequest? sent;
+        final watch = Stopwatch()..start();
+        final result = await Nip05Client(
+          client: MockClient.streaming((request, _) async {
+            sent = request as http.AbortableRequest;
+            body.add(utf8.encode('{"names":'));
+            return http.StreamedResponse(body.stream, 200);
+          }),
+          timeout: const Duration(milliseconds: 200),
+        ).verify('bob@example.com', _pubkey);
+
+        expect(result.status, Nip05Status.networkError);
+        expect(watch.elapsed, lessThan(const Duration(milliseconds: 400)));
+        // A real client closes the connection when this completes.
+        await expectLater(sent!.abortTrigger, completes);
+      },
+    );
 
     final invalid = <String, String>{
       'a body that is not JSON': '<html>',

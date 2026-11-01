@@ -69,7 +69,7 @@ class Nip05Client {
 
   final http.Client _client;
 
-  /// How long the domain gets to answer, and then to send its answer.
+  /// How long the domain gets to answer, body and all.
   final Duration timeout;
 
   /// The largest answer read, so a hostile domain can't send megabytes.
@@ -89,25 +89,26 @@ class Nip05Client {
     final uri = Uri.https(parsed.domain, '/.well-known/nostr.json', {
       'name': parsed.name,
     });
+    // One deadline covers the answer and its body. Aborting closes the
+    // connection, so a domain that trickles bytes can't hold it open.
+    final abort = Completer<void>();
     // NIP-05: fetchers must ignore redirects, and following one would ask
     // another host.
-    final request = http.Request('GET', uri)
-      ..followRedirects = false
-      ..headers['Accept'] = 'application/json';
+    final request =
+        http.AbortableRequest('GET', uri, abortTrigger: abort.future)
+          ..followRedirects = false
+          ..headers['Accept'] = 'application/json';
 
-    final List<int> body;
+    final ({Nip05Status? status, List<int>? body}) fetched;
     try {
-      final response = await _client.send(request).timeout(timeout);
-      if (response.statusCode == 404) return result(Nip05Status.notFound);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return result(Nip05Status.networkError);
-      }
-      final read = await _readCapped(response.stream).timeout(timeout);
-      if (read == null) return result(Nip05Status.invalidResponse);
-      body = read;
+      fetched = await _fetch(request).timeout(timeout);
     } catch (_) {
       return result(Nip05Status.networkError);
+    } finally {
+      if (!abort.isCompleted) abort.complete();
     }
+    if (fetched.status case final Nip05Status status) return result(status);
+    final body = fetched.body!;
 
     final Object? json;
     try {
@@ -131,13 +132,26 @@ class Nip05Client {
     );
   }
 
-  /// The bytes of [stream], or null when it is longer than [maxResponseBytes].
-  static Future<List<int>?> _readCapped(Stream<List<int>> stream) async {
-    final bytes = <int>[];
-    await for (final chunk in stream) {
-      bytes.addAll(chunk);
-      if (bytes.length > maxResponseBytes) return null;
+  /// Sends [request] and reads its answer: a status when the answer settles
+  /// the check, or the body to parse.
+  Future<({Nip05Status? status, List<int>? body})> _fetch(
+    http.BaseRequest request,
+  ) async {
+    final response = await _client.send(request);
+    if (response.statusCode == 404) {
+      return (status: Nip05Status.notFound, body: null);
     }
-    return bytes;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return (status: Nip05Status.networkError, body: null);
+    }
+    final bytes = <int>[];
+    await for (final chunk in response.stream) {
+      bytes.addAll(chunk);
+      // Too long for a NIP-05 answer, so stop reading.
+      if (bytes.length > maxResponseBytes) {
+        return (status: Nip05Status.invalidResponse, body: null);
+      }
+    }
+    return (status: null, body: bytes);
   }
 }
