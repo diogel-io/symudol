@@ -9,6 +9,7 @@ import '../../accounts/presentation/widgets/load_profile_action.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../application/profile_editor.dart';
 import '../application/profile_providers.dart';
+import '../data/nip05_client.dart';
 import '../data/profile_image_picker.dart';
 import '../data/profile_relay_client.dart';
 import '../domain/profile_content.dart';
@@ -52,6 +53,15 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       part: TextEditingController(),
   };
   bool _showImages = false;
+
+  /// The last NIP-05 check, shown while the field still holds what it checked.
+  Nip05Result? _nip05Result;
+
+  /// The identifier being checked, or null when no check is running.
+  String? _nip05Checking;
+
+  /// Bumped by every check and every edit, so only the latest check reports.
+  int _nip05Request = 0;
 
   String get _pubkey => widget.identity.publicKey;
 
@@ -215,6 +225,37 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     }
   }
 
+  /// Checks the NIP-05 field against this identity's key. Only a tap on
+  /// Verify calls this (diogel-io/symudol#44).
+  Future<void> _verifyNip05() async {
+    final identifier = _text['nip05']!.text.trim();
+    if (parseNip05Identifier(identifier) == null) return;
+    final request = ++_nip05Request;
+    setState(() {
+      _nip05Result = null;
+      _nip05Checking = identifier;
+    });
+    final result = await ref
+        .read(nip05ClientProvider)
+        .verify(identifier, _pubkey);
+    if (!mounted || request != _nip05Request) return;
+    setState(() {
+      _nip05Checking = null;
+      _nip05Result = result;
+    });
+  }
+
+  /// Forgets the NIP-05 check once the field changes, and drops a check still
+  /// running for the old value.
+  void _nip05Edited() {
+    if (_nip05Result == null && _nip05Checking == null) return;
+    _nip05Request++;
+    setState(() {
+      _nip05Result = null;
+      _nip05Checking = null;
+    });
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -303,7 +344,10 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
             for (final key in profileTextFields) ...[
               TextField(
                 controller: _text[key],
-                onChanged: (_) => _changed(),
+                onChanged: (_) {
+                  if (key == 'nip05') _nip05Edited();
+                  _changed();
+                },
                 maxLines: key == 'about' ? 5 : 1,
                 minLines: 1,
                 keyboardType: switch (key) {
@@ -312,20 +356,22 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                   'about' => TextInputType.multiline,
                   _ => TextInputType.text,
                 },
-                decoration: InputDecoration(
-                  labelText: _labels[key],
-                  errorText: editor.fieldErrors[key],
-                  suffixIcon: switch (_uploadKinds[key]) {
-                    final ProfileImageKind kind => _UploadButton(
-                      kind: kind,
-                      uploading: editor.uploading == kind,
-                      onPressed: editor.uploading != null || editor.saving
-                          ? null
-                          : () => _upload(kind),
-                    ),
-                    null => null,
-                  },
-                ),
+                decoration: key == 'nip05'
+                    ? _nip05Decoration(editor.fieldErrors[key])
+                    : InputDecoration(
+                        labelText: _labels[key],
+                        errorText: editor.fieldErrors[key],
+                        suffixIcon: switch (_uploadKinds[key]) {
+                          final ProfileImageKind kind => _UploadButton(
+                            kind: kind,
+                            uploading: editor.uploading == kind,
+                            onPressed: editor.uploading != null || editor.saving
+                                ? null
+                                : () => _upload(kind),
+                          ),
+                          null => null,
+                        },
+                      ),
               ),
               const SizedBox(height: DiogelSpacing.space4),
             ],
@@ -390,6 +436,79 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       ],
     );
   }
+
+  /// The NIP-05 field's decoration: a Verify button, and the last check's
+  /// outcome while the field still holds what was checked.
+  InputDecoration _nip05Decoration(String? fieldError) {
+    final identifier = _text['nip05']!.text.trim();
+    final parsed = parseNip05Identifier(identifier);
+    final checking = _nip05Checking == identifier && identifier.isNotEmpty;
+    final result = _nip05Result?.identifier == identifier
+        ? _nip05Result
+        : null;
+    final failure = result == null ? null : _nip05Failure(result);
+
+    return InputDecoration(
+      labelText: _labels['nip05'],
+      helper: switch (result?.status) {
+        Nip05Status.verified => Row(
+          children: [
+            const Icon(
+              Icons.verified,
+              size: 16,
+              color: DiogelColors.stateSuccess,
+            ),
+            const SizedBox(width: DiogelSpacing.space2),
+            Expanded(
+              child: Text(
+                "Verified: ${result!.domain} lists this identity's public key.",
+                style: const TextStyle(color: DiogelColors.stateSuccess),
+              ),
+            ),
+          ],
+        ),
+        _ => null,
+      },
+      helperText: identifier.isEmpty || result != null
+          ? null
+          : checking
+          ? 'Verifying…'
+          : parsed == null
+          ? 'Enter an identifier like name@example.com.'
+          : 'Not verified yet. Verification runs only when you ask.',
+      helperMaxLines: 3,
+      errorText: fieldError ?? failure,
+      errorMaxLines: 3,
+      suffixIcon: checking
+          ? const Padding(
+              padding: EdgeInsets.all(DiogelSpacing.space3),
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : TextButton(
+              onPressed: parsed == null ? null : _verifyNip05,
+              child: const Text('Verify'),
+            ),
+    );
+  }
+}
+
+/// What to tell the user when a NIP-05 check did not verify, or null.
+String? _nip05Failure(Nip05Result result) {
+  final domain = result.domain;
+  return switch (result.status) {
+    Nip05Status.verified => null,
+    Nip05Status.malformed => 'Enter an identifier like name@example.com.',
+    Nip05Status.notFound => '$domain does not list this name.',
+    Nip05Status.mismatch =>
+      '$domain lists this name for a different public key.',
+    Nip05Status.invalidResponse =>
+      "$domain's answer is not a valid NIP-05 response.",
+    Nip05Status.networkError =>
+      "Couldn't reach $domain. Check the connection and try again.",
+  };
 }
 
 class _LoadFailed extends StatelessWidget {

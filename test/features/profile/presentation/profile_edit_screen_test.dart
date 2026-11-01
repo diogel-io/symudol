@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -12,6 +13,7 @@ import 'package:image/image.dart' as img;
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/data/blossom_client.dart';
+import 'package:symudol/features/profile/data/nip05_client.dart';
 import 'package:symudol/features/profile/data/profile_image_picker.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
 import 'package:symudol/features/profile/presentation/profile_edit_screen.dart';
@@ -56,6 +58,8 @@ void main() {
   late FakeProfileRelayClient relays;
   late _FakePicker picker;
   late List<http.Request> uploads;
+  late List<http.Request> nip05Requests;
+  late Future<http.Response> Function(http.Request) nip05Answer;
 
   setUp(() async {
     vault = VaultServiceImpl(FakeVaultStore());
@@ -72,6 +76,8 @@ void main() {
       ),
     );
     uploads = [];
+    nip05Requests = [];
+    nip05Answer = (_) async => http.Response('{"names": {}}', 200);
   });
 
   Widget app(Widget home) => ProviderScope(
@@ -95,6 +101,14 @@ void main() {
               }),
               200,
             );
+          }),
+        ),
+      ),
+      nip05ClientProvider.overrideWithValue(
+        Nip05Client(
+          client: MockClient((request) {
+            nip05Requests.add(request);
+            return nip05Answer(request);
           }),
         ),
       ),
@@ -386,6 +400,167 @@ void main() {
         findsOneWidget,
       );
       expect(uploads, isEmpty);
+    });
+  });
+
+  group('verifying the NIP-05 identifier (#44)', () {
+    late String pubkey;
+
+    Future<void> openLoaded(WidgetTester tester, {String? nip05}) async {
+      pubkey = controller.state.activeIdentity!.publicKey;
+      holdProfile({'name': 'alice', 'nip05': ?nip05});
+      await openEditor(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Load profile'));
+      await tester.pumpAndSettle();
+    }
+
+    Finder field() => find.widgetWithText(TextField, 'NIP-05 identifier');
+    Finder verify() => find.widgetWithText(TextButton, 'Verify');
+
+    void answer(Map<String, String> names) {
+      nip05Answer = (_) async =>
+          http.Response(jsonEncode({'names': names}), 200);
+    }
+
+    testWidgets('nothing is fetched until Verify is tapped', (tester) async {
+      await openLoaded(tester, nip05: 'alice@example.com');
+      await tester.enterText(field(), 'bob@example.com');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sign and publish'));
+      await tester.pumpAndSettle();
+
+      expect(nip05Requests, isEmpty);
+    });
+
+    testWidgets('says it runs only when asked, then verifies on a tap', (
+      tester,
+    ) async {
+      await openLoaded(tester, nip05: 'alice@example.com');
+      answer({'alice': pubkey});
+
+      expect(
+        find.text('Not verified yet. Verification runs only when you ask.'),
+        findsOneWidget,
+      );
+      await tester.tap(verify());
+      await tester.pumpAndSettle();
+
+      expect(nip05Requests, hasLength(1));
+      expect(
+        nip05Requests.single.url.toString(),
+        'https://example.com/.well-known/nostr.json?name=alice',
+      );
+      expect(
+        find.text("Verified: example.com lists this identity's public key."),
+        findsOneWidget,
+      );
+    });
+
+    final failures = <String, (Future<http.Response> Function(http.Request), String)>{
+      'not found': (
+        (_) async => http.Response('{"names": {}}', 200),
+        'example.com does not list this name.',
+      ),
+      'a different key': (
+        (_) async => http.Response(
+          jsonEncode({
+            'names': {'alice': 'ab' * 32},
+          }),
+          200,
+        ),
+        'example.com lists this name for a different public key.',
+      ),
+      'an invalid answer': (
+        (_) async => http.Response('<html>', 200),
+        "example.com's answer is not a valid NIP-05 response.",
+      ),
+      'a network error': (
+        (_) async => throw const SocketException('no route'),
+        "Couldn't reach example.com. Check the connection and try again.",
+      ),
+    };
+    for (final MapEntry(key: what, value: (reply, message))
+        in failures.entries) {
+      testWidgets('reports $what', (tester) async {
+        await openLoaded(tester, nip05: 'alice@example.com');
+        nip05Answer = reply;
+
+        await tester.tap(verify());
+        await tester.pumpAndSettle();
+
+        expect(find.text(message), findsOneWidget);
+      });
+    }
+
+    testWidgets('Verify is off for an empty or malformed identifier', (
+      tester,
+    ) async {
+      await openLoaded(tester);
+
+      expect(tester.widget<TextButton>(verify()).onPressed, isNull);
+      await tester.enterText(field(), 'alice');
+      await tester.pump();
+
+      expect(tester.widget<TextButton>(verify()).onPressed, isNull);
+      expect(
+        find.text('Enter an identifier like name@example.com.'),
+        findsOneWidget,
+      );
+      await tester.tap(verify());
+      await tester.pumpAndSettle();
+      expect(nip05Requests, isEmpty);
+    });
+
+    testWidgets('editing the identifier clears the result', (tester) async {
+      await openLoaded(tester, nip05: 'alice@example.com');
+      answer({'alice': pubkey});
+      await tester.tap(verify());
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Verified:'), findsOneWidget);
+
+      await tester.enterText(field(), 'alice@example.org');
+      await tester.pump();
+
+      expect(find.textContaining('Verified:'), findsNothing);
+      expect(
+        find.text('Not verified yet. Verification runs only when you ask.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a result that arrives after an edit is dropped', (
+      tester,
+    ) async {
+      await openLoaded(tester, nip05: 'alice@example.com');
+      final reply = Completer<http.Response>();
+      nip05Answer = (_) => reply.future;
+      await tester.tap(verify());
+      await tester.pump();
+      expect(find.text('Verifying…'), findsOneWidget);
+
+      await tester.enterText(field(), 'alice@example.org');
+      await tester.pump();
+      reply.complete(
+        http.Response(
+          jsonEncode({
+            'names': {'alice': pubkey},
+          }),
+          200,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Verified:'), findsNothing);
+      expect(
+        find.text('Not verified yet. Verification runs only when you ask.'),
+        findsOneWidget,
+      );
+      // Typing the old value back shows nothing stale either.
+      await tester.enterText(field(), 'alice@example.com');
+      await tester.pump();
+      expect(find.textContaining('Verified:'), findsNothing);
     });
   });
 }
