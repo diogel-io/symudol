@@ -86,6 +86,50 @@ void main() {
       expect(clipboard, '');
     });
 
+    test('a failed copy keeps the earlier copy\'s clear', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final next = (call.arguments as Map)['text'] as String?;
+          if (next != '') throw PlatformException(code: 'FAILED');
+          clipboard = next;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': clipboard};
+        return null;
+      });
+
+      await expectLater(
+        copySensitiveText('other', label: 'test'),
+        throwsA(isA<PlatformException>()),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, '');
+    });
+
+    test('an unreadable clipboard is cleared anyway', () async {
+      await copySensitiveText(
+        'nsec1abc',
+        label: 'Nostr private key',
+        clearAfter: const Duration(milliseconds: 20),
+      );
+      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = (call.arguments as Map)['text'] as String?;
+        }
+        if (call.method == 'Clipboard.getData') {
+          throw PlatformException(code: 'DENIED');
+        }
+        return null;
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(clipboard, '');
+    });
+
     test('a newer copy is not cleared by an earlier timer', () async {
       await copySensitiveText(
         'nsec1abc',
