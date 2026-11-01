@@ -57,6 +57,12 @@ void main() {
       'bob@0x7f.0x1',
       'bob@[::1]',
       'bob@[fe80::1]',
+      'bob@printer.local',
+      'bob@router.lan',
+      'bob@nas.home.arpa',
+      'bob@box.localhost',
+      'bob@svc.internal',
+      'bob@PRINTER.LOCAL',
     ]) {
       test('refuses "$bad"', () {
         expect(parseNip05Identifier(bad), isNull);
