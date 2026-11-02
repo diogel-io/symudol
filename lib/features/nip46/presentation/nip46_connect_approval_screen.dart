@@ -23,8 +23,36 @@ class Nip46ConnectApprovalScreen extends ConsumerWidget {
       }
     });
 
+    // Opened from Remote Signer after the request ended, for example timed
+    // out between the tap and this build: the listener above needs a pending
+    // request to go away, so it would never pop (diogel-io/symudol#125).
     if (session == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Remote Signer Request'),
+          automaticallyImplyLeading: false,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'This connection request has ended.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  key: const Key('nip46RequestEndedClose'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(

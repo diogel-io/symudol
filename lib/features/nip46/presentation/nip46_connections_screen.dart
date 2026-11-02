@@ -19,11 +19,7 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
       if (next.pendingApproval != null &&
           previous?.pendingApproval == null &&
           context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const Nip46ConnectApprovalScreen(),
-          ),
-        );
+        _openApproval(context);
       }
     });
 
@@ -110,6 +106,8 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
               final session = activeSessions[index];
               return _SessionTile(
                 session: session,
+                isAwaitingApproval: state.pendingApproval?.id == session.id,
+                onReview: () => _openApproval(context),
                 onRevoke: () async {
                   final confirmed = await _confirmRevoke(context, session);
                   if (confirmed == true) {
@@ -120,6 +118,17 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
             },
           );
         },
+      ),
+    );
+  }
+
+  /// Opens the approval for the pending connection. Also reached from the
+  /// pending tile, since a vault lock or Back closes the approval while the
+  /// request stays pending (diogel-io/symudol#125).
+  void _openApproval(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const Nip46ConnectApprovalScreen(),
       ),
     );
   }
@@ -165,9 +174,18 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
 
 class _SessionTile extends StatelessWidget {
   final Nip46Session session;
+
+  /// Whether this is the connection waiting for the user's approval.
+  final bool isAwaitingApproval;
+  final VoidCallback onReview;
   final VoidCallback onRevoke;
 
-  const _SessionTile({required this.session, required this.onRevoke});
+  const _SessionTile({
+    required this.session,
+    required this.isAwaitingApproval,
+    required this.onReview,
+    required this.onRevoke,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -211,6 +229,12 @@ class _SessionTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (isAwaitingApproval)
+                  FilledButton.tonal(
+                    key: const Key('nip46ReviewRequest'),
+                    onPressed: onReview,
+                    child: const Text('Review request'),
+                  ),
                 TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.error,
