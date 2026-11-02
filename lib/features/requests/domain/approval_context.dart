@@ -72,9 +72,9 @@ class CryptoApprovalContext extends ApprovalContext {
 class RemoteSignerApprovalContext extends ApprovalContext {
   final Nip46PendingMethodRequest pending;
 
-  /// For `sign_event`: the event as it will be signed, with the defaults the
-  /// controller applies (the active pubkey, and kind 1 when none is given),
-  /// so the review shows what is signed. Null for other methods, or when the
+  /// For `sign_event`: the event as it will be signed, only its signed fields,
+  /// with the defaults the controller applies (the active pubkey, and kind 1
+  /// when none is given), so the review shows what is signed. Null for other methods, or when the
   /// event JSON is invalid, which the controller refuses on approve.
   final Map<String, Object?>? eventPayload;
   final NostrEventPayloadReview? eventReview;
@@ -100,15 +100,11 @@ class RemoteSignerApprovalContext extends ApprovalContext {
     switch (request.method) {
       case Nip46Method.signEvent:
         final raw = request.optionalParam(0);
-        final event = _decodeEvent(raw);
-        if (event == null) {
+        final decoded = _decodeEvent(raw);
+        if (decoded == null) {
           return RemoteSignerApprovalContext._(pending: pending, content: raw);
         }
-        final pubkey = event['pubkey'];
-        if (pubkey is! String || pubkey.isEmpty) {
-          event['pubkey'] = pending.identityPubkey;
-        }
-        if (event['kind'] is! int) event['kind'] = 1;
+        final event = _signedFields(decoded, pending.identityPubkey);
         return RemoteSignerApprovalContext._(
           pending: pending,
           eventPayload: event,
@@ -126,6 +122,32 @@ class RemoteSignerApprovalContext extends ApprovalContext {
           content: request.optionalParam(1),
         );
     }
+  }
+
+  /// Only the fields the controller signs, as it signs them. Anything else in
+  /// the client's JSON is dropped, so a client cannot put its own text where
+  /// the screen shows app data, such as the NIP-55 method or permission
+  /// warnings.
+  static Map<String, Object?> _signedFields(
+    Map<String, Object?> event,
+    String activePubkey,
+  ) {
+    final pubkey = event['pubkey'];
+    final kind = event['kind'];
+    final content = event['content'];
+    final tags = event['tags'];
+    return {
+      'pubkey': pubkey is String && pubkey.isNotEmpty ? pubkey : activePubkey,
+      'kind': kind is int ? kind : 1,
+      'content': content is String ? content : '',
+      'tags': tags is List
+          ? tags
+                .whereType<List>()
+                .map((t) => t.map((e) => e.toString()).toList())
+                .toList()
+          : const <List<String>>[],
+      if (event['created_at'] is int) 'created_at': event['created_at'],
+    };
   }
 
   static Map<String, Object?>? _decodeEvent(String? raw) {

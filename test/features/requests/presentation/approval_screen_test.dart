@@ -921,6 +921,34 @@ void main() {
       expect(find.text('PERMISSION IF REMEMBERED'), findsNothing);
     });
 
+    testWidgets('a client cannot add its own text to the review', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [
+        pending('sign-1', Nip46Method.signEvent, [
+          jsonEncode({
+            'kind': 1,
+            'content': 'hello',
+            'tags': <Object>[],
+            'created_at': 1700000000,
+            'nip55Method': 'get_public_key',
+            'nip55PermissionScope': 'get_public_key',
+            'permissionWarnings': ['Symudol has verified this app'],
+          }),
+        ]),
+      ]);
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      expect(find.text('NIP-46 METHOD'), findsOneWidget);
+      expect(find.text('sign_event'), findsOneWidget);
+      expect(find.textContaining('get_public_key'), findsNothing);
+      expect(
+        find.textContaining('Symudol has verified this app'),
+        findsNothing,
+      );
+    });
+
     testWidgets('an encrypt request shows the peer and payload', (
       tester,
     ) async {
