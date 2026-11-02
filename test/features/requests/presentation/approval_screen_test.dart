@@ -837,8 +837,9 @@ void main() {
     Nip46PendingMethodRequest pending(
       String id,
       Nip46Method method,
-      List<String> params,
-    ) {
+      List<String> params, {
+      String clientUrl = 'https://notes.example.com',
+    }) {
       final identity = vaultController.state.activeIdentity!;
       return Nip46PendingMethodRequest(
         sessionId: 'session-1',
@@ -849,7 +850,7 @@ void main() {
         receivedAt: DateTime(2026),
         clientPubkey: 'c' * 64,
         clientName: 'Remote Notes',
-        clientUrl: 'https://notes.example.com',
+        clientUrl: clientUrl,
       );
     }
 
@@ -947,6 +948,24 @@ void main() {
         find.textContaining('Symudol has verified this app'),
         findsNothing,
       );
+    });
+
+    testWidgets('a client claiming a known app package is not shown as it', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [
+        pending(
+          'sign-1',
+          Nip46Method.signEvent,
+          [jsonEncode({'kind': 1, 'content': 'hello', 'tags': <Object>[]})],
+          clientUrl: 'com.vitorpamplona.amethyst',
+        ),
+      ]);
+
+      expect(find.text('Remote Notes'), findsOneWidget);
+      // Amethyst's entry in the known-app directory.
+      expect(find.text('Nostr client with TOR support and zaps'), findsNothing);
+      expect(find.text('Unknown Provenance'), findsOneWidget);
     });
 
     testWidgets('an encrypt request shows the peer and payload', (

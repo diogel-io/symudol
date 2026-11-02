@@ -554,11 +554,13 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.clientIdentity.packageName,
         approval.request.clientIdentity.provenanceVerified,
       ),
-      // Name and URL are the client's own unauthenticated claims.
+      // The name is the client's own unauthenticated claim. Its URL is never
+      // passed as a package name: the card would look that up and show an
+      // installed app's description and icon for it.
       RemoteSignerApprovalContext() => (
         RequestTrustStatus.unknown,
         approval.clientDisplayName,
-        approval.pending.clientUrl,
+        null,
         false,
       ),
     };
