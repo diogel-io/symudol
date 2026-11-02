@@ -700,8 +700,18 @@ void main() {
           ],
         );
 
+        await send(
+          session,
+          'sign_event',
+          id: 'far-future',
+          params: [
+            jsonEncode({'kind': 1, 'created_at': 9000000000000000}),
+          ],
+        );
+
         expect(controller.state.pendingMethodRequests, isEmpty);
         expect({for (final r in responses()) r['id']: r['error']}, {
+          'far-future': 'sign_event: invalid created_at',
           'no-json': 'sign_event: invalid event JSON',
           'other-key':
               'sign_event: event pubkey does not match active identity',

@@ -60,6 +60,11 @@ class Nip46SignEvent {
     final content = decoded['content'];
     final tags = decoded['tags'];
     final createdAt = decoded['created_at'];
+    // Unix seconds that DateTime can hold: anything else would throw, or
+    // wrap when turned into milliseconds.
+    if (createdAt is int && (createdAt < 0 || createdAt > _maxCreatedAt)) {
+      throw const Nip46SignEventException('sign_event: invalid created_at');
+    }
     return Nip46SignEvent._(
       pubkey: pubkey is String && pubkey.isNotEmpty ? pubkey : activePubkey,
       hasCreatedAt: createdAt is int,
@@ -81,6 +86,9 @@ class Nip46SignEvent {
   }
 
   static DateTime _utcNow() => DateTime.now().toUtc();
+
+  /// The latest time DateTime can represent, 8.64e15 ms, in seconds.
+  static const int _maxCreatedAt = 8640000000000;
 
   /// The event for review, as it will be signed.
   Map<String, Object?> get reviewPayload => {

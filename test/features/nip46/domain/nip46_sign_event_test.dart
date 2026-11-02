@@ -85,6 +85,26 @@ void main() {
       expect(event.reviewPayload.containsKey('created_at'), isFalse);
     });
 
+    test('a created_at DateTime cannot hold is refused', () {
+      for (final createdAt in [-1, 8640000000001, 9000000000000000]) {
+        expect(
+          () => parse({'kind': 1, 'created_at': createdAt}),
+          throwsA(
+            isA<Nip46SignEventException>().having(
+              (e) => e.message,
+              'message',
+              'sign_event: invalid created_at',
+            ),
+          ),
+          reason: '$createdAt',
+        );
+      }
+      expect(
+        parse({'kind': 1, 'created_at': 8640000000000}).draft.createdAt,
+        DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
+      );
+    });
+
     test("keeps the client's pubkey so a mismatch can be refused", () {
       expect(parse({'pubkey': 'b2' * 32, 'kind': 1}).pubkey, 'b2' * 32);
     });
