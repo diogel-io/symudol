@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:symudol/app/route_pop.dart';
 import '../application/nip46_providers.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_session.dart';
@@ -14,16 +15,13 @@ class Nip46ConnectApprovalScreen extends ConsumerWidget {
     final controller = ref.read(nip46ControllerProvider.notifier);
     final session = state.pendingApproval;
 
-    // Pop when approval is cleared (approved or rejected). Only while this
-    // route is still active: a vault lock in the background starts popping
-    // it without finishing, and a pop then would remove the route below,
-    // down to the root (diogel-io/symudol#125).
+    // Close when approval is cleared (approved or rejected). A vault lock in
+    // the background starts popping this route without finishing, and a NIP-55
+    // approval can cover it, so a plain pop could remove the route below or
+    // the one above (diogel-io/symudol#125).
     ref.listen(nip46ControllerProvider, (previous, next) {
-      if (previous?.pendingApproval != null &&
-          next.pendingApproval == null &&
-          context.mounted &&
-          (ModalRoute.of(context)?.isActive ?? false)) {
-        Navigator.of(context).pop();
+      if (previous?.pendingApproval != null && next.pendingApproval == null) {
+        popIfCurrent(context);
       }
     });
 

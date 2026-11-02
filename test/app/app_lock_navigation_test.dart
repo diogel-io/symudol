@@ -396,5 +396,24 @@ void main() {
 
       expect(find.text('Accounts'), findsWidgets);
     });
+
+    testWidgets('that times out under a NIP-55 approval keeps that approval', (
+      tester,
+    ) async {
+      final container = await pumpUnlockedApp(tester);
+      await openRemoteSigner(tester);
+      await sendConnectRequest(container);
+      await tester.pumpAndSettle();
+      await sendPublicKeyRequest(container);
+      await tester.pumpAndSettle();
+      expect(find.text('Share public key').hitTestable(), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 121));
+      await tester.pumpAndSettle();
+
+      expect(container.read(nip46ControllerProvider).pendingApproval, isNull);
+      expect(find.text('Remote Signer Request'), findsNothing);
+      expect(find.text('Share public key').hitTestable(), findsOneWidget);
+    });
   });
 }
