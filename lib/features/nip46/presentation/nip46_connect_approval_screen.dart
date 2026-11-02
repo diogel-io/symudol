@@ -14,11 +14,15 @@ class Nip46ConnectApprovalScreen extends ConsumerWidget {
     final controller = ref.read(nip46ControllerProvider.notifier);
     final session = state.pendingApproval;
 
-    // Pop when approval is cleared (approved or rejected).
+    // Pop when approval is cleared (approved or rejected). Only while this
+    // route is still active: a vault lock in the background starts popping
+    // it without finishing, and a pop then would remove the route below,
+    // down to the root (diogel-io/symudol#125).
     ref.listen(nip46ControllerProvider, (previous, next) {
       if (previous?.pendingApproval != null &&
           next.pendingApproval == null &&
-          context.mounted) {
+          context.mounted &&
+          (ModalRoute.of(context)?.isActive ?? false)) {
         Navigator.of(context).pop();
       }
     });

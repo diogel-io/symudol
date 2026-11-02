@@ -373,5 +373,28 @@ void main() {
       expect(find.byKey(const Key('nip46ReviewRequest')), findsNothing);
       expect(find.text('No remote signer connections'), findsOneWidget);
     });
+
+    testWidgets('that times out in the background keeps the unlock screen', (
+      tester,
+    ) async {
+      final container = await pumpUnlockedApp(tester);
+      await openRemoteSigner(tester);
+      await sendConnectRequest(container);
+      await tester.pumpAndSettle();
+
+      // In the background no frames run, so the lock's pops never finish and
+      // the approval is still mounted when the timer rejects the request.
+      await container.read(vaultControllerProvider.notifier).lock();
+      await tester.binding.delayed(const Duration(seconds: 121));
+      expect(container.read(nip46ControllerProvider).pendingApproval, isNull);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unlock Vault').hitTestable(), findsWidgets);
+      expect(find.text('Remote Signer Request'), findsNothing);
+
+      await enterPin(tester);
+
+      expect(find.text('Accounts'), findsWidgets);
+    });
   });
 }
