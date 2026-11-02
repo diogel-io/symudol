@@ -950,6 +950,30 @@ void main() {
         expect(controller.state.sessions.single.grants, isEmpty);
       });
 
+      test('a failed lastUsedAt save does not send a second answer', () async {
+        await unlock();
+        final session = await activeBunkerSession(perms: 'sign_event:1');
+        // The save after signing, which records lastUsedAt, fails.
+        sessionStore.failNextSaves = 1;
+
+        await sendKind(session, 'note', 1);
+
+        final answers = responses().where((r) => r['id'] == 'note').toList();
+        expect(answers, hasLength(1));
+        expect(answers.single['error'], isNull);
+      });
+
+      test('logout does not bring the revoked session back', () async {
+        await unlock();
+        final session = await activeBunkerSession();
+
+        await send(session, 'logout', id: 'bye');
+
+        expect(answer('bye')['result'], 'ack');
+        expect(controller.state.sessions, isEmpty);
+        expect(await sessionStore.listSessions(), isEmpty);
+      });
+
       test('remembering a rejection refuses that kind next time', () async {
         await unlock();
         final session = await activeBunkerSession();

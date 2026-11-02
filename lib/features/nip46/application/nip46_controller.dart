@@ -788,6 +788,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     final vaultService = _vaultService;
     final identityLocalId = vaultService.activeIdentity?.localId;
 
+    // Set when the switch completes. Its early returns answer with an error
+    // and leave lastUsedAt as it was.
+    var answered = false;
     try {
       switch (request.method) {
         case Nip46Method.getPublicKey:
@@ -1064,13 +1067,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           );
       }
 
-      // Update lastUsedAt.
-      final updated = session.copyWith(lastUsedAt: _now());
-      await _sessionStore.saveSession(updated);
-      state = state.copyWith(
-        sessions:
-            state.sessions.map((s) => s.id == updated.id ? updated : s).toList(),
-      );
+      answered = true;
     } catch (e) {
       diogelLog('Nip46Controller: error dispatching ${request.method}', error: e);
       await _publishErrorResponse(
@@ -1079,6 +1076,23 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Internal error: ${e.runtimeType}',
       );
     }
+    // Not for a session that is gone, such as after logout: saving it would
+    // bring it back.
+    if (!answered || _sessionById(session.id) == null) return;
+
+    // Outside the try above: the client already has its answer, so a failed
+    // save must not send it a second, contradictory one.
+    final updated = session.copyWith(lastUsedAt: _now());
+    try {
+      await _sessionStore.saveSession(updated);
+    } catch (e) {
+      diogelLog('Nip46Controller: could not record lastUsedAt', error: e);
+      return;
+    }
+    state = state.copyWith(
+      sessions:
+          state.sessions.map((s) => s.id == updated.id ? updated : s).toList(),
+    );
   }
 
   /// Queues [request] for review, with its own timeout from now.
