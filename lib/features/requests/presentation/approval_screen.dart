@@ -421,7 +421,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
                   label: Text(
                     isLoading
                         ? 'Processing...'
-                        : _approveLabelFor(approval, ref),
+                        : _approveLabelFor(approval),
                   ),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: DiogelSpacing.space4),
@@ -433,18 +433,6 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
               ),
             ],
           ),
-          if (approval is SigningApprovalContext &&
-              ref.watch(signerServiceProvider).isDemo) ...[
-            const SizedBox(height: DiogelSpacing.space2),
-            Text(
-              'DEMO: This action uses a fake signer for development purposes.',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: DiogelColors.stateWarning,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
         ],
       ),
     );
@@ -585,11 +573,9 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
     return activeIdentity == null;
   }
 
-  String _approveLabelFor(ApprovalContext approval, WidgetRef ref) {
+  String _approveLabelFor(ApprovalContext approval) {
     return switch (approval) {
-      SigningApprovalContext() => ref.watch(signerServiceProvider).isDemo
-          ? 'Sign event (DEMO)'
-          : 'Sign event',
+      SigningApprovalContext() => 'Sign event',
       PublicKeyApprovalContext() => 'Share public key',
       CryptoApprovalContext() =>
         approval.request.isSignMessage

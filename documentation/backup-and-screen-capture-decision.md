@@ -13,8 +13,8 @@ is:
 
 - the vault, in `flutter_secure_storage`, encrypted under the PIN;
 - remembered NIP-55 decisions, in `flutter_secure_storage` and mirrored in plain SharedPreferences
-  (`nip55_permission_grants_v2`, and the legacy `nip55_provider_permissions_v1`) for the
-  ContentProvider: caller package names, certificates and pubkeys;
+  (`nip55_permission_grants_v2`) for the ContentProvider: caller package names, certificates and
+  pubkeys;
 - NIP-46 sessions, each with its `remoteSignerPrivkey`, in `flutter_secure_storage`.
 
 `flutter_secure_storage` encrypts with an Android Keystore key, and Keystore keys never leave the

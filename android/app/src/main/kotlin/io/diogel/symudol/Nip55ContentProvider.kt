@@ -123,13 +123,6 @@ class Nip55ContentProvider : ContentProvider() {
             }
         }
 
-        // ── Also check legacy SharedPreferences reject store ──────────────
-        // (kept for backward compatibility during migration)
-        if (hasLegacyRememberedReject(callerPackage, method)) {
-            DiogelLog.d(TAG) { "query: legacy remembered reject for $callerPackage/$method" }
-            return Nip55RequestCodec.rejectedCursor()
-        }
-
         // ── Decide: bridge to Flutter or return null ──────────────────────
         //
         // We reach here when:
@@ -290,13 +283,6 @@ class Nip55ContentProvider : ContentProvider() {
         } else {
             null
         }
-    }
-
-    private fun hasLegacyRememberedReject(packageName: String?, method: String): Boolean {
-        if (packageName.isNullOrBlank()) return false
-        val preferences = context?.getSharedPreferences(Nip55PermissionMirror.LEGACY_PREFS_NAME, 0)
-            ?: return false
-        return preferences.getString("$packageName:$method", null) == "reject"
     }
 
     private fun hasRequiredProjection(method: String, projection: Array<out String>?): Boolean {

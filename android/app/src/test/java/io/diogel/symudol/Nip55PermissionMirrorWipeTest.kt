@@ -12,8 +12,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * A vault wipe (diogel-io/symudol#20) leaves nothing the ContentProvider could act on: no grant,
- * no active pubkey and no legacy remembered reject.
+ * A vault wipe (diogel-io/symudol#20) leaves nothing the ContentProvider could act on: no grant
+ * and no active pubkey.
  */
 @RunWith(RobolectricTestRunner::class)
 class Nip55PermissionMirrorWipeTest {
@@ -36,7 +36,6 @@ class Nip55PermissionMirrorWipeTest {
             .put("decision", "allow")
         mirror.syncGrants(JSONArray().put(grant).toString())
         mirror.setActiveIdentityPubkey(identity)
-        legacyPrefs().edit().putString("$client:get_public_key", "reject").commit()
     }
 
     @After
@@ -44,11 +43,8 @@ class Nip55PermissionMirrorWipeTest {
         mirror.wipe()
     }
 
-    private fun legacyPrefs() =
-        context.getSharedPreferences(Nip55PermissionMirror.LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
-
     @Test
-    fun wipe_clearsGrantsActivePubkeyAndLegacyRejects() {
+    fun wipe_clearsGrantsAndActivePubkey() {
         assertTrue(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
 
         assertTrue(mirror.wipe())
@@ -56,7 +52,6 @@ class Nip55PermissionMirrorWipeTest {
         assertTrue(mirror.listGrants().isEmpty())
         assertFalse(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
         assertNull(mirror.getActiveIdentityPubkey())
-        assertTrue(legacyPrefs().all.isEmpty())
     }
 
     @Test

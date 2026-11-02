@@ -39,7 +39,7 @@ done
 
 echo "--------------------------------------------------------"
 echo "Fixes applied! On the new machine, please:"
-echo "1. Run this script: sh fix_emulators.sh"
+echo "1. Run this script: sh tools/fix_emulators.sh"
 echo "2. Open Android Studio Device Manager."
 echo "3. Launch your emulator using 'Cold Boot Now'."
 echo "--------------------------------------------------------"

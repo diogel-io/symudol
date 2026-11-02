@@ -17,9 +17,6 @@ class RealSignerService implements SignerService {
   }) : _parser = parser;
 
   @override
-  bool get isDemo => false;
-
-  @override
   Future<SignedRequestResult> sign(SigningRequest request) async {
     try {
       final parser = _parser;

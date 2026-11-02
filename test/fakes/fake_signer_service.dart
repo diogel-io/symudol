@@ -1,7 +1,7 @@
-import '../domain/request_failure.dart';
-import '../domain/signed_request_result.dart';
-import '../domain/signer_service.dart';
-import '../domain/signing_request.dart';
+import 'package:symudol/features/requests/domain/request_failure.dart';
+import 'package:symudol/features/requests/domain/signed_request_result.dart';
+import 'package:symudol/features/requests/domain/signer_service.dart';
+import 'package:symudol/features/requests/domain/signing_request.dart';
 
 class FakeSignerService implements SignerService {
   final bool shouldFail;
@@ -13,9 +13,6 @@ class FakeSignerService implements SignerService {
     this.shouldThrow = false,
     this.customSignature,
   });
-
-  @override
-  bool get isDemo => true;
 
   @override
   Future<SignedRequestResult> sign(SigningRequest request) async {

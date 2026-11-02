@@ -4,7 +4,6 @@ import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/requests/application/request_controller.dart';
 import 'package:symudol/features/requests/application/request_providers.dart';
-import 'package:symudol/features/requests/data/fake_signer_service.dart';
 import 'package:symudol/features/requests/data/real_signer_service.dart';
 import 'package:symudol/features/requests/domain/request_provenance.dart';
 import 'package:symudol/features/requests/domain/request_trust_status.dart';
@@ -23,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_relay_profile_service.dart';
+import '../../../fakes/fake_signer_service.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 class FakeNip55Gateway implements Nip55Gateway {
@@ -317,7 +317,7 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pump();
 
-        await tester.tap(find.text('Sign event (DEMO)'));
+        await tester.tap(find.text('Sign event'));
         await tester.pump();
 
         // The fake signer has a 100ms delay
@@ -327,6 +327,37 @@ void main() {
         expect(find.text('No active requests'), findsOneWidget);
       },
     );
+
+    testWidgets('a signing request shows no demo wording (#34)', (
+      tester,
+    ) async {
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'User');
+      final activeIdentity = vaultController.state.activeIdentity!;
+
+      await requestController.acceptRequest(
+        SigningRequest(
+          id: 'req1',
+          provenance: const RequestProvenance(
+            sourceDisplayName: 'App',
+            trustStatus: RequestTrustStatus.knownTrusted,
+          ),
+          actionType: SigningActionType.signEvent,
+          eventKind: 1,
+          eventPayload: {'content': 'test'},
+          targetIdentityPublicKey: activeIdentity.publicKey,
+          targetIdentityLocalId: activeIdentity.localId,
+          createdAt: DateTime.now(),
+          status: SigningRequestStatus.pending,
+        ),
+      );
+
+      await tester.pumpWidget(createTestWidget());
+      await tester.pump();
+
+      expect(find.widgetWithText(FilledButton, 'Sign event'), findsOneWidget);
+      expect(find.textContaining('DEMO'), findsNothing);
+    });
 
     testWidgets('approving with real signer completes the active request', (
       tester,
@@ -445,7 +476,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pump();
 
-      await tester.tap(find.text('Sign event (DEMO)'));
+      await tester.tap(find.text('Sign event'));
       await tester.pump(); // This SHOULD show the error immediately
       await tester.pump();
 
@@ -508,7 +539,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.text('Sign event (DEMO)'));
+      await tester.tap(find.text('Sign event'));
 
       // FakeSignerService has 100ms delay.
       await tester.pump(const Duration(milliseconds: 200));
