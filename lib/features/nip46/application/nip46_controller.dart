@@ -1289,8 +1289,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       clientUrl: session.clientUrl,
     );
     final queued = state.pendingMethodRequests;
-    // The same request sent again: the first one gets the answer.
-    if (queued.any((q) => q.key == pending.key)) return;
+    // The same request sent again, queued or still held for unlock (#29):
+    // the first one gets the answer.
+    if (queued.any((q) => q.key == pending.key) ||
+        _heldRequests.containsKey(pending.key)) {
+      return;
+    }
     if (_waitingFor(session.id) >= maxPendingRequestsPerSession) {
       await _publishErrorResponse(
         session: session,
