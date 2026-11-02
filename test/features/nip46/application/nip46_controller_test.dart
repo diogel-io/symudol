@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:symudol/features/nip46/application/nip46_background.dart';
 import 'package:symudol/features/nip46/application/nip46_controller.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
@@ -17,8 +18,22 @@ import '../../../fakes/fake_vault_store.dart';
 import '../data/fake_nip46_relay_service.dart';
 import '../../../fakes/fake_nip46_session_store.dart';
 
+/// Records the held-request notices the controller shows and clears (#29).
+class _RecordingNotifier implements Nip46Notifier {
+  final List<String> shown = [];
+  final List<String> cancelled = [];
+
+  @override
+  Future<void> showHeldRequest(String sessionId) async => shown.add(sessionId);
+
+  @override
+  Future<void> cancelHeldRequest(String sessionId) async =>
+      cancelled.add(sessionId);
+}
+
 void main() {
   late FakeVaultStore vaultStore;
+  late _RecordingNotifier notifier;
   late VaultController vaultController;
   late FakeNip46RelayService relayService;
   late FakeNip46SessionStore sessionStore;
@@ -32,6 +47,7 @@ void main() {
     vaultController = VaultController(vaultService);
     relayService = FakeNip46RelayService();
     sessionStore = FakeNip46SessionStore();
+    notifier = _RecordingNotifier();
     final crypto = DartNip46Crypto(const DartNostrCryptoService());
     controller = Nip46Controller(
       sessionStore: sessionStore,
@@ -39,6 +55,7 @@ void main() {
       vaultController: vaultController,
       relayService: relayService,
       crypto: crypto,
+      notifier: notifier,
     );
     // Allow the async _initialize() to complete.
     await Future<void>.delayed(Duration.zero);
@@ -52,7 +69,10 @@ void main() {
 
   /// Replaces the controller with one whose review timeout is [timeout], on a
   /// fresh relay, so a timeout test needn't wait the real 60 s.
-  Future<void> useRequestTimeout(Duration timeout) async {
+  Future<void> useRequestTimeout(
+    Duration timeout, {
+    DateTime Function()? now,
+  }) async {
     controller.dispose();
     relayService = FakeNip46RelayService();
     controller = Nip46Controller(
@@ -62,6 +82,8 @@ void main() {
       relayService: relayService,
       crypto: DartNip46Crypto(const DartNostrCryptoService()),
       requestTimeout: timeout,
+      notifier: notifier,
+      now: now,
     );
     await Future<void>.delayed(Duration.zero);
   }
@@ -1106,6 +1128,175 @@ void main() {
         await controller.revokeSession(session.id);
 
         expect(await sessionStore.listSessions(), isEmpty);
+      });
+    });
+
+    // A request that arrives while the vault is locked is held, never
+    // signed while locked, and decided after unlock (diogel-io/symudol#29).
+    group('requests while locked (#29)', () {
+      Future<Nip46Session> lockedSession({String? perms}) async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity();
+        final session = await activeBunkerSession(perms: perms);
+        await vaultController.lock();
+        await Future<void>.delayed(Duration.zero);
+        return session;
+      }
+
+      Future<void> unlockVault() async {
+        await vaultController.unlock('1234');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+
+      Future<void> sendKind(Nip46Session session, String id, int kind) => send(
+        session,
+        'sign_event',
+        id: id,
+        params: [
+          jsonEncode({'kind': kind, 'content': 'k$kind', 'tags': <Object>[]}),
+        ],
+      );
+
+      Map<String, Object?>? answerTo(String id) {
+        for (final r in responses().reversed) {
+          if (r['id'] == id) return r;
+        }
+        return null;
+      }
+
+      test('is held, not answered, and the user is notified', () async {
+        final session = await lockedSession();
+
+        await sendKind(session, 'note', 1);
+
+        expect(relayService.capturedPublishes, isEmpty);
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(notifier.shown, [session.id]);
+      });
+
+      test('with a grant, is signed after unlock without review', () async {
+        final session = await lockedSession(perms: 'sign_event:1');
+        await sendKind(session, 'note', 1);
+        expect(relayService.capturedPublishes, isEmpty);
+
+        await unlockVault();
+
+        expect(answerTo('note')!['error'], isNull);
+        expect(answerTo('note')!['result'], contains('"kind":1'));
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(notifier.cancelled, [session.id]);
+      });
+
+      test('without a grant, is queued for review after unlock', () async {
+        final session = await lockedSession();
+        await sendKind(session, 'reaction', 7);
+
+        await unlockVault();
+
+        expect(relayService.capturedPublishes, isEmpty);
+        final pending = controller.state.pendingMethodRequests.single;
+        expect(pending.request.id, 'reaction');
+        expect(
+          pending.identityPubkey,
+          vaultController.state.activeIdentity!.publicKey,
+        );
+      });
+
+      test('times out from when it arrived, without being signed', () async {
+        await useRequestTimeout(const Duration(milliseconds: 300));
+        final session = await lockedSession();
+        await sendKind(session, 'note', 1);
+
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        expect(answerTo('note'), {
+          'id': 'note',
+          'result': null,
+          'error': 'Request timed out',
+        });
+        expect(notifier.cancelled, [session.id]);
+        await unlockVault();
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(responses().where((r) => r['id'] == 'note'), hasLength(1));
+      });
+
+      test('keeps the time it has left when queued after unlock', () async {
+        // A clock the test moves, so the unlock's own duration doesn't count.
+        var clock = DateTime.utc(2026, 11, 2, 12);
+        await useRequestTimeout(const Duration(seconds: 30), now: () => clock);
+        final session = await lockedSession();
+        final arrivedAt = clock;
+        await sendKind(session, 'reaction', 7);
+
+        // Unlocked 29.8 s after it arrived: 200 ms are left.
+        clock = arrivedAt.add(const Duration(seconds: 29, milliseconds: 800));
+        await unlockVault();
+        final pending = controller.state.pendingMethodRequests.single;
+        expect(pending.receivedAt, arrivedAt);
+
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        // Refused 30 s after it arrived, not 30 s after the unlock.
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(answerTo('reaction')!['error'], 'Request timed out');
+      });
+
+      test('a wipe answers held requests', () async {
+        final session = await lockedSession();
+        await sendKind(session, 'note', 1);
+
+        await vaultController.wipe();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(answerTo('note')!['error'], 'The Symudol vault was erased');
+        expect(notifier.cancelled, [session.id]);
+      });
+
+      test('revoking a session answers its held requests', () async {
+        final session = await lockedSession();
+        await sendKind(session, 'note', 1);
+
+        await controller.revokeSession(session.id);
+
+        expect(answerTo('note')!['error'], 'Session has been revoked.');
+        expect(notifier.cancelled, [session.id]);
+      });
+
+      test('held requests count towards the per-session limit', () async {
+        final session = await lockedSession();
+        const limit = Nip46Controller.maxPendingRequestsPerSession;
+        for (var i = 0; i < limit; i++) {
+          await sendKind(session, 'held-$i', 1);
+        }
+        expect(relayService.capturedPublishes, isEmpty);
+
+        await sendKind(session, 'one-too-many', 1);
+
+        expect(answerTo('one-too-many')!['error'], 'Too many pending requests');
+      });
+
+      test('with no identity, is refused at once as before', () async {
+        await vaultController.createVault('1234');
+        final session = await activeBunkerSession();
+
+        await sendKind(session, 'note', 1);
+
+        expect(answerTo('note')!['error'], startsWith('Unlock Symudol'));
+        expect(notifier.shown, isEmpty);
+      });
+
+      test('the background setting is stored and a wipe resets it', () async {
+        await lockedSession();
+        await controller.setRunInBackground(true);
+        expect(controller.state.runInBackground, isTrue);
+        expect(await sessionStore.getRunInBackground(), isTrue);
+        expect(controller.wantsBackgroundService, isTrue);
+
+        await vaultController.wipe();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(controller.state.runInBackground, isFalse);
+        expect(controller.wantsBackgroundService, isFalse);
       });
     });
   });

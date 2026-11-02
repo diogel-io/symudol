@@ -28,6 +28,15 @@
     <!-- NIP-55 Protocol Values -->
     <string name="method_nip04_decrypt">nip04_decrypt</string>
 
+    <!-- NIP-46 background running (#29). Request notices name no client or content. -->
+    <string name="nip46_service_channel">Remote signer</string>
+    <string name="nip46_service_title">Remote signer is running</string>
+    <string name="nip46_service_text">Symudol keeps your remote signing connections open.</string>
+    <string name="nip46_service_stop">Stop</string>
+    <string name="nip46_requests_channel">Remote signing requests</string>
+    <string name="nip46_request_title">A remote signing request needs review</string>
+    <string name="nip46_request_text">Unlock Symudol to review it.</string>
+
     <!-- Technical -->
     <string name="digest_sha256">SHA-256</string>
     <string name="token_prefix_bridge">nip55-</string>

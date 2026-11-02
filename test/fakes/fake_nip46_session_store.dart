@@ -47,6 +47,17 @@ class FakeNip46SessionStore implements Nip46SessionStore {
     sessions.removeWhere((s) => s.id == id);
   }
 
+  bool runInBackground = false;
+
   @override
-  Future<void> clearAll() async => sessions.clear();
+  Future<void> clearAll() async {
+    sessions.clear();
+    runInBackground = false;
+  }
+
+  @override
+  Future<bool> getRunInBackground() async => runInBackground;
+
+  @override
+  Future<void> setRunInBackground(bool value) async => runInBackground = value;
 }

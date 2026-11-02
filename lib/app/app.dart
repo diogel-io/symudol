@@ -9,6 +9,7 @@ import '../features/vault/presentation/setup_vault_screen.dart';
 import '../features/navigation/presentation/main_navigation_screen.dart';
 import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
+import '../features/nip46/application/nip46_feature.dart';
 import '../features/nip46/application/nip46_providers.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
@@ -99,6 +100,22 @@ class DiogelAppState extends ConsumerState<DiogelApp>
           ref.read(vaultControllerProvider.notifier).expireSession();
         });
       }
+    }
+  }
+
+  /// Starts NIP-46 on unlock when a client is connected, so it runs without
+  /// Remote Signer being opened first (#29). Never in a build that hides it
+  /// (#26), and not with no session, so no relay is opened for nothing.
+  Future<void> _startNip46IfConnected() async {
+    if (!ref.read(nip46EnabledProvider) || ref.exists(nip46ControllerProvider)) {
+      return;
+    }
+    try {
+      final sessions = await ref.read(nip46SessionStoreProvider).listSessions();
+      if (!mounted || sessions.isEmpty) return;
+      ref.read(nip46ControllerProvider);
+    } catch (e) {
+      diogelLog('Could not start NIP-46 on unlock', error: e);
     }
   }
 
@@ -257,6 +274,8 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
+    if (!previousWasUnlocked) unawaited(_startNip46IfConnected());
+
     // Handle NIP-55 resume after unlock
     final nip55State = ref.read(nip55ControllerProvider);
     if (nip55State.isWaitingForUnlock) {
@@ -337,6 +356,12 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       if (_inBackground) return;
       _inBackground = true;
       _scheduleBackgroundLock();
+      // Keeps the relays open while Symudol is away, if the user wants it
+      // (#29). Only if NIP-46 has started.
+      if (ref.exists(nip46ControllerProvider) &&
+          ref.read(nip46ControllerProvider.notifier).wantsBackgroundService) {
+        unawaited(ref.read(nip46BackgroundProvider).start());
+      }
     } else if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.inactive) {
       _inBackground = false;
@@ -359,6 +384,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       if (state == AppLifecycleState.resumed &&
           ref.exists(nip46RelayServiceProvider)) {
         unawaited(ref.read(nip46RelayServiceProvider).reconnectAll());
+      }
+      // In the foreground the app keeps itself running (#29).
+      if (ref.exists(nip46BackgroundProvider)) {
+        unawaited(ref.read(nip46BackgroundProvider).stop());
       }
       // Force reset on resume regardless of throttle
       _lastInactivityReset = DateTime.fromMillisecondsSinceEpoch(0);
