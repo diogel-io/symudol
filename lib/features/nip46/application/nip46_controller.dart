@@ -390,7 +390,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         grant,
       ],
     );
-    await _sessionStore.saveSession(updated);
+    // The request is already out of the queue: failing to remember the
+    // decision must not stop it being answered.
+    try {
+      await _sessionStore.saveSession(updated);
+    } catch (e) {
+      diogelLog('Nip46Controller: could not remember a decision', error: e);
+      return;
+    }
     state = state.copyWith(
       sessions: state.sessions
           .map((s) => s.id == updated.id ? updated : s)

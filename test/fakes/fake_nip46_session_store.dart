@@ -10,8 +10,16 @@ class FakeNip46SessionStore implements Nip46SessionStore {
   @override
   Future<List<Nip46Session>> listSessions() async => List.of(sessions);
 
+  /// Makes this many of the next saves fail, as a secure-storage write
+  /// error would.
+  int failNextSaves = 0;
+
   @override
   Future<void> saveSession(Nip46Session session) async {
+    if (failNextSaves > 0) {
+      failNextSaves--;
+      throw StateError('secure storage write failed');
+    }
     final idx = sessions.indexWhere((s) => s.id == session.id);
     if (idx == -1) {
       sessions.add(session);

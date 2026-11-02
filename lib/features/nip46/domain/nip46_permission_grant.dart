@@ -54,7 +54,11 @@ class Nip46PermissionGrant {
     final decision = Nip55PermissionDecision.values.asNameMap()[json['decision']];
     final identityPubkey = json['identityPubkey'];
     final createdAt = DateTime.tryParse(json['createdAt'] as String? ?? '');
+    // Missing or null means kept until revoked. Anything else must parse: a
+    // damaged expiry would otherwise make a timed grant permanent.
     final rawExpiry = json['expiresAt'];
+    final expiresAt = rawExpiry is String ? DateTime.tryParse(rawExpiry) : null;
+    if (rawExpiry != null && expiresAt == null) return null;
     if (scope is! Map ||
         identityPubkey is! String ||
         createdAt == null ||
@@ -67,7 +71,7 @@ class Nip46PermissionGrant {
       decision: decision!,
       identityPubkey: identityPubkey,
       createdAt: createdAt,
-      expiresAt: rawExpiry is String ? DateTime.tryParse(rawExpiry) : null,
+      expiresAt: expiresAt,
     );
     return grant.isRememberable ? grant : null;
   }

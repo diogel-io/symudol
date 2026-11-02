@@ -813,6 +813,10 @@ void main() {
           session.grants.map((g) => g.scope.wire),
           unorderedEquals(['sign_event:1', 'nip44_encrypt']),
         );
+        expect(
+          session.grants.map((g) => g.identityPubkey).toSet(),
+          {vaultController.state.activeIdentity!.publicKey},
+        );
         expect(session.requestedScopes, isEmpty);
 
         await sendKind(session, 'note', 1);
@@ -920,10 +924,30 @@ void main() {
           controller.state.pendingMethodRequests.single.request.id,
           'other',
         );
+        final grant = controller.state.sessions.single.grants.single;
+        expect(grant.scope.wire, 'sign_event:7');
         expect(
-          controller.state.sessions.single.grants.single.scope.wire,
-          'sign_event:7',
+          grant.identityPubkey,
+          vaultController.state.activeIdentity!.publicKey,
         );
+      });
+
+      test('a decision that cannot be stored still answers the client',
+          () async {
+        await unlock();
+        final session = await activeBunkerSession();
+        await sendKind(session, 'first', 7);
+        // Only the save that remembers the decision fails.
+        sessionStore.failNextSaves = 1;
+
+        await controller.approveMethodRequest(
+          controller.state.pendingMethodRequests.single.key,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        expect(responses().where((r) => r['id'] == 'first'), hasLength(1));
+        expect(answer('first')['error'], isNull);
+        expect(controller.state.sessions.single.grants, isEmpty);
       });
 
       test('remembering a rejection refuses that kind next time', () async {

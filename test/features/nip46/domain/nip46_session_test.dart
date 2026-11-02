@@ -67,6 +67,19 @@ void main() {
       expect(restored.requestedScopes.single.wire, 'nip44_encrypt');
     });
 
+    test('a grant whose expiry cannot be read is dropped, not kept', () {
+      Nip46Session withExpiry(Object? expiresAt) => Nip46Session.fromJson(
+        session.toJson()
+          ..['grants'] = [
+            {...grant.toJson(), 'expiresAt': expiresAt},
+          ],
+      );
+
+      expect(withExpiry('not a date').grants, isEmpty);
+      expect(withExpiry(1793638471).grants, isEmpty);
+      expect(withExpiry(null).grants.single.expiresAt, isNull);
+    });
+
     test('a stored broad allow is dropped when read', () {
       final json = session.toJson()
         ..['grants'] = [
