@@ -975,6 +975,9 @@ void main() {
         // before it records lastUsedAt.
         relayService.holdPublishes = Completer<void>();
         await sendKind(session, 'note', 1);
+        await relayService.publishHeld.future.timeout(
+          const Duration(seconds: 5),
+        );
         final rejecting = controller.rejectMethodRequest(
           reaction,
           timeframe: Nip55ApprovalTimeframe.always,
@@ -1002,14 +1005,26 @@ void main() {
         // The note is answered, and its lastUsedAt save waits on storage.
         sessionStore.holdSaves = Completer<void>();
         await sendKind(session, 'note', 1);
+        await sessionStore.saveHeld.future.timeout(const Duration(seconds: 5));
         final revoking = controller.revokeSession(session.id);
-        await Future<void>.delayed(const Duration(milliseconds: 20));
         sessionStore.holdSaves!.complete();
         sessionStore.holdSaves = null;
         await revoking;
         await Future<void>.delayed(const Duration(milliseconds: 20));
 
         expect(answer('note')['error'], isNull);
+        expect(controller.state.sessions, isEmpty);
+        expect(await sessionStore.listSessions(), isEmpty);
+      });
+
+      test('a revoked session is deleted even if its relays fail to stop',
+          () async {
+        await unlock();
+        final session = await activeBunkerSession();
+        relayService.failStopSession = true;
+
+        await expectLater(controller.revokeSession(session.id), throwsStateError);
+
         expect(controller.state.sessions, isEmpty);
         expect(await sessionStore.listSessions(), isEmpty);
       });

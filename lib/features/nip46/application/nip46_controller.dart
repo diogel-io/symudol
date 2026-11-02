@@ -473,9 +473,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Session has been revoked.',
       );
     }
-    await _relayService.stopSession(sessionId);
-    // After any save already in flight, which would otherwise write it back.
-    await _enqueueSave(() => _sessionStore.deleteSession(sessionId));
+    try {
+      await _relayService.stopSession(sessionId);
+    } finally {
+      // Even when the relays fail to stop, or the session would come back on
+      // the next start. After any save already in flight, which would
+      // otherwise write it back.
+      await _enqueueSave(() => _sessionStore.deleteSession(sessionId));
+    }
   }
 
   void clearMessages() {

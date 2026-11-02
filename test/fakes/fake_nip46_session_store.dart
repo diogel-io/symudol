@@ -20,9 +20,16 @@ class FakeNip46SessionStore implements Nip46SessionStore {
   /// storage write would.
   Completer<void>? holdSaves;
 
+  /// Completes when a save first waits on [holdSaves].
+  final saveHeld = Completer<void>();
+
   @override
   Future<void> saveSession(Nip46Session session) async {
-    await holdSaves?.future;
+    final hold = holdSaves;
+    if (hold != null) {
+      if (!saveHeld.isCompleted) saveHeld.complete();
+      await hold.future;
+    }
     if (failNextSaves > 0) {
       failNextSaves--;
       throw StateError('secure storage write failed');

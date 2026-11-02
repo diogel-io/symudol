@@ -43,8 +43,12 @@ class FakeNip46RelayService implements Nip46RelayService {
     relaysBySession[sessionId] = relays;
   }
 
+  /// Makes stopping a session fail, as a relay error would.
+  bool failStopSession = false;
+
   @override
   Future<void> stopSession(String sessionId) async {
+    if (failStopSession) throw StateError('relay did not stop');
     connectedSessions.remove(sessionId);
   }
 
@@ -52,13 +56,20 @@ class FakeNip46RelayService implements Nip46RelayService {
   /// relay would.
   Completer<void>? holdPublishes;
 
+  /// Completes when a publish first waits on [holdPublishes].
+  final publishHeld = Completer<void>();
+
   @override
   Future<void> publishEvent(
     String sessionId,
     Map<String, Object?> signedEventJson,
   ) async {
     capturedPublishes.add({'sessionId': sessionId, ...signedEventJson});
-    await holdPublishes?.future;
+    final hold = holdPublishes;
+    if (hold != null) {
+      if (!publishHeld.isCompleted) publishHeld.complete();
+      await hold.future;
+    }
   }
 
   @override
