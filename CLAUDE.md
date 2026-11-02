@@ -16,7 +16,7 @@ The core trust model: keep signing material on-device, make every approval expli
 - `flutter test test/features/<path>/<file>_test.dart` — run a single test file
 - `flutter test --plain-name "<test name>"` — run a single test by name
 - `flutter run` — run the app on a connected device/emulator
-- `./fix_emulators.sh` — fixes stale Android emulator locks/snapshot issues (run if emulators fail to boot)
+- `./tools/fix_emulators.sh` — fixes stale Android emulator locks/snapshot issues (run if emulators fail to boot)
 - `./nip55_device_check.sh` — installs Symudol and the NIP-55 test client (`tools/nip55-test-client/`) on a device and runs every scenario; semi-attended, clears Symudol's data (see `documentation/nip55-device-checks.md`)
 - `flutter build apk --config-only && (cd android && ./gradlew testDebugUnitTest)` — run the JVM tests for the Android-native code (`android/gradlew` is generated, not committed)
 
@@ -56,7 +56,7 @@ Both are skipped/deferred while a NIP-55 request is in flight (`nip55ControllerP
 
 ### Requests (lib/features/requests/)
 
-`SigningRequest` models an in-flight request from a client app, including `RequestProvenance` / `RequestTrustStatus` (how the request arrived and how trustworthy that channel is). `RequestController` manages the lifecycle of the request shown in `ApprovalScreen` (the "Requests" tab of `MainNavigationScreen`). `RealSignerService` performs actual signing via the vault/crypto service; `FakeSignerService` exists for tests/dev.
+`SigningRequest` models an in-flight request from a client app, including `RequestProvenance` / `RequestTrustStatus` (how the request arrived and how trustworthy that channel is). `RequestController` manages the lifecycle of the request shown in `ApprovalScreen` (the "Requests" tab of `MainNavigationScreen`). `RealSignerService` performs actual signing via the vault/crypto service; the test fake `FakeSignerService` is in `test/fakes/`.
 
 ### NIP-55 (lib/features/nip55/) — the most involved subsystem
 

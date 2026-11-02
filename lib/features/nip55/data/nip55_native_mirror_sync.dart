@@ -79,9 +79,8 @@ class Nip55NativeMirrorSync {
     }
   }
 
-  /// Erase all native NIP-55 state for a vault wipe (#20): the active key and
-  /// its lock deadline, the permission mirror (grants and active pubkey) and
-  /// the legacy remembered rejects.
+  /// Erase all native NIP-55 state for a vault wipe (#20): the active key,
+  /// its lock deadline, and the permission mirror (grants and active pubkey).
   ///
   /// Unlike the other calls here this rethrows, so the wipe can report that
   /// it did not finish. A build with no native side has nothing to wipe.

@@ -22,12 +22,6 @@ class Nip55PermissionMirror(private val context: Context) {
     companion object {
         private const val TAG = "Diogel-PermMirror"
         private const val PREFS_NAME = "nip55_permission_grants_v2"
-
-        /**
-         * Remembered rejects from before the mirror, still read by
-         * [Nip55ContentProvider]. Nothing writes it any more; only [wipe] clears it.
-         */
-        internal const val LEGACY_PREFS_NAME = "nip55_provider_permissions_v1"
         private const val KEY_GRANTS = "grants"
         private const val KEY_ACTIVE_IDENTITY_PUBKEY = "active_identity_pubkey"
 
@@ -382,18 +376,16 @@ class Nip55PermissionMirror(private val context: Context) {
     }
 
     /**
-     * Erase everything this mirror keeps (grants and the active pubkey) and the
-     * legacy preferences file, for a vault wipe (diogel-io/symudol#20). Uses
-     * commit(), not apply(), so the data is gone when this returns.
+     * Erase everything this mirror keeps (grants and the active pubkey), for a
+     * vault wipe (diogel-io/symudol#20). Uses commit(), not apply(), so the
+     * data is gone when this returns.
      *
-     * @return whether both files were written.
+     * @return whether the file was written.
      */
     fun wipe(): Boolean {
-        val mirrorCleared = prefs.edit().clear().commit()
-        val legacyCleared = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().clear().commit()
-        DiogelLog.d(TAG) { "wipe: mirror=$mirrorCleared legacy=$legacyCleared" }
-        return mirrorCleared && legacyCleared
+        val cleared = prefs.edit().clear().commit()
+        DiogelLog.d(TAG) { "wipe: mirror=$cleared" }
+        return cleared
     }
 
     // ── Serialization ────────────────────────────────────────────────────

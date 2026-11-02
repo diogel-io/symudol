@@ -1,7 +1,6 @@
 import 'package:symudol/features/requests/application/request_controller.dart';
 import 'package:symudol/features/requests/application/request_providers.dart';
 import 'package:symudol/features/requests/data/real_signer_service.dart';
-import 'package:symudol/features/requests/data/fake_signer_service.dart';
 import 'package:symudol/features/requests/domain/request_provenance.dart';
 import 'package:symudol/features/requests/domain/request_trust_status.dart';
 import 'package:symudol/features/requests/domain/signing_action_type.dart';
@@ -11,6 +10,7 @@ import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../fakes/fake_signer_service.dart';
 import '../../../fakes/fake_vault_store.dart';
 
 void main() {

@@ -118,7 +118,7 @@ emulator -avd symudol-nip55 -no-snapshot
 ```
 
 `-no-snapshot` boots cold and saves no snapshot. Stale snapshots and locks are the usual cause of
-an emulator that won't boot. If one still fails, run `./fix_emulators.sh`.
+an emulator that won't boot. If one still fails, run `./tools/fix_emulators.sh`.
 
 ### USB Phone
 
