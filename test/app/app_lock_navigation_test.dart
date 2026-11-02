@@ -10,6 +10,7 @@ import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -172,12 +173,16 @@ void main() {
   }
 
   /// A client's nostrconnect:// request, which waits for the user's approval.
+  /// The client key is a real curve point, so responses to it can be
+  /// encrypted.
   Future<void> sendConnectRequest(ProviderContainer container) {
+    final clientPubkey = const DartNostrCryptoService().derivePublicKey(
+      '${'0' * 63}7',
+    );
     return container
         .read(nip46ControllerProvider.notifier)
         .importNostrconnectToken(
-          'nostrconnect://'
-          'a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1'
+          'nostrconnect://$clientPubkey'
           '?secret=testsecret123&relay=wss%3A%2F%2Frelay.example.com',
         );
   }
@@ -326,6 +331,11 @@ void main() {
       await openRemoteSigner(tester);
       await sendConnectRequest(container);
       await tester.pumpAndSettle();
+      final relay =
+          container.read(nip46RelayServiceProvider) as FakeNip46RelayService;
+      final clientPubkey =
+          container.read(nip46ControllerProvider).pendingApproval!.clientPubkey;
+      expect(relay.capturedPublishes, isEmpty);
 
       await container.read(vaultControllerProvider.notifier).lock();
       await tester.pumpAndSettle();
@@ -335,6 +345,12 @@ void main() {
       final state = container.read(nip46ControllerProvider);
       expect(state.pendingApproval, isNull);
       expect(state.sessions, isEmpty);
+      // The client is told: one NIP-46 response (kind 24133) addressed to it.
+      final published = relay.capturedPublishes.single;
+      expect(published['kind'], 24133);
+      expect(published['tags'], [
+        ['p', clientPubkey],
+      ]);
 
       await enterPin(tester);
       await openRemoteSigner(tester);
