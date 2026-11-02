@@ -1282,6 +1282,40 @@ void main() {
         expect(answerTo('second')!['error'], 'Session has been revoked.');
       });
 
+      test('a queued request sent again while locked is not held too', () async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity();
+        final session = await activeBunkerSession();
+        await send(
+          session,
+          'sign_event',
+          id: 'again',
+          params: [
+            jsonEncode({'kind': 7, 'content': '+', 'tags': <Object>[]}),
+          ],
+        );
+        await vaultController.lock();
+        await Future<void>.delayed(Duration.zero);
+
+        // The client sends it again, as a new event with the same id.
+        await send(
+          session,
+          'sign_event',
+          id: 'again',
+          params: [
+            jsonEncode({'kind': 7, 'content': '+', 'tags': <Object>[]}),
+          ],
+        );
+        await unlockVault();
+
+        expect(notifier.shown, isEmpty);
+        expect(controller.state.pendingMethodRequests, hasLength(1));
+        await controller.rejectMethodRequest(
+          controller.state.pendingMethodRequests.single.key,
+        );
+        expect(responses().where((r) => r['id'] == 'again'), hasLength(1));
+      });
+
       test('a revoke answers queued and held requests once each', () async {
         await useRequestTimeout(const Duration(milliseconds: 300));
         await vaultController.createVault('1234');

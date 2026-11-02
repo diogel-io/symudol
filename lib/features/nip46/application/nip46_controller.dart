@@ -1341,8 +1341,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     DateTime arrivedAt,
   ) async {
     final key = '${session.id}/${request.id}';
-    // The same request sent again: the first one gets the answer.
-    if (_heldRequests.containsKey(key)) return;
+    // The same request sent again, held or still queued for review from
+    // before the lock: the first one gets the answer.
+    if (_heldRequests.containsKey(key) ||
+        state.pendingMethodRequests.any((q) => q.key == key)) {
+      return;
+    }
     final left = _timeLeft(arrivedAt);
     if (_waitingFor(session.id) >= maxPendingRequestsPerSession ||
         left == null) {
