@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
 
@@ -10,8 +12,28 @@ class FakeNip46SessionStore implements Nip46SessionStore {
   @override
   Future<List<Nip46Session>> listSessions() async => List.of(sessions);
 
+  /// Makes this many of the next saves fail, as a secure-storage write
+  /// error would.
+  int failNextSaves = 0;
+
+  /// While set, each save waits for it before writing, as a slow secure
+  /// storage write would.
+  Completer<void>? holdSaves;
+
+  /// Completes when a save first waits on [holdSaves].
+  final saveHeld = Completer<void>();
+
   @override
   Future<void> saveSession(Nip46Session session) async {
+    final hold = holdSaves;
+    if (hold != null) {
+      if (!saveHeld.isCompleted) saveHeld.complete();
+      await hold.future;
+    }
+    if (failNextSaves > 0) {
+      failNextSaves--;
+      throw StateError('secure storage write failed');
+    }
     final idx = sessions.indexWhere((s) => s.id == session.id);
     if (idx == -1) {
       sessions.add(session);

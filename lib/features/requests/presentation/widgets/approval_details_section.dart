@@ -22,7 +22,6 @@ class ApprovalDetailsSection extends StatelessWidget {
           review: eventReview,
           payload: request.eventPayload,
           methodLabel: 'NIP-55 METHOD',
-          showRememberedPermission: true,
         ),
       PublicKeyApprovalContext() =>
         _PublicKeyDetailsSection(approval: approval as PublicKeyApprovalContext),
@@ -34,8 +33,6 @@ class ApprovalDetailsSection extends StatelessWidget {
                 review: (approval as RemoteSignerApprovalContext).eventReview,
                 payload: eventPayload,
                 methodLabel: 'NIP-46 METHOD',
-                // Just once: NIP-46 decisions are not remembered yet (#28).
-                showRememberedPermission: false,
               )
             : _CryptoDetailsSection(
                 content: (approval as RemoteSignerApprovalContext).content,
@@ -49,13 +46,11 @@ class _SigningDetailsSection extends StatelessWidget {
     required this.review,
     required this.payload,
     required this.methodLabel,
-    required this.showRememberedPermission,
   });
 
   final NostrEventPayloadReview? review;
   final Map<String, Object?> payload;
   final String methodLabel;
-  final bool showRememberedPermission;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +64,6 @@ class _SigningDetailsSection extends StatelessWidget {
             review: review,
             payload: payload,
             methodLabel: methodLabel,
-            showRememberedPermission: showRememberedPermission,
           ),
           const SizedBox(height: DiogelSpacing.space4),
         ],
@@ -84,13 +78,11 @@ class _EventSummary extends StatelessWidget {
     required this.review,
     required this.payload,
     required this.methodLabel,
-    required this.showRememberedPermission,
   });
 
   final NostrEventPayloadReview review;
   final Map<String, Object?> payload;
   final String methodLabel;
-  final bool showRememberedPermission;
 
   @override
   Widget build(BuildContext context) {
@@ -121,33 +113,31 @@ class _EventSummary extends StatelessWidget {
               fontFamily: 'monospace',
             ),
           ),
-          if (showRememberedPermission) ...[
-            const SizedBox(height: DiogelSpacing.space4),
-            _label(context, 'PERMISSION IF REMEMBERED'),
-            const SizedBox(height: DiogelSpacing.space2),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(DiogelSpacing.space3),
-              decoration: BoxDecoration(
+          const SizedBox(height: DiogelSpacing.space4),
+          _label(context, 'PERMISSION IF REMEMBERED'),
+          const SizedBox(height: DiogelSpacing.space2),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(DiogelSpacing.space3),
+            decoration: BoxDecoration(
+              color: review.isBroadPermission
+                  ? DiogelColors.stateWarning.withValues(alpha: 0.1)
+                  : DiogelColors.surfaceBase,
+              borderRadius: BorderRadius.circular(DiogelRadius.small),
+              border: Border.all(
                 color: review.isBroadPermission
-                    ? DiogelColors.stateWarning.withValues(alpha: 0.1)
-                    : DiogelColors.surfaceBase,
-                borderRadius: BorderRadius.circular(DiogelRadius.small),
-                border: Border.all(
-                  color: review.isBroadPermission
-                      ? DiogelColors.stateWarning.withValues(alpha: 0.4)
-                      : DiogelColors.borderSubtle.withValues(alpha: 0.5),
-                ),
-              ),
-              child: Text(
-                review.permissionLabel,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: review.isBroadPermission ? DiogelColors.stateWarning : null,
-                  fontWeight: review.isBroadPermission ? FontWeight.bold : null,
-                ),
+                    ? DiogelColors.stateWarning.withValues(alpha: 0.4)
+                    : DiogelColors.borderSubtle.withValues(alpha: 0.5),
               ),
             ),
-          ],
+            child: Text(
+              review.permissionLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: review.isBroadPermission ? DiogelColors.stateWarning : null,
+                fontWeight: review.isBroadPermission ? FontWeight.bold : null,
+              ),
+            ),
+          ),
           const SizedBox(height: DiogelSpacing.space4),
           _label(context, 'CONTENT'),
           const SizedBox(height: DiogelSpacing.space2),

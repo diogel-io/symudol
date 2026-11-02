@@ -73,8 +73,29 @@ void main() {
       });
     });
 
+    test('an event with no integer kind is refused (#28)', () {
+      for (final event in <Map<String, Object?>>[
+        {'content': 'x'},
+        {'kind': null},
+        {'kind': '1'},
+        {'kind': 1.0},
+      ]) {
+        expect(
+          () => parse(event),
+          throwsA(
+            isA<Nip46SignEventException>().having(
+              (e) => e.message,
+              'message',
+              'sign_event: missing kind',
+            ),
+          ),
+          reason: '$event',
+        );
+      }
+    });
+
     test('missing fields get the defaults they are signed with', () {
-      final event = parse({'content': 5});
+      final event = parse({'kind': 1, 'content': 5});
 
       expect(event.pubkey, active);
       expect(event.draft.kind, 1);

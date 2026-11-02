@@ -1550,7 +1550,6 @@ void main() {
           remoteSignerPubkey: 'remote',
           remoteSignerPrivkey: 'secret',
           relays: const ['wss://relay.example'],
-          grantedScopes: const [],
           status: Nip46SessionStatus.active,
           createdAt: DateTime(2026, 10, 1),
         ),

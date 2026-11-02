@@ -36,7 +36,7 @@ class Nip46SignEvent {
   });
 
   /// Parses the request's first parameter. Throws [Nip46SignEventException]
-  /// when it is missing or is not a JSON object.
+  /// when it is missing, is not a JSON object, or has no integer kind.
   factory Nip46SignEvent.parse(
     String? raw, {
     required String activePubkey,
@@ -60,6 +60,11 @@ class Nip46SignEvent {
     final content = decoded['content'];
     final tags = decoded['tags'];
     final createdAt = decoded['created_at'];
+    // Remembered decisions are per kind, so the kind is required (NIP-01).
+    // Signing it as some default kind would be a different event (#28).
+    if (kind is! int) {
+      throw const Nip46SignEventException('sign_event: missing kind');
+    }
     // When given, an integer of Unix seconds that DateTime can hold (NIP-01).
     // Anything else, such as a double, a string, or a value that would throw
     // or wrap when turned into milliseconds, is refused rather than signed
@@ -72,8 +77,7 @@ class Nip46SignEvent {
       pubkey: pubkey is String && pubkey.isNotEmpty ? pubkey : activePubkey,
       hasCreatedAt: createdAt is int,
       draft: NostrEventDraft(
-        // A missing kind is signed as kind 1 for now; refusing it is #28.
-        kind: kind is int ? kind : 1,
+        kind: kind,
         content: content is String ? content : '',
         tags: tags is List
             ? tags

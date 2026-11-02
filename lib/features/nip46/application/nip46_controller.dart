@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:symudol/app/diogel_log.dart';
+import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
@@ -17,6 +19,7 @@ import '../domain/nip46_approval_policy.dart';
 import '../domain/nip46_connection_token.dart';
 import '../domain/nip46_method.dart';
 import '../domain/nip46_pending_method_request.dart';
+import '../domain/nip46_permission_grant.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_relay_event.dart';
 import '../domain/nip46_request.dart';
@@ -108,6 +111,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
 
+  // Session saves, one at a time (see _updateSession).
+  Future<void> _saveQueue = Future.value();
+
   // Timeout for each request awaiting review, by [Nip46PendingMethodRequest.key].
   final Map<String, Timer> _methodRequestTimers = {};
   // Timer for pending connect approval timeout.
@@ -153,7 +159,6 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       remoteSignerPubkey: pubkey,
       remoteSignerPrivkey: sessionPrivkey,
       relays: sessionRelays,
-      grantedScopes: const [],
       status: Nip46SessionStatus.pending,
       createdAt: _now(),
       pendingSecret: token.secret,
@@ -182,7 +187,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       clientName: parsed.name,
       clientUrl: parsed.url,
       clientImage: parsed.image,
-      grantedScopes: const [],
+      // Requested by the client; saved only if the user approves them (#28).
+      requestedScopes: _requestedScopes(parsed.perms),
       status: Nip46SessionStatus.pending,
       createdAt: _now(),
       pendingSecret: parsed.secret,
@@ -207,8 +213,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   }
 
   /// Called by the approval UI to accept a new connection.
+  ///
+  /// With a [timeframe] other than just once, the permissions the client
+  /// asked for are remembered as allow grants for the active identity, except
+  /// a broad sign_event, which is reviewed every time (#28).
   Future<void> approveConnection({
-    List<Nip46PermissionScope> grantedScopes = const [],
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
   }) async {
     final pending = state.pendingApproval;
     if (pending == null) return;
@@ -216,9 +226,24 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
 
+    final identity = _vaultService.activeIdentity?.publicKey;
+    final expiresAt = _expiresAtFor(timeframe);
+    final grants = [
+      if (identity != null && timeframe != Nip55ApprovalTimeframe.justOnce)
+        for (final scope in pending.requestedScopes)
+          Nip46PermissionGrant(
+            scope: scope,
+            decision: Nip55PermissionDecision.allow,
+            identityPubkey: identity,
+            createdAt: _now(),
+            expiresAt: expiresAt,
+          ),
+    ].where((grant) => grant.isRememberable).toList();
+
     final approved = pending.copyWith(
       status: Nip46SessionStatus.active,
-      grantedScopes: grantedScopes,
+      requestedScopes: const [],
+      grants: grants,
       connectedAt: _now(),
       pendingSecret: null,
     );
@@ -282,7 +307,11 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   /// Called by the approval UI to approve the queued request with [key].
   /// Does nothing if it has already been answered, for example timed out.
-  Future<void> approveMethodRequest(String key) async {
+  /// A [timeframe] other than just once remembers the decision (#28).
+  Future<void> approveMethodRequest(
+    String key, {
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
     final pending = _takePendingMethodRequest(key);
     if (pending == null) return;
     final session = _sessionById(pending.sessionId);
@@ -299,26 +328,125 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       return;
     }
 
+    await _rememberDecision(
+      pending,
+      Nip55PermissionDecision.allow,
+      timeframe,
+    );
     await _dispatchMethod(
-      session: session,
+      session: _sessionById(pending.sessionId) ?? session,
       request: pending.request,
       usesNip04: pending.usesNip04,
     );
   }
 
   /// Called by the approval UI to reject the queued request with [key].
-  Future<void> rejectMethodRequest(String key) async {
+  /// A [timeframe] other than just once remembers the rejection (#28).
+  Future<void> rejectMethodRequest(
+    String key, {
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
     final pending = _takePendingMethodRequest(key);
     if (pending == null) return;
     final session = _sessionById(pending.sessionId);
     if (session == null) return;
 
+    await _rememberDecision(
+      pending,
+      Nip55PermissionDecision.reject,
+      timeframe,
+    );
     await _publishErrorResponse(
       session: session,
       requestId: pending.request.id,
       error: 'User rejected the request',
     );
   }
+
+  /// Saves [decision] on [pending]'s scope for the identity it was reviewed
+  /// under, replacing any earlier decision for that scope and identity.
+  /// Nothing is saved just once, or for a broad sign_event allow.
+  Future<void> _rememberDecision(
+    Nip46PendingMethodRequest pending,
+    Nip55PermissionDecision decision,
+    Nip55ApprovalTimeframe timeframe,
+  ) async {
+    if (timeframe == Nip55ApprovalTimeframe.justOnce) return;
+    final session = _sessionById(pending.sessionId);
+    final scope = _requestScope(pending.request, pending.identityPubkey);
+    if (session == null || scope == null) return;
+    final grant = Nip46PermissionGrant(
+      scope: scope,
+      decision: decision,
+      identityPubkey: pending.identityPubkey,
+      createdAt: _now(),
+      expiresAt: _expiresAtFor(timeframe),
+    );
+    if (!grant.isRememberable) return;
+
+    // The request is already out of the queue: failing to remember the
+    // decision must not stop it being answered.
+    try {
+      await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(grants: _withGrant(latest.grants, grant)),
+      );
+    } catch (e) {
+      diogelLog('Nip46Controller: could not remember a decision', error: e);
+      // A rejection still applies, in memory, so a failed write cannot leave
+      // an earlier allow for the same scope in force. The next successful
+      // save of this session stores it.
+      final latest = _sessionById(session.id);
+      if (decision == Nip55PermissionDecision.reject && latest != null) {
+        final rejected = latest.copyWith(
+          grants: _withGrant(latest.grants, grant),
+        );
+        state = state.copyWith(
+          sessions: [
+            for (final s in state.sessions) s.id == rejected.id ? rejected : s,
+          ],
+        );
+      }
+    }
+  }
+
+  /// [grants] with [grant] in place of any earlier decision for the same
+  /// scope and identity.
+  static List<Nip46PermissionGrant> _withGrant(
+    List<Nip46PermissionGrant> grants,
+    Nip46PermissionGrant grant,
+  ) => [
+    for (final g in grants)
+      if (g.identityPubkey != grant.identityPubkey ||
+          g.scope.wire != grant.scope.wire)
+        g,
+    grant,
+  ];
+
+  /// The scope a remembered decision on [request] covers: `sign_event` with
+  /// its event's kind, or the method's own scope.
+  Nip46PermissionScope? _requestScope(Nip46Request request, String pubkey) {
+    int? kind;
+    if (request.method == Nip46Method.signEvent) {
+      try {
+        kind = Nip46SignEvent.parse(
+          request.optionalParam(0),
+          activePubkey: pubkey,
+        ).draft.kind;
+      } on Nip46SignEventException {
+        return null;
+      }
+    }
+    return Nip46ApprovalPolicy.scopeFor(request.method, kind);
+  }
+
+  DateTime? _expiresAtFor(Nip55ApprovalTimeframe timeframe) =>
+      switch (timeframe) {
+        Nip55ApprovalTimeframe.justOnce => null,
+        Nip55ApprovalTimeframe.eightHours =>
+          _now().add(const Duration(hours: 8)),
+        Nip55ApprovalTimeframe.always => null,
+      };
 
   /// Removes the queued request with [key] and cancels its timeout.
   Nip46PendingMethodRequest? _takePendingMethodRequest(String key) {
@@ -347,6 +475,11 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   Future<void> revokeSession(String sessionId) async {
     // Its queued requests are answered first, while the relays still run.
     final session = _sessionById(sessionId);
+    // Out of state at once, so no save started from here on can keep it
+    // (see [_updateSession]); its grants go with it (#28).
+    state = state.copyWith(
+      sessions: state.sessions.where((s) => s.id != sessionId).toList(),
+    );
     final queued = state.pendingMethodRequests
         .where((pending) => pending.sessionId == sessionId)
         .toList();
@@ -359,11 +492,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Session has been revoked.',
       );
     }
-    await _relayService.stopSession(sessionId);
-    await _sessionStore.deleteSession(sessionId);
-    state = state.copyWith(
-      sessions: state.sessions.where((s) => s.id != sessionId).toList(),
-    );
+    try {
+      await _relayService.stopSession(sessionId);
+    } finally {
+      // Even when the relays fail to stop, or the session would come back on
+      // the next start. After any save already in flight, which would
+      // otherwise write it back.
+      await _enqueueSave(() => _sessionStore.deleteSession(sessionId));
+    }
   }
 
   void clearMessages() {
@@ -547,21 +683,57 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     // Update usesNip04 flag on session if needed.
     if (usesNip04 && !session.usesNip04) {
-      final refreshed = session.copyWith(usesNip04: true);
-      await _sessionStore.saveSession(refreshed);
-      state = state.copyWith(
-        sessions: state.sessions.map((s) => s.id == refreshed.id ? refreshed : s).toList(),
+      final refreshed = await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(usesNip04: true),
       );
+      // Revoked meanwhile: nothing to answer with.
+      if (refreshed == null) return;
       session = refreshed;
     }
 
     final vaultState = _vaultController.state.vaultState;
     final activeId = _vaultService.activeIdentity?.publicKey;
+
+    // A sign_event that can only fail is refused now: never reviewed, and
+    // never matched against a remembered decision. Grants are per kind, so
+    // the policy needs the event's (#27, #28).
+    int? signEventKind;
+    if (request.method == Nip46Method.signEvent &&
+        vaultState is VaultUnlocked &&
+        activeId != null) {
+      final Nip46SignEvent event;
+      try {
+        event = Nip46SignEvent.parse(
+          request.optionalParam(0),
+          activePubkey: activeId,
+        );
+      } on Nip46SignEventException catch (e) {
+        await _publishErrorResponse(
+          session: session,
+          requestId: request.id,
+          error: e.message,
+        );
+        return;
+      }
+      if (event.pubkey != activeId) {
+        await _publishErrorResponse(
+          session: session,
+          requestId: request.id,
+          error: _signEventPubkeyMismatch,
+        );
+        return;
+      }
+      signEventKind = event.draft.kind;
+    }
+
     final decision = _approvalPolicy.decide(
       method: request.method,
       session: session,
       vaultState: vaultState,
       activeIdentityPubkey: activeId,
+      signEventKind: signEventKind,
+      now: _now(),
     );
 
     switch (decision) {
@@ -606,16 +778,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     }
 
     // Parse requested permissions from params[2] if present.
-    final permsParam = request.optionalParam(2);
-    List<Nip46PermissionScope> requestedScopes = const [];
-    if (permsParam != null) {
-      final parser = const Nip55PermissionParser();
-      final parsed = parser.parse(permsParam);
-      requestedScopes = parsed.scopes
-          .map(_nip55ScopeToNip46)
-          .whereType<Nip46PermissionScope>()
-          .toList();
-    }
+    final requestedScopes = _requestedScopes(request.optionalParam(2));
 
     // Update session with the client pubkey and requested scopes (for approval UI).
     // The secret stays until approval, so a second connect while this one
@@ -623,7 +786,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     var updatedSession = session.copyWith(
       clientPubkey: senderPubkey,
       usesNip04: usesNip04,
-      grantedScopes: requestedScopes,
+      requestedScopes: requestedScopes,
     );
     await _sessionStore.saveSession(updatedSession);
     state = state.copyWith(
@@ -652,6 +815,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     final vaultService = _vaultService;
     final identityLocalId = vaultService.activeIdentity?.localId;
 
+    // Set when the switch completes. Its early returns answer with an error
+    // and leave lastUsedAt as it was.
+    var answered = false;
     try {
       switch (request.method) {
         case Nip46Method.getPublicKey:
@@ -928,13 +1094,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           );
       }
 
-      // Update lastUsedAt.
-      final updated = session.copyWith(lastUsedAt: _now());
-      await _sessionStore.saveSession(updated);
-      state = state.copyWith(
-        sessions:
-            state.sessions.map((s) => s.id == updated.id ? updated : s).toList(),
-      );
+      answered = true;
     } catch (e) {
       diogelLog('Nip46Controller: error dispatching ${request.method}', error: e);
       await _publishErrorResponse(
@@ -943,6 +1103,59 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Internal error: ${e.runtimeType}',
       );
     }
+    if (!answered) return;
+
+    // Outside the try above: the client already has its answer, so a failed
+    // save must not send it a second, contradictory one. Applied to the
+    // latest session, so a decision remembered while this request was
+    // signed is kept, and skipped for one revoked meanwhile, such as by
+    // logout (#28).
+    try {
+      await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(lastUsedAt: _now()),
+      );
+    } catch (e) {
+      diogelLog('Nip46Controller: could not record lastUsedAt', error: e);
+    }
+  }
+
+  /// Applies [change] to the session's latest state, stores it and puts it
+  /// in state, one save at a time. Returns the saved session, or null when
+  /// the session is gone, revoked or wiped, in which case nothing is saved.
+  ///
+  /// Every change to a stored session's grants or lastUsedAt goes through
+  /// here, so no save writes back an older copy over a decision made while
+  /// it waited, and none can bring back a revoked session (#28).
+  Future<Nip46Session?> _updateSession(
+    String id,
+    Nip46Session Function(Nip46Session latest) change,
+  ) {
+    return _enqueueSave(() async {
+      final latest = _sessionById(id);
+      if (latest == null) return null;
+      final updated = change(latest);
+      await _sessionStore.saveSession(updated);
+      // Revoked while it was being written: undo the write.
+      if (_sessionById(id) == null) {
+        await _sessionStore.deleteSession(id);
+        return null;
+      }
+      state = state.copyWith(
+        sessions: [
+          for (final s in state.sessions) s.id == id ? updated : s,
+        ],
+      );
+      return updated;
+    });
+  }
+
+  /// Runs [save] after every save queued before it. A failure is returned
+  /// to the caller and doesn't stop later saves.
+  Future<T> _enqueueSave<T>(Future<T> Function() save) {
+    final result = _saveQueue.then((_) => save());
+    _saveQueue = result.then<void>((_) {}, onError: (_) {});
+    return result;
   }
 
   /// Queues [request] for review, with its own timeout from now.
@@ -959,34 +1172,6 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'No active identity',
       );
       return;
-    }
-    // A sign_event that can only fail is refused now, not shown for review.
-    if (request.method == Nip46Method.signEvent) {
-      final String? refusal;
-      try {
-        final event = Nip46SignEvent.parse(
-          request.optionalParam(0),
-          activePubkey: identity.publicKey,
-        );
-        refusal = event.pubkey == identity.publicKey
-            ? null
-            : _signEventPubkeyMismatch;
-      } on Nip46SignEventException catch (e) {
-        await _publishErrorResponse(
-          session: session,
-          requestId: request.id,
-          error: e.message,
-        );
-        return;
-      }
-      if (refusal != null) {
-        await _publishErrorResponse(
-          session: session,
-          requestId: request.id,
-          error: refusal,
-        );
-        return;
-      }
     }
     final pending = Nip46PendingMethodRequest(
       sessionId: session.id,
@@ -1117,6 +1302,18 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   String _generatePrivkey() {
     final bytes = List.generate(32, (_) => _random.nextInt(256));
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// The scopes in a client's `perms` (NIP-46: `method[:kind]`, comma
+  /// separated), from a connect request or a nostrconnect:// URI.
+  List<Nip46PermissionScope> _requestedScopes(String? perms) {
+    if (perms == null || perms.isEmpty) return const [];
+    return const Nip55PermissionParser()
+        .parse(perms)
+        .scopes
+        .map(_nip55ScopeToNip46)
+        .whereType<Nip46PermissionScope>()
+        .toList();
   }
 
   Nip46PermissionScope? _nip55ScopeToNip46(dynamic nip55Scope) {

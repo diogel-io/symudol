@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/nip46_providers.dart';
+import '../domain/nip46_permission_grant.dart';
 import '../domain/nip46_session.dart';
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
 import 'nip46_connection_qr_sheet.dart';
 import 'nip46_connect_approval_screen.dart';
 
@@ -283,10 +285,10 @@ class _SessionTile extends StatelessWidget {
                 ],
               ],
             ),
-            if (session.grantedScopes.isNotEmpty) ...[
+            if (_grantsSummary(session) case final summary?) ...[
               const SizedBox(height: 4),
               Text(
-                session.grantedScopes.map((s) => s.wire).join(', '),
+                summary,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.outline,
                 ),
@@ -298,6 +300,35 @@ class _SessionTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The session's remembered decisions still in force, such as
+  /// "Allowed: sign_event:1 · Rejected: nip04_decrypt until 18:30" (#28).
+  String? _grantsSummary(Nip46Session session) {
+    final now = DateTime.now();
+    String describe(Nip46PermissionGrant grant) {
+      final expiry = grant.expiresAt?.toLocal();
+      if (expiry == null) return grant.scope.wire;
+      final time =
+          '${expiry.hour.toString().padLeft(2, '0')}:'
+          '${expiry.minute.toString().padLeft(2, '0')}';
+      return '${grant.scope.wire} until $time';
+    }
+
+    final live = session.grants.where((g) => !g.isExpiredAt(now));
+    final allowed = [
+      for (final g in live)
+        if (g.decision == Nip55PermissionDecision.allow) describe(g),
+    ];
+    final rejected = [
+      for (final g in live)
+        if (g.decision == Nip55PermissionDecision.reject) describe(g),
+    ];
+    final parts = [
+      if (allowed.isNotEmpty) 'Allowed: ${allowed.join(', ')}',
+      if (rejected.isNotEmpty) 'Rejected: ${rejected.join(', ')}',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 
   String _formatTime(DateTime t) {
