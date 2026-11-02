@@ -1040,6 +1040,31 @@ void main() {
         expect(await sessionStore.listSessions(), isEmpty);
       });
 
+      test('a rejection that cannot be stored still overrides an allow',
+          () async {
+        await unlock();
+        final session = await activeBunkerSession();
+        await sendKind(session, 'first', 7);
+        await sendKind(session, 'second', 7);
+        final queued = controller.state.pendingMethodRequests;
+        await controller.approveMethodRequest(
+          queued.first.key,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+        // The save that would remember the rejection fails.
+        sessionStore.failNextSaves = 1;
+        await controller.rejectMethodRequest(
+          queued.last.key,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+
+        await sendKind(session, 'third', 7);
+
+        expect(answer('second')['error'], 'User rejected the request');
+        expect(answer('third')['error'], 'Rejected by a remembered decision.');
+        expect(controller.state.pendingMethodRequests, isEmpty);
+      });
+
       test('remembering a rejection refuses that kind next time', () async {
         await unlock();
         final session = await activeBunkerSession();

@@ -80,6 +80,31 @@ void main() {
       expect(withExpiry(null).grants.single.expiresAt, isNull);
     });
 
+    test('a malformed grant is dropped and the session still loads', () {
+      final json = session.toJson()
+        ..['grants'] = [
+          {...grant.toJson(), 'createdAt': 1793638471},
+          {
+            ...grant.toJson(),
+            'scope': {'type': 'sign_event', 'kind': 'one'},
+          },
+          {...grant.toJson(), 'scope': {'type': 7}},
+          grant.toJson(),
+        ]
+        ..['requestedScopes'] = [
+          {'type': 'sign_event', 'kind': 'one'},
+        ];
+
+      final restored = Nip46Session.fromJson(json);
+
+      // The bad scopes read as unsupported, which matches no request.
+      expect(
+        restored.grants.map((g) => g.scope.wire),
+        unorderedEquals(['sign_event:one', 'unknown', 'sign_event:1']),
+      );
+      expect(restored.requestedScopes.single.wire, 'sign_event:one');
+    });
+
     test('a stored broad allow is dropped when read', () {
       final json = session.toJson()
         ..['grants'] = [

@@ -8,12 +8,21 @@ sealed class Nip46PermissionScope {
 
   Map<String, Object?> toJson();
 
+  /// Never throws: a malformed scope reads as [Nip46UnsupportedScope], which
+  /// matches no request, so one bad stored entry cannot stop a session
+  /// loading (#28).
   static Nip46PermissionScope fromJson(Map<String, Object?> json) {
-    final type = json['type'] as String?;
+    final rawType = json['type'];
+    final type = rawType is String ? rawType : null;
+    final rawWire = json['wire'];
     return switch (type) {
       'get_public_key' => const Nip46GetPublicKeyScope(),
       'ping' => const Nip46PingScope(),
-      'sign_event' => Nip46SignEventScope(json['kind'] as int?),
+      'sign_event' => switch (json['kind']) {
+        null => const Nip46SignEventScope(),
+        final int kind => Nip46SignEventScope(kind),
+        final other => Nip46UnsupportedScope('sign_event:$other'),
+      },
       'nip04_encrypt' => const Nip46Nip04EncryptScope(),
       'nip04_decrypt' => const Nip46Nip04DecryptScope(),
       'nip44_encrypt' => const Nip46Nip44EncryptScope(),
@@ -21,7 +30,9 @@ sealed class Nip46PermissionScope {
       'decrypt_zap_event' => const Nip46DecryptZapEventScope(),
       'switch_relays' => const Nip46SwitchRelaysScope(),
       'get_relays' => const Nip46GetRelaysScope(),
-      _ => Nip46UnsupportedScope(json['wire'] as String? ?? type ?? 'unknown'),
+      _ => Nip46UnsupportedScope(
+        rawWire is String ? rawWire : type ?? 'unknown',
+      ),
     };
   }
 }

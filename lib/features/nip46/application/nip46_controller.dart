@@ -389,20 +389,39 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     try {
       await _updateSession(
         session.id,
-        (latest) => latest.copyWith(
-          grants: [
-            for (final g in latest.grants)
-              if (g.identityPubkey != grant.identityPubkey ||
-                  g.scope.wire != grant.scope.wire)
-                g,
-            grant,
-          ],
-        ),
+        (latest) => latest.copyWith(grants: _withGrant(latest.grants, grant)),
       );
     } catch (e) {
       diogelLog('Nip46Controller: could not remember a decision', error: e);
+      // A rejection still applies, in memory, so a failed write cannot leave
+      // an earlier allow for the same scope in force. The next successful
+      // save of this session stores it.
+      final latest = _sessionById(session.id);
+      if (decision == Nip55PermissionDecision.reject && latest != null) {
+        final rejected = latest.copyWith(
+          grants: _withGrant(latest.grants, grant),
+        );
+        state = state.copyWith(
+          sessions: [
+            for (final s in state.sessions) s.id == rejected.id ? rejected : s,
+          ],
+        );
+      }
     }
   }
+
+  /// [grants] with [grant] in place of any earlier decision for the same
+  /// scope and identity.
+  static List<Nip46PermissionGrant> _withGrant(
+    List<Nip46PermissionGrant> grants,
+    Nip46PermissionGrant grant,
+  ) => [
+    for (final g in grants)
+      if (g.identityPubkey != grant.identityPubkey ||
+          g.scope.wire != grant.scope.wire)
+        g,
+    grant,
+  ];
 
   /// The scope a remembered decision on [request] covers: `sign_event` with
   /// its event's kind, or the method's own scope.

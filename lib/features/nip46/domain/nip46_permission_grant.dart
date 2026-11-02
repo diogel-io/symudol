@@ -49,11 +49,15 @@ class Nip46PermissionGrant {
   };
 
   /// Null for a grant this version cannot use, which is then dropped.
+  /// Never throws, so one bad stored grant cannot stop a session loading.
   static Nip46PermissionGrant? fromJson(Map<String, Object?> json) {
     final scope = json['scope'];
     final decision = Nip55PermissionDecision.values.asNameMap()[json['decision']];
     final identityPubkey = json['identityPubkey'];
-    final createdAt = DateTime.tryParse(json['createdAt'] as String? ?? '');
+    final rawCreatedAt = json['createdAt'];
+    final createdAt = rawCreatedAt is String
+        ? DateTime.tryParse(rawCreatedAt)
+        : null;
     // Missing or null means kept until revoked. Anything else must parse: a
     // damaged expiry would otherwise make a timed grant permanent.
     final rawExpiry = json['expiresAt'];
