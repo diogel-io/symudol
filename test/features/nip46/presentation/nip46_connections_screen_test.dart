@@ -73,7 +73,133 @@ void main() {
       expect(find.text('Remote Signer (NIP-46)'), findsOneWidget);
     });
   });
+
+  // A lock or Back closes the approval while the request stays pending. Here
+  // the request arrives before the screen opens, as after an unlock.
+  group('a pending connection request (#125)', () {
+    testWidgets('Review request opens it and keeps it pending', (
+      tester,
+    ) async {
+      final controller = _buildController();
+      await controller.importNostrconnectToken(_nostrconnect);
+      final pending = controller.state.pendingApproval;
+      expect(pending, isNotNull);
+
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+      expect(find.text('Remote Signer Request'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('nip46ReviewRequest')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+      expect(find.text('Approve'), findsOneWidget);
+      expect(controller.state.pendingApproval?.id, pending!.id);
+
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsNothing);
+      expect(controller.state.pendingApproval, isNull);
+      expect(
+        controller.state.sessions.single.status,
+        Nip46SessionStatus.active,
+      );
+    });
+
+    testWidgets('reopening it does not restart the connect timer', (
+      tester,
+    ) async {
+      final controller = _buildController();
+      await controller.importNostrconnectToken(_nostrconnect);
+
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pump(const Duration(seconds: 100));
+      await tester.tap(find.byKey(const Key('nip46ReviewRequest')));
+      await tester.pumpAndSettle();
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 18));
+      expect(controller.state.pendingApproval, isNotNull);
+
+      // 120 s after the request arrived, not after the reopen.
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(controller.state.pendingApproval, isNull);
+      expect(controller.state.sessions, isEmpty);
+      expect(find.text('Remote Signer Request'), findsNothing);
+      expect(find.text('No remote signer connections'), findsOneWidget);
+    });
+
+    testWidgets('a bunker session awaiting its client has no Review', (
+      tester,
+    ) async {
+      final controller = _buildController();
+      await controller.initiateBunkerSession();
+
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Awaiting connection…'), findsOneWidget);
+      expect(find.byKey(const Key('nip46ReviewRequest')), findsNothing);
+    });
+
+    testWidgets('system Back keeps it pending, and Review request reopens it', (
+      tester,
+    ) async {
+      final controller = _buildController();
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+
+      await controller.importNostrconnectToken(_nostrconnect);
+      await tester.pumpAndSettle();
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+      final pending = controller.state.pendingApproval;
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsNothing);
+      expect(controller.state.pendingApproval?.id, pending!.id);
+
+      await tester.tap(find.byKey(const Key('nip46ReviewRequest')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+      expect(controller.state.pendingApproval?.id, pending.id);
+      await controller.rejectConnection();
+    });
+
+    testWidgets('fits a narrow phone with a long client name', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final controller = _buildController();
+      await controller.importNostrconnectToken(
+        '$_nostrconnectBase&name=A%20remote%20signing%20client%20with%20a%20long%20name',
+      );
+
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+
+      // A RenderFlex overflow is reported as an exception.
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const Key('nip46ReviewRequest')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.text('Pending'), findsOneWidget);
+      await controller.rejectConnection();
+    });
+  });
 }
+
+const _nostrconnectBase =
+    'nostrconnect://a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1'
+    '?secret=testsecret123&relay=wss%3A%2F%2Frelay.example.com';
+const _nostrconnect = '$_nostrconnectBase&name=Test%20client';
 
 Nip46Session _session({String? clientName}) {
   return Nip46Session(

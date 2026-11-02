@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:symudol/app/route_pop.dart';
 import '../application/nip46_providers.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_session.dart';
@@ -14,17 +15,46 @@ class Nip46ConnectApprovalScreen extends ConsumerWidget {
     final controller = ref.read(nip46ControllerProvider.notifier);
     final session = state.pendingApproval;
 
-    // Pop when approval is cleared (approved or rejected).
+    // Close when approval is cleared (approved or rejected). A vault lock in
+    // the background starts popping this route without finishing, and a NIP-55
+    // approval can cover it, so a plain pop could remove the route below or
+    // the one above (diogel-io/symudol#125).
     ref.listen(nip46ControllerProvider, (previous, next) {
-      if (previous?.pendingApproval != null &&
-          next.pendingApproval == null &&
-          context.mounted) {
-        Navigator.of(context).pop();
+      if (previous?.pendingApproval != null && next.pendingApproval == null) {
+        popIfCurrent(context);
       }
     });
 
+    // Opened from Remote Signer after the request ended, for example timed
+    // out between the tap and this build: the listener above needs a pending
+    // request to go away, so it would never pop (diogel-io/symudol#125).
     if (session == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Remote Signer Request'),
+          automaticallyImplyLeading: false,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'This connection request has ended.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  key: const Key('nip46RequestEndedClose'),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
