@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../theme/tokens.dart';
+import '../../../nip46/domain/nip46_method.dart';
 import '../../domain/approval_context.dart';
 import '../../domain/nostr_event_payload_parser.dart';
 import 'request_detail_item.dart';
@@ -13,21 +14,40 @@ class ApprovalContextSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (approval) {
-      SigningApprovalContext() => _SigningContextSection(approval: approval as SigningApprovalContext),
+      SigningApprovalContext(:final eventReview) =>
+        _SigningContextSection(review: eventReview),
       PublicKeyApprovalContext() => _PublicKeyContextSection(approval: approval as PublicKeyApprovalContext),
-      CryptoApprovalContext() => _CryptoContextSection(approval: approval as CryptoApprovalContext),
+      CryptoApprovalContext(:final request) => _CryptoContextSection(
+        label: request.method.displayLabel,
+        isDecrypt: request.method.isDecrypt,
+        isSignMessage: request.isSignMessage,
+        peer: request.pubkey,
+        content: request.content,
+      ),
+      RemoteSignerApprovalContext(:final method) =>
+        method == Nip46Method.signEvent
+            ? _SigningContextSection(
+                review: (approval as RemoteSignerApprovalContext).eventReview,
+              )
+            : _CryptoContextSection(
+                label: method.displayLabel,
+                isDecrypt: method.isDecrypt,
+                isSignMessage: false,
+                peer: (approval as RemoteSignerApprovalContext).peerPubkey,
+                content: (approval as RemoteSignerApprovalContext).content,
+              ),
     };
   }
 }
 
 class _SigningContextSection extends StatelessWidget {
-  const _SigningContextSection({required this.approval});
+  const _SigningContextSection({required this.review});
 
-  final SigningApprovalContext approval;
+  final NostrEventPayloadReview? review;
 
   @override
   Widget build(BuildContext context) {
-    final review = approval.eventReview;
+    final review = this.review;
     if (review == null) return const SizedBox.shrink();
 
     return Column(
@@ -78,17 +98,26 @@ class _PublicKeyContextSection extends StatelessWidget {
   }
 }
 
+/// An encrypt, decrypt or sign-message request, from either protocol.
 class _CryptoContextSection extends StatelessWidget {
-  const _CryptoContextSection({required this.approval});
+  const _CryptoContextSection({
+    required this.label,
+    required this.isDecrypt,
+    required this.isSignMessage,
+    required this.peer,
+    required this.content,
+  });
 
-  final CryptoApprovalContext approval;
+  final String label;
+  final bool isDecrypt;
+  final bool isSignMessage;
+  final String? peer;
+  final String? content;
 
   @override
   Widget build(BuildContext context) {
-    final method = approval.request.method;
-    final isSensitive = method.isDecrypt;
-    final isSignMessage = approval.request.isSignMessage;
-    final peer = approval.request.pubkey;
+    final isSensitive = isDecrypt;
+    final peer = this.peer;
     final truncatedPeer = peer == null ? null : _shortFingerprint(peer);
 
     return Column(
@@ -103,7 +132,7 @@ class _CryptoContextSection extends StatelessWidget {
           iconColor: isSensitive
               ? DiogelColors.stateWarning
               : DiogelColors.nostrAccentMuted,
-          title: method.displayLabel,
+          title: label,
           subtitle: isSignMessage
               ? 'Signs this exact text with your key'
               : isSensitive
@@ -122,7 +151,7 @@ class _CryptoContextSection extends StatelessWidget {
             ),
           ),
         ],
-        if (approval.request.content?.trim().isNotEmpty == true) ...[
+        if (content?.trim().isNotEmpty == true) ...[
           const SizedBox(height: DiogelSpacing.space4),
           _SectionLabel(
             label: isSignMessage ? 'MESSAGE' : 'PAYLOAD PREVIEW',
@@ -130,7 +159,7 @@ class _CryptoContextSection extends StatelessWidget {
           const SizedBox(height: DiogelSpacing.space2),
           Builder(
             builder: (context) {
-              final preview = approval.request.content!.trim();
+              final preview = content!.trim();
               // A message is shown in full, never cut short: it is what gets signed.
               return Text(
                 isSignMessage || preview.length <= 400

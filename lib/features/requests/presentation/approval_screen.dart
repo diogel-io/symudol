@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../theme/tokens.dart';
 import '../../accounts/presentation/widgets/profile_avatar.dart';
 import '../../identity/domain/vault_identity.dart';
+import '../../nip46/application/nip46_providers.dart';
+import '../../nip46/domain/nip46_method.dart';
 import '../../nip55/application/nip55_providers.dart';
 import '../../nip55/domain/nip55_approval_timeframe.dart';
 import '../../nip55/domain/nip55_permission_parser.dart';
@@ -89,6 +91,12 @@ class _ApprovalScreenState extends ConsumerState<ApprovalScreen> {
         request: cryptoRequest,
         canRemember: canRemember,
       );
+    }
+
+    // NIP-46 after NIP-55: an app on this phone is waiting in the foreground.
+    final remoteRequests = ref.watch(nip46ReviewQueueProvider);
+    if (remoteRequests.isNotEmpty) {
+      return RemoteSignerApprovalContext.fromPending(remoteRequests.first);
     }
 
     return null;
@@ -247,14 +255,17 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
     final (trustStatus, sourceName, packageName, sourceVerified) = _sourceInfo(approval);
 
     // For signing: check for failure or completed state.
-    final signingFailureMsg = switch (approval) {
-      SigningApprovalContext() => requestState.failure?.message,
-      _ => null,
+    final displayFailureMsg = switch (approval) {
+      SigningApprovalContext() =>
+        requestState.failure?.message ?? nip55State.failure?.message,
+      // The client gets any failure as its answer; nothing to show here.
+      RemoteSignerApprovalContext() => null,
+      _ => nip55State.failure?.message,
     };
-    final displayFailureMsg = signingFailureMsg ?? nip55State.failure?.message;
 
     final isLoading = switch (approval) {
       SigningApprovalContext() => requestState.isLoading,
+      RemoteSignerApprovalContext() => false,
       _ => nip55State.isLoading,
     };
 
@@ -369,6 +380,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       SigningApprovalContext(:final canRemember) => canRemember,
       PublicKeyApprovalContext(:final canRemember) => canRemember,
       CryptoApprovalContext(:final canRemember) => canRemember,
+      RemoteSignerApprovalContext(:final canRemember) => canRemember,
     };
 
     return Container(
@@ -449,6 +461,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       SigningApprovalContext(:final canRemember) => canRemember,
       PublicKeyApprovalContext(:final canRemember) => canRemember,
       CryptoApprovalContext(:final canRemember) => canRemember,
+      RemoteSignerApprovalContext(:final canRemember) => canRemember,
     };
     final timeframe =
         canRemember ? _timeframe : Nip55ApprovalTimeframe.justOnce;
@@ -467,6 +480,10 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         await nip55.approvePublicKeyRequest(timeframe: timeframe);
       case CryptoApprovalContext():
         await nip55.approveCryptoRequest(timeframe: timeframe);
+      case RemoteSignerApprovalContext():
+        await ref
+            .read(nip46ControllerProvider.notifier)
+            .approveMethodRequest(approval.requestKey);
     }
   }
 
@@ -477,6 +494,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       SigningApprovalContext(:final canRemember) => canRemember,
       PublicKeyApprovalContext(:final canRemember) => canRemember,
       CryptoApprovalContext(:final canRemember) => canRemember,
+      RemoteSignerApprovalContext(:final canRemember) => canRemember,
     };
     // The chosen timeframe, so a rejection remembered for "8 hours" expires (#5).
     final timeframe =
@@ -493,6 +511,10 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         await nip55.rejectPublicKeyRequest(timeframe: timeframe);
       case CryptoApprovalContext():
         await nip55.rejectCryptoRequest(timeframe: timeframe);
+      case RemoteSignerApprovalContext():
+        await ref
+            .read(nip46ControllerProvider.notifier)
+            .rejectMethodRequest(approval.requestKey);
     }
   }
 
@@ -532,6 +554,13 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.clientIdentity.packageName,
         approval.request.clientIdentity.provenanceVerified,
       ),
+      // Name and URL are the client's own unauthenticated claims.
+      RemoteSignerApprovalContext() => (
+        RequestTrustStatus.unknown,
+        approval.clientDisplayName,
+        approval.pending.clientUrl,
+        false,
+      ),
     };
   }
 
@@ -545,6 +574,12 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
             : approval.request.method.isDecrypt
             ? Icons.visibility_outlined
             : Icons.lock_outline,
+      RemoteSignerApprovalContext() =>
+        approval.method == Nip46Method.signEvent
+            ? Icons.edit_note
+            : approval.method.isDecrypt
+            ? Icons.visibility_outlined
+            : Icons.lock_outline,
     };
   }
 
@@ -556,6 +591,12 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.isSignMessage
             ? Icons.check
             : approval.request.method.isDecrypt
+            ? Icons.visibility
+            : Icons.lock,
+      RemoteSignerApprovalContext() =>
+        approval.method == Nip46Method.signEvent
+            ? Icons.check
+            : approval.method.isDecrypt
             ? Icons.visibility
             : Icons.lock,
     };
@@ -581,6 +622,12 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         approval.request.isSignMessage
             ? 'Sign'
             : approval.request.method.isDecrypt
+            ? 'Decrypt'
+            : 'Encrypt',
+      RemoteSignerApprovalContext() =>
+        approval.method == Nip46Method.signEvent
+            ? 'Sign event'
+            : approval.method.isDecrypt
             ? 'Decrypt'
             : 'Encrypt',
     };

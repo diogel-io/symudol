@@ -22,10 +22,11 @@ void main() {
   late FakeNip46RelayService relayService;
   late FakeNip46SessionStore sessionStore;
   late Nip46Controller controller;
+  late VaultServiceImpl vaultService;
 
   setUp(() async {
     vaultStore = FakeVaultStore();
-    final vaultService = VaultServiceImpl(vaultStore);
+    vaultService = VaultServiceImpl(vaultStore);
     await vaultService.init();
     vaultController = VaultController(vaultService);
     relayService = FakeNip46RelayService();
@@ -47,6 +48,22 @@ void main() {
     relayService.dispose();
     vaultController.dispose();
   });
+
+  /// Replaces the controller with one whose review timeout is [timeout], on a
+  /// fresh relay, so a timeout test needn't wait the real 60 s.
+  Future<void> useRequestTimeout(Duration timeout) async {
+    controller.dispose();
+    relayService = FakeNip46RelayService();
+    controller = Nip46Controller(
+      sessionStore: sessionStore,
+      vaultService: vaultService,
+      vaultController: vaultController,
+      relayService: relayService,
+      crypto: DartNip46Crypto(const DartNostrCryptoService()),
+      requestTimeout: timeout,
+    );
+    await Future<void>.delayed(Duration.zero);
+  }
 
   group('initiateBunkerSession', () {
     test('returns a valid bunker token', () async {
@@ -485,6 +502,244 @@ void main() {
         ['relay', 'wss://relay.example.com'],
         ['challenge', 'challenge-1'],
       ]);
+    });
+
+    // Requests that need review wait in a queue, and each gets one answer
+    // (diogel-io/symudol#27). Uses the client helpers above.
+    group('requests under review (#27)', () {
+      Future<Nip46Session> unlockedSession() async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity();
+        return activeBunkerSession();
+      }
+
+      Future<void> sendNote(Nip46Session session, String id) => send(
+        session,
+        'sign_event',
+        id: id,
+        params: [
+          jsonEncode({
+            'kind': 1,
+            'content': 'hello',
+            'tags': <Object>[],
+            'created_at': 1700000000,
+          }),
+        ],
+      );
+
+      Future<void> sendEncrypt(Nip46Session session, String id) => send(
+        session,
+        'nip44_encrypt',
+        id: id,
+        // A real key: encrypting to an invalid one fails.
+        params: [strangerPubkey, 'secret text'],
+      );
+
+      String keyOf(String requestId) => controller.state.pendingMethodRequests
+          .singleWhere((p) => p.request.id == requestId)
+          .key;
+
+      test('a sign_event waits for review and approve signs it', () async {
+        final session = await unlockedSession();
+
+        await sendNote(session, 'sign-1');
+
+        expect(relayService.capturedPublishes, isEmpty);
+        final pending = controller.state.pendingMethodRequests.single;
+        expect(pending.request.id, 'sign-1');
+        expect(
+          pending.identityPubkey,
+          vaultController.state.activeIdentity!.publicKey,
+        );
+
+        await controller.approveMethodRequest(pending.key);
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        final response = responses().single;
+        expect(response['id'], 'sign-1');
+        expect(response['error'], isNull);
+        final signed = (jsonDecode(response['result'] as String) as Map)
+            .cast<String, Object?>();
+        expect(signed['kind'], 1);
+        expect(signed['content'], 'hello');
+        expect(signed['pubkey'], pending.identityPubkey);
+        expect(signed['sig'], isA<String>());
+      });
+
+      test('reject answers with an error', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+
+        await controller.rejectMethodRequest(keyOf('sign-1'));
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(responses().single, {
+          'id': 'sign-1',
+          'result': null,
+          'error': 'User rejected the request',
+        });
+      });
+
+      test('two concurrent requests both get answers', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+        await sendEncrypt(session, 'encrypt-1');
+
+        expect(
+          controller.state.pendingMethodRequests.map((p) => p.request.id),
+          ['sign-1', 'encrypt-1'],
+        );
+
+        // The second first: answering by key leaves the other queued.
+        await controller.approveMethodRequest(keyOf('encrypt-1'));
+        expect(
+          controller.state.pendingMethodRequests.single.request.id,
+          'sign-1',
+        );
+        await controller.rejectMethodRequest(keyOf('sign-1'));
+
+        final answers = {for (final r in responses()) r['id']: r};
+        expect(answers.keys, unorderedEquals(['encrypt-1', 'sign-1']));
+        expect(answers['encrypt-1']!['error'], isNull);
+        expect(answers['encrypt-1']!['result'], isA<String>());
+        expect(answers['sign-1']!['error'], 'User rejected the request');
+      });
+
+      test('each request times out on its own, from when it arrived', () async {
+        await useRequestTimeout(const Duration(milliseconds: 400));
+        final session = await unlockedSession();
+
+        await sendNote(session, 'sign-1');
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await sendEncrypt(session, 'encrypt-1');
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+
+        // The first is past 400 ms, the second isn't.
+        expect(
+          controller.state.pendingMethodRequests.single.request.id,
+          'encrypt-1',
+        );
+        expect(responses().single, {
+          'id': 'sign-1',
+          'result': null,
+          'error': 'Request timed out',
+        });
+
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(responses().last, {
+          'id': 'encrypt-1',
+          'result': null,
+          'error': 'Request timed out',
+        });
+      });
+
+      test('approving a request that already timed out does nothing', () async {
+        await useRequestTimeout(const Duration(milliseconds: 100));
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+        final key = keyOf('sign-1');
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        expect(responses(), hasLength(1));
+
+        await controller.approveMethodRequest(key);
+
+        expect(responses().single['error'], 'Request timed out');
+      });
+
+      test('approving under another identity is refused', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+        final pending = controller.state.pendingMethodRequests.single;
+
+        await vaultController.createIdentity();
+        final other = vaultController.state.identities.firstWhere(
+          (i) => i.localId != pending.identityLocalId,
+        );
+        await vaultController.setActiveIdentity(other.localId);
+
+        await controller.approveMethodRequest(pending.key);
+
+        expect(responses().single, {
+          'id': 'sign-1',
+          'result': null,
+          'error': 'Active identity changed',
+        });
+      });
+
+      test('a request beyond the per-session limit is refused at once',
+          () async {
+        final session = await unlockedSession();
+        const limit = Nip46Controller.maxPendingRequestsPerSession;
+        for (var i = 0; i < limit; i++) {
+          await sendEncrypt(session, 'encrypt-$i');
+        }
+        expect(relayService.capturedPublishes, isEmpty);
+
+        await sendEncrypt(session, 'one-too-many');
+
+        expect(controller.state.pendingMethodRequests, hasLength(limit));
+        expect(responses().single, {
+          'id': 'one-too-many',
+          'result': null,
+          'error': 'Too many pending requests',
+        });
+      });
+
+      test('the same request sent again is queued once', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+        await sendNote(session, 'sign-1');
+
+        expect(controller.state.pendingMethodRequests, hasLength(1));
+        expect(relayService.capturedPublishes, isEmpty);
+      });
+
+      test('a wipe answers every queued request', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+        await sendEncrypt(session, 'encrypt-1');
+
+        await vaultController.wipe();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(relayService.connectedSessions, isEmpty);
+        expect(
+          {for (final r in responses()) r['id']: r['error']},
+          {
+            'sign-1': 'The Symudol vault was erased',
+            'encrypt-1': 'The Symudol vault was erased',
+          },
+        );
+      });
+
+      test('revoking a session answers and drops its queued requests',
+          () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+
+        await controller.revokeSession(session.id);
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect(responses().single, {
+          'id': 'sign-1',
+          'result': null,
+          'error': 'Session has been revoked.',
+        });
+      });
+
+      test('a lock keeps the queue', () async {
+        final session = await unlockedSession();
+        await sendNote(session, 'sign-1');
+
+        await vaultController.lock();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(controller.state.pendingMethodRequests, hasLength(1));
+        expect(relayService.capturedPublishes, isEmpty);
+      });
     });
   });
 }

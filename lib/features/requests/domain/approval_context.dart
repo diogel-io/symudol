@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:symudol/features/nip46/domain/nip46_method.dart';
+import 'package:symudol/features/nip46/domain/nip46_pending_method_request.dart';
 import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
@@ -61,4 +65,91 @@ class CryptoApprovalContext extends ApprovalContext {
 
   @override
   String get requestKey => request.requestToken;
+}
+
+/// A request from a NIP-46 client over a remote signer connection
+/// (diogel-io/symudol#27). Decisions are just once: remembering them is #28.
+class RemoteSignerApprovalContext extends ApprovalContext {
+  final Nip46PendingMethodRequest pending;
+
+  /// For `sign_event`: the event as it will be signed, with the defaults the
+  /// controller applies (the active pubkey, and kind 1 when none is given),
+  /// so the review shows what is signed. Null for other methods, or when the
+  /// event JSON is invalid, which the controller refuses on approve.
+  final Map<String, Object?>? eventPayload;
+  final NostrEventPayloadReview? eventReview;
+
+  /// For encrypt and decrypt: the other party's pubkey.
+  final String? peerPubkey;
+
+  /// The plaintext or ciphertext, the zap event, or invalid event JSON.
+  final String? content;
+
+  RemoteSignerApprovalContext._({
+    required this.pending,
+    this.eventPayload,
+    this.eventReview,
+    this.peerPubkey,
+    this.content,
+  });
+
+  factory RemoteSignerApprovalContext.fromPending(
+    Nip46PendingMethodRequest pending,
+  ) {
+    final request = pending.request;
+    switch (request.method) {
+      case Nip46Method.signEvent:
+        final raw = request.optionalParam(0);
+        final event = _decodeEvent(raw);
+        if (event == null) {
+          return RemoteSignerApprovalContext._(pending: pending, content: raw);
+        }
+        final pubkey = event['pubkey'];
+        if (pubkey is! String || pubkey.isEmpty) {
+          event['pubkey'] = pending.identityPubkey;
+        }
+        if (event['kind'] is! int) event['kind'] = 1;
+        return RemoteSignerApprovalContext._(
+          pending: pending,
+          eventPayload: event,
+          eventReview: const NostrEventPayloadParser().review(event),
+        );
+      case Nip46Method.decryptZapEvent:
+        return RemoteSignerApprovalContext._(
+          pending: pending,
+          content: request.optionalParam(0),
+        );
+      default:
+        return RemoteSignerApprovalContext._(
+          pending: pending,
+          peerPubkey: request.optionalParam(0),
+          content: request.optionalParam(1),
+        );
+    }
+  }
+
+  static Map<String, Object?>? _decodeEvent(String? raw) {
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, Object?>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Nip46Method get method => pending.request.method;
+
+  /// The client's name, or a short form of its key when it gave none.
+  String get clientDisplayName {
+    final name = pending.clientName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final key = pending.clientPubkey;
+    return key.length > 12 ? '${key.substring(0, 8)}…' : 'Remote client';
+  }
+
+  bool get canRemember => false;
+
+  @override
+  String get requestKey => pending.key;
 }

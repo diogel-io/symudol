@@ -17,6 +17,7 @@ import '../data/nip46_token_codec.dart';
 import '../domain/nip46_approval_policy.dart';
 import '../domain/nip46_connection_token.dart';
 import '../domain/nip46_method.dart';
+import '../domain/nip46_pending_method_request.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_relay_event.dart';
 import '../domain/nip46_request.dart';
@@ -24,26 +25,12 @@ import '../domain/nip46_response.dart';
 import '../domain/nip46_session.dart';
 import '../domain/nip46_session_store.dart';
 
-class Nip46PendingMethodRequest {
-  final String sessionId;
-  final Nip46Request request;
-  final bool usesNip04;
-  final Map<String, Object?>? signEventTemplate;
-
-  const Nip46PendingMethodRequest({
-    required this.sessionId,
-    required this.request,
-    required this.usesNip04,
-    this.signEventTemplate,
-  });
-}
-
 class Nip46State {
   final List<Nip46Session> sessions;
   // Session awaiting user approval for a new connection.
   final Nip46Session? pendingApproval;
-  // Method request awaiting user approval.
-  final Nip46PendingMethodRequest? pendingMethodRequest;
+  // Method requests awaiting user review, oldest first.
+  final List<Nip46PendingMethodRequest> pendingMethodRequests;
   final bool isLoading;
   final String? failure;
   final String? lastSuccessMessage;
@@ -51,19 +38,19 @@ class Nip46State {
   const Nip46State({
     this.sessions = const [],
     this.pendingApproval,
-    this.pendingMethodRequest,
+    this.pendingMethodRequests = const [],
     this.isLoading = false,
     this.failure,
     this.lastSuccessMessage,
   });
 
   bool get hasPendingAction =>
-      pendingApproval != null || pendingMethodRequest != null;
+      pendingApproval != null || pendingMethodRequests.isNotEmpty;
 
   Nip46State copyWith({
     List<Nip46Session>? sessions,
     Object? pendingApproval = _sentinel,
-    Object? pendingMethodRequest = _sentinel,
+    List<Nip46PendingMethodRequest>? pendingMethodRequests,
     bool? isLoading,
     Object? failure = _sentinel,
     Object? lastSuccessMessage = _sentinel,
@@ -73,9 +60,8 @@ class Nip46State {
       pendingApproval: pendingApproval == _sentinel
           ? this.pendingApproval
           : pendingApproval as Nip46Session?,
-      pendingMethodRequest: pendingMethodRequest == _sentinel
-          ? this.pendingMethodRequest
-          : pendingMethodRequest as Nip46PendingMethodRequest?,
+      pendingMethodRequests:
+          pendingMethodRequests ?? this.pendingMethodRequests,
       isLoading: isLoading ?? this.isLoading,
       failure: failure == _sentinel ? this.failure : failure as String?,
       lastSuccessMessage: lastSuccessMessage == _sentinel
@@ -93,8 +79,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     'wss://nos.lol',
   ];
   static const int _maxDedupCacheSize = 512;
-  static const Duration _requestTimeout = Duration(seconds: 60);
+  static const Duration defaultRequestTimeout = Duration(seconds: 60);
   static const Duration _connectTimeout = Duration(seconds: 120);
+
+  /// Requests one session may have waiting for review. Beyond this a client
+  /// is refused at once, so it cannot flood the queue (diogel-io/symudol#27).
+  static const int maxPendingRequestsPerSession = 20;
 
   final Nip46SessionStore _sessionStore;
   final VaultService _vaultService;
@@ -105,6 +95,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   final DateTime Function() _now;
   final Random _random;
 
+  /// How long a request waits for review, from when it arrives.
+  final Duration _requestTimeout;
+
   StreamSubscription<Nip46InboundRelayEvent>? _inboundSub;
   StreamSubscription<VaultControllerState>? _vaultSub;
   VaultState? _lastVaultState;
@@ -112,8 +105,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
 
-  // Timer for pending method request timeout.
-  Timer? _methodRequestTimer;
+  // Timeout for each request awaiting review, by [Nip46PendingMethodRequest.key].
+  final Map<String, Timer> _methodRequestTimers = {};
   // Timer for pending connect approval timeout.
   Timer? _connectApprovalTimer;
 
@@ -125,7 +118,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     required DartNip46Crypto crypto,
     Nip46ApprovalPolicy approvalPolicy = const Nip46ApprovalPolicy(),
     DateTime Function()? now,
-  })  : _sessionStore = sessionStore,
+    Duration requestTimeout = defaultRequestTimeout,
+  })  : _requestTimeout = requestTimeout,
+        _sessionStore = sessionStore,
         _vaultService = vaultService,
         _vaultController = vaultController,
         _relayService = relayService,
@@ -282,32 +277,25 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
   }
 
-  /// Called by the approval UI to approve a pending method request.
-  Future<void> approveMethodRequest({
-    List<Nip46PermissionScope> newScopes = const [],
-  }) async {
-    final pending = state.pendingMethodRequest;
+  /// Called by the approval UI to approve the queued request with [key].
+  /// Does nothing if it has already been answered, for example timed out.
+  Future<void> approveMethodRequest(String key) async {
+    final pending = _takePendingMethodRequest(key);
     if (pending == null) return;
+    final session = _sessionById(pending.sessionId);
+    if (session == null) return;
 
-    _methodRequestTimer?.cancel();
-    _methodRequestTimer = null;
-
-    var session =
-        state.sessions.firstWhere((s) => s.id == pending.sessionId);
-
-    if (newScopes.isNotEmpty) {
-      session = session.copyWith(
-        grantedScopes: [...session.grantedScopes, ...newScopes],
+    final active = _vaultService.activeIdentity;
+    if (active?.localId != pending.identityLocalId ||
+        active?.publicKey != pending.identityPubkey) {
+      await _publishErrorResponse(
+        session: session,
+        requestId: pending.request.id,
+        error: 'Active identity changed',
       );
-      await _sessionStore.saveSession(session);
-      state = state.copyWith(
-        sessions: state.sessions
-            .map((s) => s.id == session.id ? session : s)
-            .toList(),
-      );
+      return;
     }
 
-    state = state.copyWith(pendingMethodRequest: null);
     await _dispatchMethod(
       session: session,
       request: pending.request,
@@ -315,18 +303,13 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
   }
 
-  /// Called by the approval UI to reject a pending method request.
-  Future<void> rejectMethodRequest() async {
-    final pending = state.pendingMethodRequest;
+  /// Called by the approval UI to reject the queued request with [key].
+  Future<void> rejectMethodRequest(String key) async {
+    final pending = _takePendingMethodRequest(key);
     if (pending == null) return;
+    final session = _sessionById(pending.sessionId);
+    if (session == null) return;
 
-    _methodRequestTimer?.cancel();
-    _methodRequestTimer = null;
-
-    final session =
-        state.sessions.firstWhere((s) => s.id == pending.sessionId);
-
-    state = state.copyWith(pendingMethodRequest: null);
     await _publishErrorResponse(
       session: session,
       requestId: pending.request.id,
@@ -334,8 +317,45 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
   }
 
+  /// Removes the queued request with [key] and cancels its timeout.
+  Nip46PendingMethodRequest? _takePendingMethodRequest(String key) {
+    Nip46PendingMethodRequest? pending;
+    for (final queued in state.pendingMethodRequests) {
+      if (queued.key == key) pending = queued;
+    }
+    if (pending == null) return null;
+    _methodRequestTimers.remove(key)?.cancel();
+    state = state.copyWith(
+      pendingMethodRequests: state.pendingMethodRequests
+          .where((queued) => queued.key != key)
+          .toList(),
+    );
+    return pending;
+  }
+
+  Nip46Session? _sessionById(String id) {
+    for (final session in state.sessions) {
+      if (session.id == id) return session;
+    }
+    return null;
+  }
+
   /// Revokes a session — stops relays, deletes from store, removes from state.
   Future<void> revokeSession(String sessionId) async {
+    // Its queued requests are answered first, while the relays still run.
+    final session = _sessionById(sessionId);
+    final queued = state.pendingMethodRequests
+        .where((pending) => pending.sessionId == sessionId)
+        .toList();
+    for (final pending in queued) {
+      _takePendingMethodRequest(pending.key);
+      if (session == null) continue;
+      await _publishErrorResponse(
+        session: session,
+        requestId: pending.request.id,
+        error: 'Session has been revoked.',
+      );
+    }
     await _relayService.stopSession(sessionId);
     await _sessionStore.deleteSession(sessionId);
     state = state.copyWith(
@@ -391,8 +411,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Stops every relay subscription and forgets every session in memory.
   /// The wipe has already cleared the store.
   Future<void> _dropAllSessions() async {
-    _methodRequestTimer?.cancel();
-    _methodRequestTimer = null;
+    for (final timer in _methodRequestTimers.values) {
+      timer.cancel();
+    }
+    _methodRequestTimers.clear();
+    final queued = state.pendingMethodRequests;
+    final sessions = state.sessions;
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
     _pendingConnectRequestId = null;
@@ -404,8 +428,23 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     state = state.copyWith(
       sessions: const [],
       pendingApproval: null,
-      pendingMethodRequest: null,
+      pendingMethodRequests: const [],
     );
+    // Every queued request gets its one answer before the relays stop.
+    for (final pending in queued) {
+      for (final session in sessions) {
+        if (session.id != pending.sessionId) continue;
+        try {
+          await _publishErrorResponse(
+            session: session,
+            requestId: pending.request.id,
+            error: 'The Symudol vault was erased',
+          );
+        } catch (e) {
+          diogelLog('Nip46Controller: could not answer a request', error: e);
+        }
+      }
+    }
     for (final id in ids) {
       try {
         await _relayService.stopSession(id);
@@ -536,7 +575,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           error: reason,
         );
       case Nip46RequireReview():
-        _setPendingMethodRequest(session, request, usesNip04);
+        await _queueMethodRequest(session, request, usesNip04);
       case Nip46RequireUnlock(:final reason):
         await _publishErrorResponse(
           session: session,
@@ -938,28 +977,53 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     }
   }
 
-  void _setPendingMethodRequest(
+  /// Queues [request] for review, with its own timeout from now.
+  Future<void> _queueMethodRequest(
     Nip46Session session,
     Nip46Request request,
     bool usesNip04,
-  ) {
-    _methodRequestTimer?.cancel();
-    state = state.copyWith(
-      pendingMethodRequest: Nip46PendingMethodRequest(
-        sessionId: session.id,
-        request: request,
-        usesNip04: usesNip04,
-      ),
+  ) async {
+    final identity = _vaultService.activeIdentity;
+    if (identity == null) {
+      await _publishErrorResponse(
+        session: session,
+        requestId: request.id,
+        error: 'No active identity',
+      );
+      return;
+    }
+    final pending = Nip46PendingMethodRequest(
+      sessionId: session.id,
+      request: request,
+      usesNip04: usesNip04,
+      identityLocalId: identity.localId,
+      identityPubkey: identity.publicKey,
+      receivedAt: _now(),
+      clientPubkey: session.clientPubkey,
+      clientName: session.clientName,
+      clientUrl: session.clientUrl,
     );
-    _methodRequestTimer = Timer(_requestTimeout, () async {
-      if (state.pendingMethodRequest?.request.id == request.id) {
-        state = state.copyWith(pendingMethodRequest: null);
-        await _publishErrorResponse(
-          session: session,
-          requestId: request.id,
-          error: 'Request timed out',
-        );
-      }
+    final queued = state.pendingMethodRequests;
+    // The same request sent again: the first one gets the answer.
+    if (queued.any((q) => q.key == pending.key)) return;
+    if (queued.where((q) => q.sessionId == session.id).length >=
+        maxPendingRequestsPerSession) {
+      await _publishErrorResponse(
+        session: session,
+        requestId: request.id,
+        error: 'Too many pending requests',
+      );
+      return;
+    }
+
+    state = state.copyWith(pendingMethodRequests: [...queued, pending]);
+    _methodRequestTimers[pending.key] = Timer(_requestTimeout, () async {
+      if (_takePendingMethodRequest(pending.key) == null) return;
+      await _publishErrorResponse(
+        session: session,
+        requestId: request.id,
+        error: 'Request timed out',
+      );
     });
   }
 
@@ -1081,7 +1145,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   void dispose() {
     _inboundSub?.cancel();
     _vaultSub?.cancel();
-    _methodRequestTimer?.cancel();
+    for (final timer in _methodRequestTimers.values) {
+      timer.cancel();
+    }
     _connectApprovalTimer?.cancel();
     _relayService.dispose();
     super.dispose();

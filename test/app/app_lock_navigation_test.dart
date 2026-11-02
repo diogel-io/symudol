@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:symudol/app/app.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
+import 'package:symudol/features/nip46/domain/nip46_relay_event.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
@@ -414,6 +415,148 @@ void main() {
       expect(container.read(nip46ControllerProvider).pendingApproval, isNull);
       expect(find.text('Remote Signer Request'), findsNothing);
       expect(find.text('Share public key').hitTestable(), findsOneWidget);
+    });
+  });
+
+  // A connected client's requests that need review come to the shared
+  // Approval screen (diogel-io/symudol#27).
+  group('a NIP-46 request that needs review (#27)', () {
+    var eventCounter = 0;
+
+    /// Opens Remote Signer and approves a client's connection.
+    Future<void> connectClient(
+      WidgetTester tester,
+      ProviderContainer container,
+    ) async {
+      await openRemoteSigner(tester);
+      await sendConnectRequest(container);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(
+        container.read(nip46ControllerProvider).sessions.single.status,
+        Nip46SessionStatus.active,
+      );
+    }
+
+    /// The connected client asks Symudol to sign a note, as a relay would
+    /// deliver it.
+    Future<void> sendSignEvent(
+      WidgetTester tester,
+      ProviderContainer container,
+      String id,
+    ) async {
+      final session = container.read(nip46ControllerProvider).sessions.single;
+      const crypto = DartNostrCryptoService();
+      final relay =
+          container.read(nip46RelayServiceProvider) as FakeNip46RelayService;
+      relay.simulateInbound(
+        Nip46InboundRelayEvent(
+          eventId: 'event-${++eventCounter}',
+          senderPubkey: crypto.derivePublicKey(_clientPrivkey),
+          recipientPubkey: session.remoteSignerPubkey,
+          encryptedContent: crypto.nip44Encrypt(
+            privateKeyHex: _clientPrivkey,
+            peerPubkeyHex: session.remoteSignerPubkey,
+            plaintext: jsonEncode({
+              'id': id,
+              'method': 'sign_event',
+              'params': [
+                jsonEncode({
+                  'kind': 1,
+                  'content': 'a remote note',
+                  'tags': <Object>[],
+                  'created_at': 1700000000,
+                }),
+              ],
+            }),
+          ),
+          relay: 'wss://relay.example.com',
+          createdAt: 0,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// The client's view of what Symudol published to it, oldest first.
+    List<Map<String, Object?>> responses(ProviderContainer container) {
+      final relay =
+          container.read(nip46RelayServiceProvider) as FakeNip46RelayService;
+      return [
+        for (final event in relay.capturedPublishes)
+          if (event['kind'] == 24133)
+            (jsonDecode(
+                      const DartNostrCryptoService().nip44Decrypt(
+                        privateKeyHex: _clientPrivkey,
+                        peerPubkeyHex: event['pubkey'] as String,
+                        ciphertext: event['content'] as String,
+                      ),
+                    )
+                    as Map)
+                .cast<String, Object?>(),
+      ];
+    }
+
+    testWidgets('comes forward over Remote Signer and approve signs it', (
+      tester,
+    ) async {
+      final container = await pumpUnlockedApp(tester);
+      await connectClient(tester, container);
+      final before = responses(container).length;
+
+      await sendSignEvent(tester, container, 'sign-1');
+
+      expect(find.text('Approval Request').hitTestable(), findsOneWidget);
+      expect(find.textContaining('a remote note'), findsWidgets);
+
+      await tester.tap(find.text('Sign event'));
+      await tester.pumpAndSettle();
+
+      final answer = responses(container).skip(before).single;
+      expect(answer['id'], 'sign-1');
+      expect(answer['error'], isNull);
+      final signed = (jsonDecode(answer['result'] as String) as Map)
+          .cast<String, Object?>();
+      expect(signed['content'], 'a remote note');
+      expect(signed['sig'], isA<String>());
+      // Back where the user was.
+      expect(find.text('Approval Request'), findsNothing);
+      expect(find.text('Remote Signer (NIP-46)').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('queued across a lock is shown again after the unlock', (
+      tester,
+    ) async {
+      final container = await pumpUnlockedApp(tester);
+      await connectClient(tester, container);
+      await sendSignEvent(tester, container, 'sign-1');
+      expect(find.text('Approval Request').hitTestable(), findsOneWidget);
+
+      await container.read(vaultControllerProvider.notifier).lock();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unlock Vault').hitTestable(), findsWidgets);
+      expect(
+        container.read(nip46ControllerProvider).pendingMethodRequests,
+        hasLength(1),
+      );
+
+      await enterPin(tester);
+
+      expect(find.text('Approval Request').hitTestable(), findsOneWidget);
+      expect(find.textContaining('a remote note'), findsWidgets);
+    });
+
+    testWidgets('the home shell does not start NIP-46', (tester) async {
+      final container = await pumpUnlockedApp(tester);
+      await sendPublicKeyRequest(container);
+      await tester.pumpAndSettle();
+
+      // Watching the review queue must not create the controller, which
+      // opens relays (#26).
+      expect(find.text('Share public key').hitTestable(), findsOneWidget);
+      expect(container.exists(nip46ControllerProvider), isFalse);
+      expect(container.exists(nip46RelayServiceProvider), isFalse);
     });
   });
 }
