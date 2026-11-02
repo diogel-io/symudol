@@ -111,6 +111,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
 
+  // Session saves, one at a time (see _updateSession).
+  Future<void> _saveQueue = Future.value();
+
   // Timeout for each request awaiting review, by [Nip46PendingMethodRequest.key].
   final Map<String, Timer> _methodRequestTimers = {};
   // Timer for pending connect approval timeout.
@@ -381,28 +384,24 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
     if (!grant.isRememberable) return;
 
-    final updated = session.copyWith(
-      grants: [
-        for (final g in session.grants)
-          if (g.identityPubkey != grant.identityPubkey ||
-              g.scope.wire != grant.scope.wire)
-            g,
-        grant,
-      ],
-    );
     // The request is already out of the queue: failing to remember the
     // decision must not stop it being answered.
     try {
-      await _sessionStore.saveSession(updated);
+      await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(
+          grants: [
+            for (final g in latest.grants)
+              if (g.identityPubkey != grant.identityPubkey ||
+                  g.scope.wire != grant.scope.wire)
+                g,
+            grant,
+          ],
+        ),
+      );
     } catch (e) {
       diogelLog('Nip46Controller: could not remember a decision', error: e);
-      return;
     }
-    state = state.copyWith(
-      sessions: state.sessions
-          .map((s) => s.id == updated.id ? updated : s)
-          .toList(),
-    );
   }
 
   /// The scope a remembered decision on [request] covers: `sign_event` with
@@ -457,6 +456,11 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   Future<void> revokeSession(String sessionId) async {
     // Its queued requests are answered first, while the relays still run.
     final session = _sessionById(sessionId);
+    // Out of state at once, so no save started from here on can keep it
+    // (see [_updateSession]); its grants go with it (#28).
+    state = state.copyWith(
+      sessions: state.sessions.where((s) => s.id != sessionId).toList(),
+    );
     final queued = state.pendingMethodRequests
         .where((pending) => pending.sessionId == sessionId)
         .toList();
@@ -470,10 +474,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       );
     }
     await _relayService.stopSession(sessionId);
-    await _sessionStore.deleteSession(sessionId);
-    state = state.copyWith(
-      sessions: state.sessions.where((s) => s.id != sessionId).toList(),
-    );
+    // After any save already in flight, which would otherwise write it back.
+    await _enqueueSave(() => _sessionStore.deleteSession(sessionId));
   }
 
   void clearMessages() {
@@ -657,11 +659,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     // Update usesNip04 flag on session if needed.
     if (usesNip04 && !session.usesNip04) {
-      final refreshed = session.copyWith(usesNip04: true);
-      await _sessionStore.saveSession(refreshed);
-      state = state.copyWith(
-        sessions: state.sessions.map((s) => s.id == refreshed.id ? refreshed : s).toList(),
+      final refreshed = await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(usesNip04: true),
       );
+      // Revoked meanwhile: nothing to answer with.
+      if (refreshed == null) return;
       session = refreshed;
     }
 
@@ -1076,23 +1079,59 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Internal error: ${e.runtimeType}',
       );
     }
-    // Not for a session that is gone, such as after logout: saving it would
-    // bring it back.
-    if (!answered || _sessionById(session.id) == null) return;
+    if (!answered) return;
 
     // Outside the try above: the client already has its answer, so a failed
-    // save must not send it a second, contradictory one.
-    final updated = session.copyWith(lastUsedAt: _now());
+    // save must not send it a second, contradictory one. Applied to the
+    // latest session, so a decision remembered while this request was
+    // signed is kept, and skipped for one revoked meanwhile, such as by
+    // logout (#28).
     try {
-      await _sessionStore.saveSession(updated);
+      await _updateSession(
+        session.id,
+        (latest) => latest.copyWith(lastUsedAt: _now()),
+      );
     } catch (e) {
       diogelLog('Nip46Controller: could not record lastUsedAt', error: e);
-      return;
     }
-    state = state.copyWith(
-      sessions:
-          state.sessions.map((s) => s.id == updated.id ? updated : s).toList(),
-    );
+  }
+
+  /// Applies [change] to the session's latest state, stores it and puts it
+  /// in state, one save at a time. Returns the saved session, or null when
+  /// the session is gone, revoked or wiped, in which case nothing is saved.
+  ///
+  /// Every change to a stored session's grants or lastUsedAt goes through
+  /// here, so no save writes back an older copy over a decision made while
+  /// it waited, and none can bring back a revoked session (#28).
+  Future<Nip46Session?> _updateSession(
+    String id,
+    Nip46Session Function(Nip46Session latest) change,
+  ) {
+    return _enqueueSave(() async {
+      final latest = _sessionById(id);
+      if (latest == null) return null;
+      final updated = change(latest);
+      await _sessionStore.saveSession(updated);
+      // Revoked while it was being written: undo the write.
+      if (_sessionById(id) == null) {
+        await _sessionStore.deleteSession(id);
+        return null;
+      }
+      state = state.copyWith(
+        sessions: [
+          for (final s in state.sessions) s.id == id ? updated : s,
+        ],
+      );
+      return updated;
+    });
+  }
+
+  /// Runs [save] after every save queued before it. A failure is returned
+  /// to the caller and doesn't stop later saves.
+  Future<T> _enqueueSave<T>(Future<T> Function() save) {
+    final result = _saveQueue.then((_) => save());
+    _saveQueue = result.then<void>((_) {}, onError: (_) {});
+    return result;
   }
 
   /// Queues [request] for review, with its own timeout from now.

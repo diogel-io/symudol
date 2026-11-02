@@ -48,12 +48,17 @@ class FakeNip46RelayService implements Nip46RelayService {
     connectedSessions.remove(sessionId);
   }
 
+  /// While set, each publish is recorded and then waits for it, as a slow
+  /// relay would.
+  Completer<void>? holdPublishes;
+
   @override
   Future<void> publishEvent(
     String sessionId,
     Map<String, Object?> signedEventJson,
   ) async {
     capturedPublishes.add({'sessionId': sessionId, ...signedEventJson});
+    await holdPublishes?.future;
   }
 
   @override

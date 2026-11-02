@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:symudol/features/nip46/application/nip46_controller.dart';
@@ -961,6 +962,56 @@ void main() {
         final answers = responses().where((r) => r['id'] == 'note').toList();
         expect(answers, hasLength(1));
         expect(answers.single['error'], isNull);
+      });
+
+      test('a rejection remembered while a request is signed is kept',
+          () async {
+        await unlock();
+        final session = await activeBunkerSession(perms: 'sign_event:1');
+        await sendKind(session, 'reaction', 7);
+        final reaction = controller.state.pendingMethodRequests.single.key;
+
+        // The kind 1 is signed from its grant, then waits on the relay
+        // before it records lastUsedAt.
+        relayService.holdPublishes = Completer<void>();
+        await sendKind(session, 'note', 1);
+        final rejecting = controller.rejectMethodRequest(
+          reaction,
+          timeframe: Nip55ApprovalTimeframe.always,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        relayService.holdPublishes!.complete();
+        relayService.holdPublishes = null;
+        await rejecting;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final kept = controller.state.sessions.single;
+        expect(kept.lastUsedAt, isNotNull);
+        expect(
+          kept.grants.map((g) => '${g.decision.name} ${g.scope.wire}'),
+          unorderedEquals(['allow sign_event:1', 'reject sign_event:7']),
+        );
+        final stored = (await sessionStore.listSessions()).single;
+        expect(stored.grants, hasLength(2));
+      });
+
+      test('a save in flight cannot bring a revoked session back', () async {
+        await unlock();
+        final session = await activeBunkerSession(perms: 'sign_event:1');
+
+        // The note is answered, and its lastUsedAt save waits on storage.
+        sessionStore.holdSaves = Completer<void>();
+        await sendKind(session, 'note', 1);
+        final revoking = controller.revokeSession(session.id);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        sessionStore.holdSaves!.complete();
+        sessionStore.holdSaves = null;
+        await revoking;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(answer('note')['error'], isNull);
+        expect(controller.state.sessions, isEmpty);
+        expect(await sessionStore.listSessions(), isEmpty);
       });
 
       test('logout does not bring the revoked session back', () async {
