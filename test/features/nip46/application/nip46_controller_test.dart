@@ -709,9 +709,18 @@ void main() {
           ],
         );
 
+        // Beyond an int, so jsonDecode reads it as a double.
+        await send(
+          session,
+          'sign_event',
+          id: 'as-double',
+          params: ['{"kind": 1, "created_at": 9223372036854775808}'],
+        );
+
         expect(controller.state.pendingMethodRequests, isEmpty);
         expect({for (final r in responses()) r['id']: r['error']}, {
           'far-future': 'sign_event: invalid created_at',
+          'as-double': 'sign_event: invalid created_at',
           'no-json': 'sign_event: invalid event JSON',
           'other-key':
               'sign_event: event pubkey does not match active identity',
