@@ -85,8 +85,14 @@ void main() {
       expect(event.reviewPayload.containsKey('created_at'), isFalse);
     });
 
-    test('a created_at DateTime cannot hold is refused', () {
-      for (final createdAt in [-1, 8640000000001, 9000000000000000]) {
+    test('a created_at that is not in-range integer seconds is refused', () {
+      for (final createdAt in <Object>[
+        -1,
+        8640000000001,
+        9000000000000000,
+        1.5,
+        '1700000000',
+      ]) {
         expect(
           () => parse({'kind': 1, 'created_at': createdAt}),
           throwsA(
@@ -99,6 +105,12 @@ void main() {
           reason: '$createdAt',
         );
       }
+      // Too large for an int, so jsonDecode reads it as a double.
+      expect(
+        () => parse('{"kind": 1, "created_at": 9223372036854775808}'),
+        throwsA(isA<Nip46SignEventException>()),
+      );
+      expect(parse({'kind': 1, 'created_at': null}).hasCreatedAt, isFalse);
       expect(
         parse({'kind': 1, 'created_at': 8640000000000}).draft.createdAt,
         DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),

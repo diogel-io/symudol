@@ -25,8 +25,8 @@ class Nip46SignEvent {
   final String pubkey;
   final NostrEventDraft draft;
 
-  /// Whether the client gave `created_at`. Without it the event is signed
-  /// with the time of signing.
+  /// Whether the client gave `created_at`. Without it, or with it null, the
+  /// event is signed with the time of signing.
   final bool hasCreatedAt;
 
   const Nip46SignEvent._({
@@ -60,9 +60,12 @@ class Nip46SignEvent {
     final content = decoded['content'];
     final tags = decoded['tags'];
     final createdAt = decoded['created_at'];
-    // Unix seconds that DateTime can hold: anything else would throw, or
-    // wrap when turned into milliseconds.
-    if (createdAt is int && (createdAt < 0 || createdAt > _maxCreatedAt)) {
+    // When given, an integer of Unix seconds that DateTime can hold (NIP-01).
+    // Anything else, such as a double, a string, or a value that would throw
+    // or wrap when turned into milliseconds, is refused rather than signed
+    // with another time.
+    if (createdAt != null &&
+        (createdAt is! int || createdAt < 0 || createdAt > _maxCreatedAt)) {
       throw const Nip46SignEventException('sign_event: invalid created_at');
     }
     return Nip46SignEvent._(
