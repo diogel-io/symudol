@@ -46,4 +46,20 @@ enum Nip46Method {
     decryptZapEvent => 'decrypt_zap_event',
     unsupported => 'unsupported',
   };
+
+  /// The label the approval screen shows for a request to review.
+  String get displayLabel => switch (this) {
+    signEvent => 'Sign Event',
+    nip04Encrypt => 'NIP-04 Encrypt',
+    nip04Decrypt => 'NIP-04 Decrypt',
+    nip44Encrypt => 'NIP-44 Encrypt',
+    nip44Decrypt => 'NIP-44 Decrypt',
+    decryptZapEvent => 'Decrypt Zap Event',
+    _ => wireName,
+  };
+
+  bool get isDecrypt => switch (this) {
+    nip04Decrypt || nip44Decrypt || decryptZapEvent => true,
+    _ => false,
+  };
 }

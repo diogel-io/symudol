@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:symudol/features/nip46/application/nip46_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:symudol/features/nip55/data/secure_storage_nip55_permission_store.dart';
@@ -68,12 +69,13 @@ final nip55ControllerProvider =
     });
 
 /// Whether a request is waiting on the Approval screen: a signing request
-/// (pending or failed, see [activeRequestProvider]) or a NIP-55 public-key or
-/// crypto request. The home shell brings the approval to the front when this
-/// turns true (#121).
+/// (pending or failed, see [activeRequestProvider]), a NIP-55 public-key or
+/// crypto request, or a NIP-46 request (#27). The home shell brings the
+/// approval to the front when this turns true (#121).
 final hasPendingApprovalProvider = Provider<bool>((ref) {
   final nip55State = ref.watch(nip55ControllerProvider);
   return ref.watch(activeRequestProvider) != null ||
       nip55State.pendingPublicKeyRequest != null ||
-      nip55State.pendingCryptoRequest != null;
+      nip55State.pendingCryptoRequest != null ||
+      ref.watch(nip46ReviewQueueProvider).isNotEmpty;
 });

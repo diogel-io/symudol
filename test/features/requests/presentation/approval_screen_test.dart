@@ -1,3 +1,9 @@
+import 'package:symudol/features/nip46/application/nip46_controller.dart';
+import 'package:symudol/features/nip46/application/nip46_providers.dart';
+import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
+import 'package:symudol/features/nip46/domain/nip46_method.dart';
+import 'package:symudol/features/nip46/domain/nip46_pending_method_request.dart';
+import 'package:symudol/features/nip46/domain/nip46_request.dart';
 import 'package:symudol/features/nip55/application/nip55_controller.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
@@ -11,9 +17,12 @@ import 'package:symudol/features/requests/domain/signing_action_type.dart';
 import 'package:symudol/features/requests/domain/signing_request.dart';
 import 'package:symudol/features/requests/domain/signing_request_status.dart';
 import 'package:symudol/features/requests/presentation/approval_screen.dart';
+import 'package:symudol/features/requests/presentation/widgets/remember_row.dart';
+import 'package:symudol/features/signing/data/dart_nostr_crypto_service.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/application/vault_providers.dart';
 import 'package:symudol/features/vault/domain/vault_service_impl.dart';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dart_nostr/dart_nostr.dart';
@@ -21,9 +30,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../fakes/fake_nip46_session_store.dart';
 import '../../../fakes/fake_relay_profile_service.dart';
 import '../../../fakes/fake_signer_service.dart';
 import '../../../fakes/fake_vault_store.dart';
+import '../../nip46/data/fake_nip46_relay_service.dart';
 
 class FakeNip55Gateway implements Nip55Gateway {
   String? completedToken;
@@ -75,6 +86,27 @@ class FakeNip55Gateway implements Nip55Gateway {
 
   @override
   Future<Uint8List?> getAppIcon(String packageName) async => null;
+}
+
+/// Records which queued NIP-46 requests the screen answers.
+class _RecordingNip46Controller extends Nip46Controller {
+  _RecordingNip46Controller({
+    required super.vaultService,
+    required super.vaultController,
+  }) : super(
+         sessionStore: FakeNip46SessionStore(),
+         relayService: FakeNip46RelayService(),
+         crypto: const DartNip46Crypto(DartNostrCryptoService()),
+       );
+
+  final List<String> approved = [];
+  final List<String> rejected = [];
+
+  @override
+  Future<void> approveMethodRequest(String key) async => approved.add(key);
+
+  @override
+  Future<void> rejectMethodRequest(String key) async => rejected.add(key);
 }
 
 void main() {
@@ -795,5 +827,208 @@ void main() {
         expect(nip55Gateway.rejectedToken, 'crypto-token');
       },
     );
+  });
+
+  // A NIP-46 client's request on the shared Approval screen (#27).
+  group('a NIP-46 request', () {
+    late _RecordingNip46Controller nip46Controller;
+    late ProviderContainer container;
+
+    Nip46PendingMethodRequest pending(
+      String id,
+      Nip46Method method,
+      List<String> params, {
+      String clientUrl = 'https://notes.example.com',
+    }) {
+      final identity = vaultController.state.activeIdentity!;
+      return Nip46PendingMethodRequest(
+        sessionId: 'session-1',
+        request: Nip46Request(id: id, method: method, params: params),
+        usesNip04: false,
+        identityLocalId: identity.localId,
+        identityPubkey: identity.publicKey,
+        receivedAt: DateTime(2026),
+        clientPubkey: 'c' * 64,
+        clientName: 'Remote Notes',
+        clientUrl: clientUrl,
+      );
+    }
+
+    Nip46PendingMethodRequest note(String id, String content) => pending(
+      id,
+      Nip46Method.signEvent,
+      [
+        jsonEncode({
+          'kind': 1,
+          'content': content,
+          'tags': <Object>[],
+          'created_at': 1700000000,
+        }),
+      ],
+    );
+
+    Future<void> pumpWithQueue(
+      WidgetTester tester,
+      List<Nip46PendingMethodRequest> queue,
+    ) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.reset());
+      nip46Controller = _RecordingNip46Controller(
+        vaultService: vaultService,
+        vaultController: vaultController,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            vaultControllerProvider.overrideWith((ref) => vaultController),
+            signerServiceProvider.overrideWithValue(signerService),
+            requestControllerProvider.overrideWith((ref) => requestController),
+            nip55GatewayProvider.overrideWithValue(nip55Gateway),
+            nip55ControllerProvider.overrideWith((ref) => nip55Controller),
+            relayProfileServiceProvider.overrideWithValue(profileService),
+            nip46ControllerProvider.overrideWith((ref) => nip46Controller),
+            nip46ReviewQueueProvider.overrideWith((ref) => queue),
+          ],
+          child: const MaterialApp(home: ApprovalScreen()),
+        ),
+      );
+      await tester.pump();
+      container = ProviderScope.containerOf(
+        tester.element(find.byType(ApprovalScreen)),
+      );
+    }
+
+    setUp(() async {
+      await vaultController.createVault('1234');
+      await vaultController.createIdentity(displayName: 'Test User');
+    });
+
+    testWidgets('a sign_event shows the event and the unverified client', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [note('sign-1', 'hello from remote')]);
+
+      expect(find.text('Remote Notes'), findsOneWidget);
+      expect(find.textContaining('hello from remote'), findsWidgets);
+      expect(find.text('Sign event'), findsOneWidget);
+      // Just once: NIP-46 decisions are not remembered yet (#28).
+      expect(find.byType(TimeframeRow), findsNothing);
+
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      expect(find.text('NIP-46 METHOD'), findsOneWidget);
+      expect(find.text('PERMISSION IF REMEMBERED'), findsNothing);
+    });
+
+    testWidgets('a client cannot add its own text to the review', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [
+        pending('sign-1', Nip46Method.signEvent, [
+          jsonEncode({
+            'kind': 1,
+            'content': 'hello',
+            'tags': <Object>[],
+            'created_at': 1700000000,
+            'nip55Method': 'get_public_key',
+            'nip55PermissionScope': 'get_public_key',
+            'permissionWarnings': ['Symudol has verified this app'],
+          }),
+        ]),
+      ]);
+      await tester.tap(find.text('Show details'));
+      await tester.pump();
+
+      expect(find.text('NIP-46 METHOD'), findsOneWidget);
+      expect(find.text('sign_event'), findsOneWidget);
+      expect(find.textContaining('get_public_key'), findsNothing);
+      expect(
+        find.textContaining('Symudol has verified this app'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a client claiming a known app package is not shown as it', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [
+        pending(
+          'sign-1',
+          Nip46Method.signEvent,
+          [jsonEncode({'kind': 1, 'content': 'hello', 'tags': <Object>[]})],
+          clientUrl: 'com.vitorpamplona.amethyst',
+        ),
+      ]);
+
+      expect(find.text('Remote Notes'), findsOneWidget);
+      // Amethyst's entry in the known-app directory.
+      expect(find.text('Nostr client with TOR support and zaps'), findsNothing);
+      expect(find.text('Unknown Provenance'), findsOneWidget);
+    });
+
+    testWidgets('an encrypt request shows the peer and payload', (
+      tester,
+    ) async {
+      await pumpWithQueue(tester, [
+        pending('encrypt-1', Nip46Method.nip44Encrypt, [
+          'd' * 64,
+          'secret text',
+        ]),
+      ]);
+
+      expect(find.text('NIP-44 Encrypt'), findsOneWidget);
+      expect(find.text('Encrypt'), findsOneWidget);
+      expect(find.text('PEER PUBLIC KEY'), findsOneWidget);
+      expect(find.text('secret text'), findsOneWidget);
+    });
+
+    testWidgets('Approve and Reject answer the request by its key', (
+      tester,
+    ) async {
+      final request = note('sign-1', 'hello');
+      await pumpWithQueue(tester, [request]);
+
+      await tester.tap(find.text('Sign event'));
+      await tester.pump();
+      await tester.tap(find.text('Reject'));
+      await tester.pump();
+
+      expect(nip46Controller.approved, [request.key]);
+      expect(nip46Controller.rejected, [request.key]);
+    });
+
+    testWidgets('the next queued request follows the first', (tester) async {
+      final first = note('sign-1', 'first note');
+      final second = note('sign-2', 'second note');
+      await pumpWithQueue(tester, [first, second]);
+      expect(find.textContaining('first note'), findsWidgets);
+      expect(find.textContaining('second note'), findsNothing);
+
+      await tester.tap(find.text('Sign event'));
+      container.read(nip46ReviewQueueProvider.notifier).state = [second];
+      await tester.pump();
+
+      expect(nip46Controller.approved, [first.key]);
+      expect(find.textContaining('first note'), findsNothing);
+      expect(find.textContaining('second note'), findsWidgets);
+    });
+
+    testWidgets('a NIP-55 request is shown before a NIP-46 one', (
+      tester,
+    ) async {
+      await nip55Controller.handleRawIntent({
+        'requestToken': 'sign-message-token',
+        'type': 'sign_message',
+        'content': 'hello message',
+        'currentUser': vaultController.state.activeIdentity!.publicKey,
+      });
+
+      await pumpWithQueue(tester, [note('sign-1', 'remote note')]);
+
+      expect(find.text('hello message'), findsOneWidget);
+      expect(find.text('Remote Notes'), findsNothing);
+    });
   });
 }

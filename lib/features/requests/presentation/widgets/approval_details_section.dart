@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:symudol/app/sensitive_selection.dart';
 
 import '../../../../../theme/tokens.dart';
+import '../../../nip46/domain/nip46_method.dart';
 import '../../domain/approval_context.dart';
 import '../../domain/nostr_event_payload_parser.dart';
 
@@ -16,31 +17,60 @@ class ApprovalDetailsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (approval) {
-      SigningApprovalContext() =>
-        _SigningDetailsSection(approval: approval as SigningApprovalContext),
+      SigningApprovalContext(:final eventReview, :final request) =>
+        _SigningDetailsSection(
+          review: eventReview,
+          payload: request.eventPayload,
+          methodLabel: 'NIP-55 METHOD',
+          showRememberedPermission: true,
+        ),
       PublicKeyApprovalContext() =>
         _PublicKeyDetailsSection(approval: approval as PublicKeyApprovalContext),
-      CryptoApprovalContext() =>
-        _CryptoDetailsSection(approval: approval as CryptoApprovalContext),
+      CryptoApprovalContext(:final request) =>
+        _CryptoDetailsSection(content: request.content),
+      RemoteSignerApprovalContext(:final method, :final eventPayload) =>
+        method == Nip46Method.signEvent && eventPayload != null
+            ? _SigningDetailsSection(
+                review: (approval as RemoteSignerApprovalContext).eventReview,
+                payload: eventPayload,
+                methodLabel: 'NIP-46 METHOD',
+                // Just once: NIP-46 decisions are not remembered yet (#28).
+                showRememberedPermission: false,
+              )
+            : _CryptoDetailsSection(
+                content: (approval as RemoteSignerApprovalContext).content,
+              ),
     };
   }
 }
 
 class _SigningDetailsSection extends StatelessWidget {
-  const _SigningDetailsSection({required this.approval});
+  const _SigningDetailsSection({
+    required this.review,
+    required this.payload,
+    required this.methodLabel,
+    required this.showRememberedPermission,
+  });
 
-  final SigningApprovalContext approval;
+  final NostrEventPayloadReview? review;
+  final Map<String, Object?> payload;
+  final String methodLabel;
+  final bool showRememberedPermission;
 
   @override
   Widget build(BuildContext context) {
-    final review = approval.eventReview;
-    final payload = approval.request.eventPayload;
+    final review = this.review;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (review != null) ...[
-          _EventSummary(review: review, payload: payload),
+          _EventSummary(
+            review: review,
+            payload: payload,
+            methodLabel: methodLabel,
+            showRememberedPermission: showRememberedPermission,
+          ),
           const SizedBox(height: DiogelSpacing.space4),
         ],
         _RawJsonBlock(payload: payload),
@@ -50,10 +80,17 @@ class _SigningDetailsSection extends StatelessWidget {
 }
 
 class _EventSummary extends StatelessWidget {
-  const _EventSummary({required this.review, required this.payload});
+  const _EventSummary({
+    required this.review,
+    required this.payload,
+    required this.methodLabel,
+    required this.showRememberedPermission,
+  });
 
   final NostrEventPayloadReview review;
   final Map<String, Object?> payload;
+  final String methodLabel;
+  final bool showRememberedPermission;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +113,7 @@ class _EventSummary extends StatelessWidget {
             ),
             const SizedBox(height: DiogelSpacing.space4),
           ],
-          _label(context, 'NIP-55 METHOD'),
+          _label(context, methodLabel),
           const SizedBox(height: DiogelSpacing.space2),
           Text(
             payload['nip55Method']?.toString() ?? 'sign_event',
@@ -84,31 +121,33 @@ class _EventSummary extends StatelessWidget {
               fontFamily: 'monospace',
             ),
           ),
-          const SizedBox(height: DiogelSpacing.space4),
-          _label(context, 'PERMISSION IF REMEMBERED'),
-          const SizedBox(height: DiogelSpacing.space2),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(DiogelSpacing.space3),
-            decoration: BoxDecoration(
-              color: review.isBroadPermission
-                  ? DiogelColors.stateWarning.withValues(alpha: 0.1)
-                  : DiogelColors.surfaceBase,
-              borderRadius: BorderRadius.circular(DiogelRadius.small),
-              border: Border.all(
+          if (showRememberedPermission) ...[
+            const SizedBox(height: DiogelSpacing.space4),
+            _label(context, 'PERMISSION IF REMEMBERED'),
+            const SizedBox(height: DiogelSpacing.space2),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(DiogelSpacing.space3),
+              decoration: BoxDecoration(
                 color: review.isBroadPermission
-                    ? DiogelColors.stateWarning.withValues(alpha: 0.4)
-                    : DiogelColors.borderSubtle.withValues(alpha: 0.5),
+                    ? DiogelColors.stateWarning.withValues(alpha: 0.1)
+                    : DiogelColors.surfaceBase,
+                borderRadius: BorderRadius.circular(DiogelRadius.small),
+                border: Border.all(
+                  color: review.isBroadPermission
+                      ? DiogelColors.stateWarning.withValues(alpha: 0.4)
+                      : DiogelColors.borderSubtle.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Text(
+                review.permissionLabel,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: review.isBroadPermission ? DiogelColors.stateWarning : null,
+                  fontWeight: review.isBroadPermission ? FontWeight.bold : null,
+                ),
               ),
             ),
-            child: Text(
-              review.permissionLabel,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: review.isBroadPermission ? DiogelColors.stateWarning : null,
-                fontWeight: review.isBroadPermission ? FontWeight.bold : null,
-              ),
-            ),
-          ),
+          ],
           const SizedBox(height: DiogelSpacing.space4),
           _label(context, 'CONTENT'),
           const SizedBox(height: DiogelSpacing.space2),
@@ -255,13 +294,13 @@ class _PublicKeyDetailsSection extends StatelessWidget {
 }
 
 class _CryptoDetailsSection extends StatelessWidget {
-  const _CryptoDetailsSection({required this.approval});
+  const _CryptoDetailsSection({required this.content});
 
-  final CryptoApprovalContext approval;
+  final String? content;
 
   @override
   Widget build(BuildContext context) {
-    final content = (approval.request.content ?? '').trim();
+    final content = (this.content ?? '').trim();
 
     return Container(
       width: double.infinity,
