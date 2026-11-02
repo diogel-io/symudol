@@ -144,12 +144,62 @@ void main() {
       expect(find.text('Awaiting connection…'), findsOneWidget);
       expect(find.byKey(const Key('nip46ReviewRequest')), findsNothing);
     });
+
+    testWidgets('system Back keeps it pending, and Review request reopens it', (
+      tester,
+    ) async {
+      final controller = _buildController();
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+
+      await controller.importNostrconnectToken(_nostrconnect);
+      await tester.pumpAndSettle();
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+      final pending = controller.state.pendingApproval;
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsNothing);
+      expect(controller.state.pendingApproval?.id, pending!.id);
+
+      await tester.tap(find.byKey(const Key('nip46ReviewRequest')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Remote Signer Request'), findsOneWidget);
+      expect(controller.state.pendingApproval?.id, pending.id);
+      await controller.rejectConnection();
+    });
+
+    testWidgets('fits a narrow phone with a long client name', (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final controller = _buildController();
+      await controller.importNostrconnectToken(
+        '$_nostrconnectBase&name=A%20remote%20signing%20client%20with%20a%20long%20name',
+      );
+
+      await tester.pumpWidget(_buildSubject(controller));
+      await tester.pumpAndSettle();
+
+      // A RenderFlex overflow is reported as an exception.
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const Key('nip46ReviewRequest')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.text('Pending'), findsOneWidget);
+      await controller.rejectConnection();
+    });
   });
 }
 
-const _nostrconnect =
+const _nostrconnectBase =
     'nostrconnect://a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1'
-    '?secret=testsecret123&relay=wss%3A%2F%2Frelay.example.com&name=Test%20client';
+    '?secret=testsecret123&relay=wss%3A%2F%2Frelay.example.com';
+const _nostrconnect = '$_nostrconnectBase&name=Test%20client';
 
 Nip46Session _session({String? clientName}) {
   return Nip46Session(

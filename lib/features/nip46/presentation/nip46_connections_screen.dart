@@ -209,9 +209,13 @@ class _SessionTile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            name,
-                            style: Theme.of(context).textTheme.titleSmall,
+                          Flexible(
+                            child: Text(
+                              name,
+                              style: Theme.of(context).textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           _StatusChip(isPending: isPending),
@@ -229,12 +233,6 @@ class _SessionTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (isAwaitingApproval)
-                  FilledButton.tonal(
-                    key: const Key('nip46ReviewRequest'),
-                    onPressed: onReview,
-                    child: const Text('Review request'),
-                  ),
                 TextButton(
                   style: TextButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.error,
@@ -244,6 +242,19 @@ class _SessionTile extends StatelessWidget {
                 ),
               ],
             ),
+            // On its own row: beside Revoke it overflows the header on a
+            // narrow phone.
+            if (isAwaitingApproval) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonal(
+                  key: const Key('nip46ReviewRequest'),
+                  onPressed: onReview,
+                  child: const Text('Review request'),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
