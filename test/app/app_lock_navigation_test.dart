@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:symudol/app/app.dart';
@@ -20,6 +21,9 @@ import '../fakes/fake_nip55_permission_store.dart';
 import '../fakes/fake_profile_network_store.dart';
 import '../fakes/fake_vault_store.dart';
 import '../features/nip46/data/fake_nip46_relay_service.dart';
+
+/// A throwaway client key, for these tests only.
+final _clientPrivkey = '${'0' * 63}7';
 
 class _NativeSync extends Nip55NativeMirrorSync {
   @override
@@ -177,7 +181,7 @@ void main() {
   /// encrypted.
   Future<void> sendConnectRequest(ProviderContainer container) {
     final clientPubkey = const DartNostrCryptoService().derivePublicKey(
-      '${'0' * 63}7',
+      _clientPrivkey,
     );
     return container
         .read(nip46ControllerProvider.notifier)
@@ -345,12 +349,22 @@ void main() {
       final state = container.read(nip46ControllerProvider);
       expect(state.pendingApproval, isNull);
       expect(state.sessions, isEmpty);
-      // The client is told: one NIP-46 response (kind 24133) addressed to it.
+      // The client is told: one NIP-46 error response (kind 24133) addressed
+      // to it, not a successful connect.
       final published = relay.capturedPublishes.single;
       expect(published['kind'], 24133);
       expect(published['tags'], [
         ['p', clientPubkey],
       ]);
+      final response = jsonDecode(
+        const DartNostrCryptoService().nip44Decrypt(
+          privateKeyHex: _clientPrivkey,
+          peerPubkeyHex: published['pubkey'] as String,
+          ciphertext: published['content'] as String,
+        ),
+      ) as Map<String, Object?>;
+      expect(response['error'], isNotNull);
+      expect(response['result'], isNull);
 
       await enterPin(tester);
       await openRemoteSigner(tester);
