@@ -5,7 +5,6 @@ import 'dart:math';
 
 import 'package:symudol/app/diogel_log.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
-import 'package:symudol/features/requests/domain/nostr_event_draft.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
@@ -24,6 +23,7 @@ import '../domain/nip46_request.dart';
 import '../domain/nip46_response.dart';
 import '../domain/nip46_session.dart';
 import '../domain/nip46_session_store.dart';
+import '../domain/nip46_sign_event.dart';
 
 class Nip46State {
   final List<Nip46Session> sessions;
@@ -85,6 +85,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Requests one session may have waiting for review. Beyond this a client
   /// is refused at once, so it cannot flood the queue (diogel-io/symudol#27).
   static const int maxPendingRequestsPerSession = 20;
+
+  static const String _signEventPubkeyMismatch =
+      'sign_event: event pubkey does not match active identity';
 
   final Nip46SessionStore _sessionStore;
   final VaultService _vaultService;
@@ -677,65 +680,30 @@ class Nip46Controller extends StateNotifier<Nip46State> {
             );
             return;
           }
-          final eventJsonRaw = request.optionalParam(0);
-          if (eventJsonRaw == null) {
-            await _publishErrorResponse(
-              session: session,
-              requestId: request.id,
-              error: 'sign_event: missing event JSON',
-            );
-            return;
-          }
-          final Map<String, Object?> eventJson;
-          try {
-            final decoded = jsonDecode(eventJsonRaw);
-            if (decoded is! Map) throw const FormatException('not a map');
-            eventJson = decoded.cast();
-          } catch (e) {
-            await _publishErrorResponse(
-              session: session,
-              requestId: request.id,
-              error: 'sign_event: invalid event JSON',
-            );
-            return;
-          }
-
           final activePubkey = vaultService.activeIdentity?.publicKey ?? '';
-          // Inject missing pubkey.
-          if (!eventJson.containsKey('pubkey') ||
-              (eventJson['pubkey'] as String? ?? '').isEmpty) {
-            eventJson['pubkey'] = activePubkey;
-          }
-          // Reject mismatched pubkey.
-          if (eventJson['pubkey'] != activePubkey) {
+          final Nip46SignEvent event;
+          try {
+            event = Nip46SignEvent.parse(
+              request.optionalParam(0),
+              activePubkey: activePubkey,
+            );
+          } on Nip46SignEventException catch (e) {
             await _publishErrorResponse(
               session: session,
               requestId: request.id,
-              error: 'sign_event: event pubkey does not match active identity',
+              error: e.message,
             );
             return;
           }
-
-          final kind = eventJson['kind'];
-          final content = eventJson['content'] ?? '';
-          final tags = eventJson['tags'];
-          final createdAtRaw = eventJson['created_at'];
-          final createdAt = createdAtRaw is int
-              ? DateTime.fromMillisecondsSinceEpoch(createdAtRaw * 1000,
-                  isUtc: true)
-              : DateTime.now().toUtc();
-
-          final draft = NostrEventDraft(
-            kind: kind is int ? kind : 1,
-            content: content is String ? content : '',
-            tags: tags is List
-                ? tags
-                    .whereType<List>()
-                    .map((t) => t.map((e) => e.toString()).toList())
-                    .toList()
-                : const [],
-            createdAt: createdAt,
-          );
+          if (event.pubkey != activePubkey) {
+            await _publishErrorResponse(
+              session: session,
+              requestId: request.id,
+              error: _signEventPubkeyMismatch,
+            );
+            return;
+          }
+          final draft = event.draft;
 
           final signed = await vaultService.signNostrEvent(
             identityLocalId: identityLocalId,
@@ -991,6 +959,34 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'No active identity',
       );
       return;
+    }
+    // A sign_event that can only fail is refused now, not shown for review.
+    if (request.method == Nip46Method.signEvent) {
+      final String? refusal;
+      try {
+        final event = Nip46SignEvent.parse(
+          request.optionalParam(0),
+          activePubkey: identity.publicKey,
+        );
+        refusal = event.pubkey == identity.publicKey
+            ? null
+            : _signEventPubkeyMismatch;
+      } on Nip46SignEventException catch (e) {
+        await _publishErrorResponse(
+          session: session,
+          requestId: request.id,
+          error: e.message,
+        );
+        return;
+      }
+      if (refusal != null) {
+        await _publishErrorResponse(
+          session: session,
+          requestId: request.id,
+          error: refusal,
+        );
+        return;
+      }
     }
     final pending = Nip46PendingMethodRequest(
       sessionId: session.id,

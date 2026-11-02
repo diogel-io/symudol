@@ -687,6 +687,27 @@ void main() {
         });
       });
 
+      test('a sign_event that can only fail is refused, not queued', () async {
+        final session = await unlockedSession();
+
+        await send(session, 'sign_event', id: 'no-json', params: ['not json']);
+        await send(
+          session,
+          'sign_event',
+          id: 'other-key',
+          params: [
+            jsonEncode({'pubkey': strangerPubkey, 'kind': 1, 'content': 'x'}),
+          ],
+        );
+
+        expect(controller.state.pendingMethodRequests, isEmpty);
+        expect({for (final r in responses()) r['id']: r['error']}, {
+          'no-json': 'sign_event: invalid event JSON',
+          'other-key':
+              'sign_event: event pubkey does not match active identity',
+        });
+      });
+
       test('the same request sent again is queued once', () async {
         final session = await unlockedSession();
         await sendNote(session, 'sign-1');

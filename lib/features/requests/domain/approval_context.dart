@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:symudol/features/nip46/domain/nip46_method.dart';
 import 'package:symudol/features/nip46/domain/nip46_pending_method_request.dart';
+import 'package:symudol/features/nip46/domain/nip46_sign_event.dart';
 import 'package:symudol/features/nip55/domain/nip55_incoming_request.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/requests/domain/nostr_event_payload_parser.dart';
@@ -72,10 +71,9 @@ class CryptoApprovalContext extends ApprovalContext {
 class RemoteSignerApprovalContext extends ApprovalContext {
   final Nip46PendingMethodRequest pending;
 
-  /// For `sign_event`: the event as it will be signed, only its signed fields,
-  /// with the defaults the controller applies (the active pubkey, and kind 1
-  /// when none is given), so the review shows what is signed. Null for other methods, or when the
-  /// event JSON is invalid, which the controller refuses on approve.
+  /// For `sign_event`: the event as it will be signed, from
+  /// [Nip46SignEvent], the parser the controller signs with. Null for other
+  /// methods.
   final Map<String, Object?>? eventPayload;
   final NostrEventPayloadReview? eventReview;
 
@@ -99,12 +97,20 @@ class RemoteSignerApprovalContext extends ApprovalContext {
     final request = pending.request;
     switch (request.method) {
       case Nip46Method.signEvent:
-        final raw = request.optionalParam(0);
-        final decoded = _decodeEvent(raw);
-        if (decoded == null) {
-          return RemoteSignerApprovalContext._(pending: pending, content: raw);
+        // The controller refuses a sign_event it cannot parse before queueing
+        // it, so this is the event that approving signs.
+        final Map<String, Object?> event;
+        try {
+          event = Nip46SignEvent.parse(
+            request.optionalParam(0),
+            activePubkey: pending.identityPubkey,
+          ).reviewPayload;
+        } on Nip46SignEventException {
+          return RemoteSignerApprovalContext._(
+            pending: pending,
+            content: request.optionalParam(0),
+          );
         }
-        final event = _signedFields(decoded, pending.identityPubkey);
         return RemoteSignerApprovalContext._(
           pending: pending,
           eventPayload: event,
@@ -121,42 +127,6 @@ class RemoteSignerApprovalContext extends ApprovalContext {
           peerPubkey: request.optionalParam(0),
           content: request.optionalParam(1),
         );
-    }
-  }
-
-  /// Only the fields the controller signs, as it signs them. Anything else in
-  /// the client's JSON is dropped, so a client cannot put its own text where
-  /// the screen shows app data, such as the NIP-55 method or permission
-  /// warnings.
-  static Map<String, Object?> _signedFields(
-    Map<String, Object?> event,
-    String activePubkey,
-  ) {
-    final pubkey = event['pubkey'];
-    final kind = event['kind'];
-    final content = event['content'];
-    final tags = event['tags'];
-    return {
-      'pubkey': pubkey is String && pubkey.isNotEmpty ? pubkey : activePubkey,
-      'kind': kind is int ? kind : 1,
-      'content': content is String ? content : '',
-      'tags': tags is List
-          ? tags
-                .whereType<List>()
-                .map((t) => t.map((e) => e.toString()).toList())
-                .toList()
-          : const <List<String>>[],
-      if (event['created_at'] is int) 'created_at': event['created_at'],
-    };
-  }
-
-  static Map<String, Object?>? _decodeEvent(String? raw) {
-    if (raw == null) return null;
-    try {
-      final decoded = jsonDecode(raw);
-      return decoded is Map ? Map<String, Object?>.from(decoded) : null;
-    } catch (_) {
-      return null;
     }
   }
 
