@@ -1282,6 +1282,33 @@ void main() {
         expect(answerTo('second')!['error'], 'Session has been revoked.');
       });
 
+      test('a revoke answers queued and held requests once each', () async {
+        await useRequestTimeout(const Duration(milliseconds: 300));
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity();
+        final session = await activeBunkerSession();
+        await sendKind(session, 'queued', 7);
+        expect(controller.state.pendingMethodRequests, hasLength(1));
+        await vaultController.lock();
+        await Future<void>.delayed(Duration.zero);
+        await sendKind(session, 'held', 1);
+
+        // The first answer waits on the relay while both would time out.
+        relayService.holdPublishes = Completer<void>();
+        final revoking = controller.revokeSession(session.id);
+        await relayService.publishHeld.future.timeout(const Duration(seconds: 5));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        relayService.holdPublishes!.complete();
+        relayService.holdPublishes = null;
+        await revoking;
+
+        for (final id in ['queued', 'held']) {
+          final answers = responses().where((r) => r['id'] == id).toList();
+          expect(answers, hasLength(1), reason: id);
+          expect(answers.single['error'], 'Session has been revoked.');
+        }
+      });
+
       test('a timeout during a wipe does not stop the wipe', () async {
         await useRequestTimeout(const Duration(milliseconds: 300));
         final session = await lockedSession();

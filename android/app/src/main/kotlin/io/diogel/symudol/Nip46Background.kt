@@ -101,8 +101,14 @@ class Nip46Background(private val activity: Activity, private val channel: Metho
      * Whether a notice would be shown. On every version the user can turn the app's
      * notifications off in settings; on Android 13+ this also reflects the runtime permission.
      */
-    private fun notificationsAllowed(): Boolean =
-        NotificationManagerCompat.from(activity).areNotificationsEnabled()
+    private fun notificationsAllowed(): Boolean {
+        val manager = NotificationManagerCompat.from(activity)
+        if (!manager.areNotificationsEnabled()) return false
+        // On Android 8+ the user can block just the request notices' channel. One not yet
+        // created is available: showHeldRequest creates it.
+        val channel = manager.getNotificationChannelCompat(REQUESTS_CHANNEL_ID) ?: return true
+        return channel.importance != NotificationManagerCompat.IMPORTANCE_NONE
+    }
 
     private fun showHeldRequest(sessionId: String) {
         if (!notificationsAllowed()) return

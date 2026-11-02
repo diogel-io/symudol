@@ -488,38 +488,32 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   /// Revokes a session — stops relays, deletes from store, removes from state.
   Future<void> revokeSession(String sessionId) async {
-    // Its queued requests are answered first, while the relays still run.
+    // Its waiting requests are answered first, while the relays still run.
     final session = _sessionById(sessionId);
     // Out of state at once, so no save started from here on can keep it
     // (see [_updateSession]); its grants go with it (#28).
     state = state.copyWith(
       sessions: state.sessions.where((s) => s.id != sessionId).toList(),
     );
-    final queued = state.pendingMethodRequests
-        .where((pending) => pending.sessionId == sessionId)
-        .toList();
-    for (final pending in queued) {
-      _takePendingMethodRequest(pending.key);
-      if (session == null) continue;
-      await _publishErrorResponse(
-        session: session,
-        requestId: pending.request.id,
-        error: 'Session has been revoked.',
-      );
-    }
-    // And those held while the vault is locked (#29): all taken before the
-    // first await, so no timeout can remove one mid-loop, and an answer that
-    // fails cannot skip the relay stop and delete below.
-    final held = [
+    // Its queued and held requests (#29) are all taken before the first
+    // await, so no timeout can answer one a second time or remove one
+    // mid-loop, and an answer that fails cannot skip the relay stop and
+    // delete below.
+    final requestIds = [
+      for (final pending in state.pendingMethodRequests.toList())
+        if (pending.sessionId == sessionId &&
+            _takePendingMethodRequest(pending.key) != null)
+          pending.request.id,
       for (final entry in _heldRequests.entries.toList())
-        if (entry.value.sessionId == sessionId) ?_takeHeldRequest(entry.key),
+        if (entry.value.sessionId == sessionId)
+          ?_takeHeldRequest(entry.key)?.request.id,
     ];
-    for (final request in held) {
+    for (final requestId in requestIds) {
       if (session == null) continue;
       try {
         await _publishErrorResponse(
           session: session,
-          requestId: request.request.id,
+          requestId: requestId,
           error: 'Session has been revoked.',
         );
       } catch (e) {
