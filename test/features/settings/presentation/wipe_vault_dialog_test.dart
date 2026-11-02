@@ -54,7 +54,6 @@ Nip46Session _session(String id) => Nip46Session(
   remoteSignerPubkey: 'remote-$id',
   remoteSignerPrivkey: 'secret-$id',
   relays: const ['wss://relay.example'],
-  grantedScopes: const [],
   status: Nip46SessionStatus.active,
   createdAt: DateTime(2026, 10, 1),
 );

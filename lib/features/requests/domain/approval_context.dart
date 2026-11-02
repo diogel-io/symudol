@@ -67,7 +67,7 @@ class CryptoApprovalContext extends ApprovalContext {
 }
 
 /// A request from a NIP-46 client over a remote signer connection
-/// (diogel-io/symudol#27). Decisions are just once: remembering them is #28.
+/// (diogel-io/symudol#27). Its decision can be remembered (#28).
 class RemoteSignerApprovalContext extends ApprovalContext {
   final Nip46PendingMethodRequest pending;
 
@@ -114,7 +114,12 @@ class RemoteSignerApprovalContext extends ApprovalContext {
         return RemoteSignerApprovalContext._(
           pending: pending,
           eventPayload: event,
-          eventReview: const NostrEventPayloadParser().review(event),
+          // What remembering would keep: this kind only (#28). Given to the
+          // review alone, so the raw JSON stays what is signed.
+          eventReview: const NostrEventPayloadParser().review({
+            ...event,
+            'nip55PermissionScope': 'sign_event:${event['kind']}',
+          }),
         );
       case Nip46Method.decryptZapEvent:
         return RemoteSignerApprovalContext._(
@@ -140,7 +145,9 @@ class RemoteSignerApprovalContext extends ApprovalContext {
     return key.length > 12 ? '${key.substring(0, 8)}…' : 'Remote client';
   }
 
-  bool get canRemember => false;
+  /// Every reviewed NIP-46 request can be remembered: a `sign_event` always
+  /// has a kind by now, and a decision covers that kind only (#28).
+  bool get canRemember => true;
 
   @override
   String get requestKey => pending.key;

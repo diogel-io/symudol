@@ -5,6 +5,7 @@ import 'package:symudol/features/nip46/domain/nip46_method.dart';
 import 'package:symudol/features/nip46/domain/nip46_pending_method_request.dart';
 import 'package:symudol/features/nip46/domain/nip46_request.dart';
 import 'package:symudol/features/nip55/application/nip55_controller.dart';
+import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_method_channel_gateway.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
@@ -101,12 +102,25 @@ class _RecordingNip46Controller extends Nip46Controller {
 
   final List<String> approved = [];
   final List<String> rejected = [];
+  final List<Nip55ApprovalTimeframe> timeframes = [];
 
   @override
-  Future<void> approveMethodRequest(String key) async => approved.add(key);
+  Future<void> approveMethodRequest(
+    String key, {
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
+    approved.add(key);
+    timeframes.add(timeframe);
+  }
 
   @override
-  Future<void> rejectMethodRequest(String key) async => rejected.add(key);
+  Future<void> rejectMethodRequest(
+    String key, {
+    Nip55ApprovalTimeframe timeframe = Nip55ApprovalTimeframe.justOnce,
+  }) async {
+    rejected.add(key);
+    timeframes.add(timeframe);
+  }
 }
 
 void main() {
@@ -912,14 +926,39 @@ void main() {
       expect(find.text('Remote Notes'), findsOneWidget);
       expect(find.textContaining('hello from remote'), findsWidgets);
       expect(find.text('Sign event'), findsOneWidget);
-      // Just once: NIP-46 decisions are not remembered yet (#28).
-      expect(find.byType(TimeframeRow), findsNothing);
+      // A decision can be remembered, for this kind only (#28).
+      expect(find.byType(TimeframeRow), findsOneWidget);
 
       await tester.tap(find.text('Show details'));
       await tester.pump();
 
       expect(find.text('NIP-46 METHOD'), findsOneWidget);
-      expect(find.text('PERMISSION IF REMEMBERED'), findsNothing);
+      expect(find.text('PERMISSION IF REMEMBERED'), findsOneWidget);
+      expect(
+        find.text('Remember permission: sign kind 1 only'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the chosen timeframe goes with the decision (#28)', (
+      tester,
+    ) async {
+      final first = note('sign-1', 'first');
+      await pumpWithQueue(tester, [first]);
+
+      await tester.tap(find.text('Always'));
+      await tester.pump();
+      await tester.tap(find.text('Sign event'));
+      await tester.pump();
+      await tester.tap(find.text('Reject'));
+      await tester.pump();
+
+      expect(nip46Controller.approved, [first.key]);
+      expect(nip46Controller.rejected, [first.key]);
+      expect(nip46Controller.timeframes, [
+        Nip55ApprovalTimeframe.always,
+        Nip55ApprovalTimeframe.always,
+      ]);
     });
 
     testWidgets('a client cannot add its own text to the review', (

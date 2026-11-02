@@ -210,7 +210,6 @@ Nip46Session _session({String? clientName}) {
         'b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2d3e4f5a0b1c2',
     remoteSignerPrivkey: '0' * 64,
     relays: const ['wss://relay.example.com'],
-    grantedScopes: const [],
     status: Nip46SessionStatus.active,
     createdAt: DateTime(2026),
     clientName: clientName,

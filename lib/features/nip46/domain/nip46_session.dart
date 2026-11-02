@@ -1,3 +1,4 @@
+import 'nip46_permission_grant.dart';
 import 'nip46_permission_scope.dart';
 
 enum Nip46SessionStatus { pending, active, revoked, disconnected }
@@ -17,7 +18,12 @@ class Nip46Session {
   final String? clientName;
   final String? clientUrl;
   final String? clientImage;
-  final List<Nip46PermissionScope> grantedScopes;
+  /// What the client asked for at connect: shown on the connect approval,
+  /// and saved as grants only if the user approves with a timeframe (#28).
+  final List<Nip46PermissionScope> requestedScopes;
+
+  /// The user's remembered decisions for this client (#28).
+  final List<Nip46PermissionGrant> grants;
   final Nip46SessionStatus status;
   final DateTime createdAt;
   final DateTime? lastUsedAt;
@@ -38,7 +44,8 @@ class Nip46Session {
     this.clientName,
     this.clientUrl,
     this.clientImage,
-    required this.grantedScopes,
+    this.requestedScopes = const [],
+    this.grants = const [],
     required this.status,
     required this.createdAt,
     this.lastUsedAt,
@@ -56,7 +63,8 @@ class Nip46Session {
     String? clientName,
     String? clientUrl,
     String? clientImage,
-    List<Nip46PermissionScope>? grantedScopes,
+    List<Nip46PermissionScope>? requestedScopes,
+    List<Nip46PermissionGrant>? grants,
     Nip46SessionStatus? status,
     DateTime? lastUsedAt,
     DateTime? connectedAt,
@@ -72,7 +80,8 @@ class Nip46Session {
       clientName: clientName ?? this.clientName,
       clientUrl: clientUrl ?? this.clientUrl,
       clientImage: clientImage ?? this.clientImage,
-      grantedScopes: grantedScopes ?? this.grantedScopes,
+      requestedScopes: requestedScopes ?? this.requestedScopes,
+      grants: grants ?? this.grants,
       status: status ?? this.status,
       createdAt: createdAt,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
@@ -93,7 +102,8 @@ class Nip46Session {
     'clientName': clientName,
     'clientUrl': clientUrl,
     'clientImage': clientImage,
-    'grantedScopes': grantedScopes.map((s) => s.toJson()).toList(),
+    'requestedScopes': requestedScopes.map((s) => s.toJson()).toList(),
+    'grants': grants.map((g) => g.toJson()).toList(),
     'status': status.name,
     'createdAt': createdAt.toIso8601String(),
     'lastUsedAt': lastUsedAt?.toIso8601String(),
@@ -107,15 +117,14 @@ class Nip46Session {
     final rawRelays = json['relays'];
     final relays = rawRelays is List ? rawRelays.cast<String>() : <String>[];
 
-    final rawScopes = json['grantedScopes'];
-    final scopes = <Nip46PermissionScope>[];
-    if (rawScopes is List) {
-      for (final raw in rawScopes) {
-        if (raw is Map) {
-          scopes.add(Nip46PermissionScope.fromJson(raw.cast()));
-        }
-      }
-    }
+    final status = Nip46SessionStatus.values.byName(json['status'] as String);
+    // Before #28, `grantedScopes` held the requested scopes while a session
+    // waited for approval, and was always saved empty on approval: it holds
+    // no decisions to keep.
+    final legacyScopes = status == Nip46SessionStatus.pending
+        ? _scopes(json['grantedScopes'])
+        : const <Nip46PermissionScope>[];
+    final rawGrants = json['grants'];
 
     return Nip46Session(
       id: json['id'] as String,
@@ -126,8 +135,15 @@ class Nip46Session {
       clientName: json['clientName'] as String?,
       clientUrl: json['clientUrl'] as String?,
       clientImage: json['clientImage'] as String?,
-      grantedScopes: scopes,
-      status: Nip46SessionStatus.values.byName(json['status'] as String),
+      requestedScopes: json.containsKey('requestedScopes')
+          ? _scopes(json['requestedScopes'])
+          : legacyScopes,
+      grants: [
+        if (rawGrants is List)
+          for (final raw in rawGrants)
+            if (raw is Map) ?Nip46PermissionGrant.fromJson(raw.cast()),
+      ],
+      status: status,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastUsedAt: json['lastUsedAt'] != null
           ? DateTime.parse(json['lastUsedAt'] as String)
@@ -142,6 +158,12 @@ class Nip46Session {
     );
   }
 }
+
+List<Nip46PermissionScope> _scopes(Object? raw) => [
+  if (raw is List)
+    for (final scope in raw)
+      if (scope is Map) Nip46PermissionScope.fromJson(scope.cast()),
+];
 
 // Sentinel for copyWith pendingSecret to distinguish "not passed" from "null".
 const Object _sentinel = Object();

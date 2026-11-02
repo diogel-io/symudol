@@ -1,3 +1,4 @@
+import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 
 import 'nip46_method.dart';
@@ -32,11 +33,18 @@ final class Nip46RequireUnlock extends Nip46ApprovalDecision {
 class Nip46ApprovalPolicy {
   const Nip46ApprovalPolicy();
 
+  /// Decides how to handle [method] from [session]'s client.
+  ///
+  /// [signEventKind] is the kind of a `sign_event`'s event, which the
+  /// controller has already checked is an integer (#28). Remembered grants
+  /// apply only under [activeIdentityPubkey], until they expire at [now].
   Nip46ApprovalDecision decide({
     required Nip46Method method,
     required Nip46Session session,
     required VaultState vaultState,
     required String? activeIdentityPubkey,
+    int? signEventKind,
+    DateTime? now,
   }) {
     if (vaultState is! VaultUnlocked || activeIdentityPubkey == null) {
       return const Nip46RequireUnlock(
@@ -76,25 +84,40 @@ class Nip46ApprovalPolicy {
       return Nip46AutoAllow(const Nip46GetRelaysScope());
     }
 
-    final requestedScope = _scopeFor(method);
+    final requestedScope = scopeFor(method, signEventKind);
     if (requestedScope == null) {
       return const Nip46AutoReject('Unknown method.');
     }
 
-    // Check if session grants cover this scope.
-    for (final granted in session.grantedScopes) {
-      if (granted.matches(requestedScope)) {
-        return Nip46AutoAllow(granted);
-      }
-    }
-
-    // Broad sign_event (no kind) always requires explicit review, even if a
-    // broad grant exists — callers must pass the kind in the request for auto-allow.
-    if (requestedScope is Nip46SignEventScope && requestedScope.kind == null) {
+    // A broad sign_event is reviewed before any grant is looked at, so no
+    // remembered decision can sign any kind (#5, #6).
+    if (requestedScope.isBroad) {
       return const Nip46RequireReview(
         'Broad sign_event requires explicit review.',
         canRemember: false,
       );
+    }
+
+    final at = now ?? DateTime.now();
+    final live = [
+      for (final grant in session.grants)
+        if (grant.identityPubkey == activeIdentityPubkey &&
+            grant.isRememberable &&
+            !grant.isExpiredAt(at) &&
+            grant.scope.matches(requestedScope))
+          grant,
+    ];
+    // A remembered reject wins over an allow, and a broad reject refuses
+    // every kind. A broad allow is never kept (isRememberable).
+    for (final grant in live) {
+      if (grant.decision == Nip55PermissionDecision.reject) {
+        return const Nip46AutoReject('Rejected by a remembered decision.');
+      }
+    }
+    for (final grant in live) {
+      if (grant.decision == Nip55PermissionDecision.allow) {
+        return Nip46AutoAllow(grant.scope);
+      }
     }
 
     if (requestedScope.isSensitive) {
@@ -108,8 +131,14 @@ class Nip46ApprovalPolicy {
     );
   }
 
-  Nip46PermissionScope? _scopeFor(Nip46Method method) => switch (method) {
-    Nip46Method.signEvent => const Nip46SignEventScope(),
+  /// The scope [method] needs: for `sign_event`, the event's kind. Null for
+  /// a method no grant covers.
+  static Nip46PermissionScope? scopeFor(
+    Nip46Method method,
+    int? signEventKind,
+  ) =>
+      switch (method) {
+    Nip46Method.signEvent => Nip46SignEventScope(signEventKind),
     Nip46Method.nip04Encrypt => const Nip46Nip04EncryptScope(),
     Nip46Method.nip04Decrypt => const Nip46Nip04DecryptScope(),
     Nip46Method.nip44Encrypt => const Nip46Nip44EncryptScope(),

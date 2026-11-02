@@ -483,7 +483,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       case RemoteSignerApprovalContext():
         await ref
             .read(nip46ControllerProvider.notifier)
-            .approveMethodRequest(approval.requestKey);
+            .approveMethodRequest(approval.requestKey, timeframe: timeframe);
     }
   }
 
@@ -514,7 +514,7 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
       case RemoteSignerApprovalContext():
         await ref
             .read(nip46ControllerProvider.notifier)
-            .rejectMethodRequest(approval.requestKey);
+            .rejectMethodRequest(approval.requestKey, timeframe: timeframe);
     }
   }
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:symudol/app/route_pop.dart';
+import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
+import 'package:symudol/features/requests/presentation/widgets/remember_row.dart';
 import '../application/nip46_providers.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_session.dart';
@@ -76,16 +78,19 @@ class Nip46ConnectApprovalScreen extends ConsumerWidget {
                     _ClientInfoSection(session: session),
                     const SizedBox(height: 20),
                     _RelaysSection(session: session),
-                    if (session.grantedScopes.isNotEmpty) ...[
+                    if (session.requestedScopes.isNotEmpty) ...[
                       const SizedBox(height: 20),
-                      _PermissionsSection(scopes: session.grantedScopes),
+                      _PermissionsSection(scopes: session.requestedScopes),
                     ],
                   ],
                 ),
               ),
             ),
             _ActionBar(
-              onApprove: () => controller.approveConnection(),
+              // Something to remember: a broad sign_event is never kept (#28).
+              canRemember: session.requestedScopes.any((s) => !s.isBroad),
+              onApprove: (timeframe) =>
+                  controller.approveConnection(timeframe: timeframe),
               onReject: () => controller.rejectConnection(),
               isLoading: state.isLoading,
             ),
@@ -266,12 +271,17 @@ class _PermissionsSection extends StatelessWidget {
                       : Theme.of(context).colorScheme.outline,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  scope.label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scope.isSensitive
-                        ? Theme.of(context).colorScheme.error
-                        : null,
+                Flexible(
+                  child: Text(
+                    // Never remembered: each such request is reviewed (#28).
+                    scope.isBroad
+                        ? '${scope.label} (reviewed every time, never remembered)'
+                        : scope.label,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scope.isSensitive
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
                   ),
                 ),
               ],
@@ -282,35 +292,62 @@ class _PermissionsSection extends StatelessWidget {
   }
 }
 
-class _ActionBar extends StatelessWidget {
-  final VoidCallback onApprove;
+class _ActionBar extends StatefulWidget {
+  final bool canRemember;
+  final ValueChanged<Nip55ApprovalTimeframe> onApprove;
   final VoidCallback onReject;
   final bool isLoading;
 
   const _ActionBar({
+    required this.canRemember,
     required this.onApprove,
     required this.onReject,
     required this.isLoading,
   });
 
   @override
+  State<_ActionBar> createState() => _ActionBarState();
+}
+
+class _ActionBarState extends State<_ActionBar> {
+  Nip55ApprovalTimeframe _timeframe = Nip55ApprovalTimeframe.justOnce;
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: isLoading ? null : onReject,
-              child: const Text('Reject'),
+          // How long to remember the requested permissions. Just once keeps
+          // none, so each request is reviewed (#28).
+          if (widget.canRemember)
+            TimeframeRow(
+              value: _timeframe,
+              onChanged: (v) => setState(() => _timeframe = v),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton(
-              onPressed: isLoading ? null : onApprove,
-              child: const Text('Approve'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: widget.isLoading ? null : widget.onReject,
+                  child: const Text('Reject'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: widget.isLoading
+                      ? null
+                      : () => widget.onApprove(
+                          widget.canRemember
+                              ? _timeframe
+                              : Nip55ApprovalTimeframe.justOnce,
+                        ),
+                  child: const Text('Approve'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
