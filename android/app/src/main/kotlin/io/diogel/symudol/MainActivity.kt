@@ -224,6 +224,16 @@ class MainActivity : FlutterFragmentActivity() {
         super.onDestroy()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        // The notification permission asked for when NIP-46 background running is turned on (#29).
+        if (nip46Background?.onPermissionResult(requestCode) == true) return
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     override fun onResume() {
         currentActivity = WeakReference(this)
         super.onResume()

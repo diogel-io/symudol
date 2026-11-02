@@ -655,6 +655,24 @@ void main() {
       expect(container.exists(nip46RelayServiceProvider), isFalse);
     });
 
+    testWidgets('revoking the last session stops the service', (tester) async {
+      final background = _FakeBackground();
+      final container = await pumpUnlockedApp(
+        tester,
+        sessions: [_storedSession],
+        background: background,
+      );
+      final controller = container.read(nip46ControllerProvider.notifier);
+      await controller.setRunInBackground(true);
+      expect(background.stops, 0);
+
+      // As when a client logs out while Symudol is in the background.
+      await controller.revokeSession(_storedSession.id);
+      await tester.pump();
+
+      expect(background.stops, 1);
+    });
+
     testWidgets('the service runs in the background only when turned on', (
       tester,
     ) async {

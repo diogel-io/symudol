@@ -22,6 +22,9 @@ import io.flutter.plugin.common.MethodChannel
  */
 class Nip46Background(private val activity: Activity, private val channel: MethodChannel) {
 
+    /** The `requestNotificationPermission` call waiting for the user's answer. */
+    private var pendingPermissionResult: MethodChannel.Result? = null
+
     companion object {
         const val CHANNEL = "io.diogel.symudol/nip46_service"
         const val REQUESTS_CHANNEL_ID = "nip46_requests"
@@ -58,29 +61,48 @@ class Nip46Background(private val activity: Activity, private val channel: Metho
             }
             "notificationsAllowed" -> result.success(notificationsAllowed())
             "requestNotificationPermission" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsAllowed()) {
+                val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+                if (granted || pendingPermissionResult != null) {
+                    result.success(null)
+                } else {
+                    // Answered once the user decides (onPermissionResult), so Dart then reads
+                    // the outcome rather than the state before the prompt.
+                    pendingPermissionResult = result
                     ActivityCompat.requestPermissions(
                         activity,
                         arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                         PERMISSION_REQUEST,
                     )
                 }
-                result.success(null)
             }
             else -> result.notImplemented()
         }
     }
 
+    /** From MainActivity.onRequestPermissionsResult: true when it was this class's request. */
+    fun onPermissionResult(requestCode: Int): Boolean {
+        if (requestCode != PERMISSION_REQUEST) return false
+        pendingPermissionResult?.success(null)
+        pendingPermissionResult = null
+        return true
+    }
+
     /** MainActivity is going: the service must not outlive the engine (#9). */
     fun detach() {
+        pendingPermissionResult?.success(null)
+        pendingPermissionResult = null
         Nip46ForegroundService.onStopRequested = null
         Nip46ForegroundService.stop(activity.applicationContext)
     }
 
+    /**
+     * Whether a notice would be shown. On every version the user can turn the app's
+     * notifications off in settings; on Android 13+ this also reflects the runtime permission.
+     */
     private fun notificationsAllowed(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+        NotificationManagerCompat.from(activity).areNotificationsEnabled()
 
     private fun showHeldRequest(sessionId: String) {
         if (!notificationsAllowed()) return

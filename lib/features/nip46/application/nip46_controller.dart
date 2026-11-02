@@ -507,16 +507,24 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Session has been revoked.',
       );
     }
-    // And those held while the vault is locked (#29).
-    for (final key in _heldRequests.keys.toList()) {
-      if (_heldRequests[key]!.sessionId != sessionId) continue;
-      final held = _takeHeldRequest(key)!;
+    // And those held while the vault is locked (#29): all taken before the
+    // first await, so no timeout can remove one mid-loop, and an answer that
+    // fails cannot skip the relay stop and delete below.
+    final held = [
+      for (final entry in _heldRequests.entries.toList())
+        if (entry.value.sessionId == sessionId) ?_takeHeldRequest(entry.key),
+    ];
+    for (final request in held) {
       if (session == null) continue;
-      await _publishErrorResponse(
-        session: session,
-        requestId: held.request.id,
-        error: 'Session has been revoked.',
-      );
+      try {
+        await _publishErrorResponse(
+          session: session,
+          requestId: request.request.id,
+          error: 'Session has been revoked.',
+        );
+      } catch (e) {
+        diogelLog('Nip46Controller: could not answer a request', error: e);
+      }
     }
     try {
       await _relayService.stopSession(sessionId);
@@ -622,13 +630,17 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       runInBackground: false,
     );
     // Every queued or held request gets its one answer before the relays
-    // stop. Held ones are answered from the sessions as they were.
-    for (final key in _heldRequests.keys.toList()) {
-      final held = _heldRequests.remove(key)!;
+    // stop. Held ones are answered from the sessions as they were, all taken
+    // before the first await so no timeout can remove one mid-loop.
+    final heldAll = _heldRequests.values.toList();
+    _heldRequests.clear();
+    for (final held in heldAll) {
       held.timer.cancel();
       unawaited(
         _notifySafely(() => _notifier.cancelHeldRequest(held.sessionId)),
       );
+    }
+    for (final held in heldAll) {
       for (final session in sessions) {
         if (session.id != held.sessionId) continue;
         try {

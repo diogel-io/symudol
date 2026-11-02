@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
 import 'package:symudol/features/nip46/data/method_channel_nip46_background.dart';
@@ -48,6 +50,15 @@ final nip46ControllerProvider =
         (_) => controller.setRunInBackground(false),
       );
       ref.onDispose(stops.cancel);
+      // The service stops once nothing needs it, such as when a client logs
+      // out of the last session while Symudol is in the background.
+      var wanted = controller.wantsBackgroundService;
+      final removeServiceWatch = controller.addListener((_) {
+        final now = controller.wantsBackgroundService;
+        if (wanted && !now) unawaited(background.stop());
+        wanted = now;
+      }, fireImmediately: false);
+      ref.onDispose(removeServiceWatch);
       final queue = ref.read(nip46ReviewQueueProvider.notifier);
       final removeListener = controller.addListener(
         (state) => queue.state = state.pendingMethodRequests,

@@ -1262,6 +1262,45 @@ void main() {
         expect(notifier.cancelled, [session.id]);
       });
 
+      test('a timeout during revoke does not stop the revoke', () async {
+        await useRequestTimeout(const Duration(milliseconds: 300));
+        final session = await lockedSession();
+        await sendKind(session, 'first', 1);
+        await sendKind(session, 'second', 1);
+
+        // The first answer waits on the relay while the second would time out.
+        relayService.holdPublishes = Completer<void>();
+        final revoking = controller.revokeSession(session.id);
+        await relayService.publishHeld.future.timeout(const Duration(seconds: 5));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        relayService.holdPublishes!.complete();
+        relayService.holdPublishes = null;
+        await revoking;
+
+        expect(relayService.connectedSessions, isEmpty);
+        expect(await sessionStore.listSessions(), isEmpty);
+        expect(answerTo('second')!['error'], 'Session has been revoked.');
+      });
+
+      test('a timeout during a wipe does not stop the wipe', () async {
+        await useRequestTimeout(const Duration(milliseconds: 300));
+        final session = await lockedSession();
+        await sendKind(session, 'first', 1);
+        await sendKind(session, 'second', 1);
+
+        relayService.holdPublishes = Completer<void>();
+        await vaultController.wipe();
+        await relayService.publishHeld.future.timeout(const Duration(seconds: 5));
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        relayService.holdPublishes!.complete();
+        relayService.holdPublishes = null;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(relayService.connectedSessions, isEmpty);
+        expect(answerTo('second')!['error'], 'The Symudol vault was erased');
+        expect(session.id, isNotEmpty);
+      });
+
       test('held requests count towards the per-session limit', () async {
         final session = await lockedSession();
         const limit = Nip46Controller.maxPendingRequestsPerSession;
