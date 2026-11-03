@@ -52,6 +52,19 @@ void main() {
           ),
         ),
       );
+      // CAMERA implies these, required, unless declared otherwise.
+      expect(
+        manifest,
+        contains(
+          '<uses-feature android:name="android.hardware.camera" android:required="false" />',
+        ),
+      );
+      expect(
+        manifest,
+        contains(
+          '<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />',
+        ),
+      );
     });
   });
 }
