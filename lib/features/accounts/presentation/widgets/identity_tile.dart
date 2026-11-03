@@ -17,11 +17,15 @@ class IdentityTile extends ConsumerWidget {
   /// (diogel-io/symudol#41).
   final VoidCallback? onEditProfile;
 
+  /// Opens the identity's relay list (diogel-io/symudol#88).
+  final VoidCallback? onEditRelays;
+
   const IdentityTile({
     super.key,
     required this.identity,
     this.onTap,
     this.onEditProfile,
+    this.onEditRelays,
   });
 
   @override
@@ -126,6 +130,14 @@ class IdentityTile extends ConsumerWidget {
                   icon: const Icon(Icons.edit_outlined),
                   color: DiogelColors.textTertiary,
                   onPressed: onEditProfile,
+                ),
+              // Saving signs with the identity, which must be the active one.
+              if (isActive && onEditRelays != null)
+                IconButton(
+                  tooltip: 'Relays',
+                  icon: const Icon(Icons.hub_outlined),
+                  color: DiogelColors.textTertiary,
+                  onPressed: onEditRelays,
                 ),
               IconButton(
                 tooltip: 'Export private key',

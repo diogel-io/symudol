@@ -218,7 +218,8 @@ class _ProfileNetworkScreenState extends ConsumerState<ProfileNetworkScreen> {
                     title: 'INDEXER RELAYS',
                     description:
                         'These collect profiles and relay lists from across '
-                        'the network. They are asked, never published to.',
+                        'the network. They are asked for both, and sent your '
+                        'relay list when you save it, never your profile.',
                     relays: form.indexerRelays,
                     canRemove: true,
                     onRemove: (url) => _remove(_RelayList.indexer, url),

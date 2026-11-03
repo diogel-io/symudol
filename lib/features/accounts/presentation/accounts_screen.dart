@@ -8,6 +8,7 @@ import '../../../theme/tokens.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../backup/presentation/restore_backup_flow.dart';
 import '../../profile/presentation/profile_edit_screen.dart';
+import '../../profile/presentation/relay_list_screen.dart';
 import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
@@ -127,6 +128,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                 onEditProfile: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => ProfileEditScreen(identity: identity),
+                  ),
+                ),
+                onEditRelays: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RelayListScreen(identity: identity),
                   ),
                 ),
               ),
