@@ -194,6 +194,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // A link can arrive as the controller starts: the store has the vault's
     // key only once the sessions are read (#31, #32).
     await _loadSessions();
+    // The same link opened again, or a client that is already paired (#31).
+    if (state.sessions.any(
+      (s) =>
+          s.clientPubkey == parsed.clientPubkey &&
+          s.status == Nip46SessionStatus.active,
+    )) {
+      throw const Nip46AlreadyConnectedException();
+    }
     final sessionPrivkey = _generatePrivkey();
     final sessionPubkey = _crypto.derivePublicKey(sessionPrivkey);
 
@@ -214,8 +222,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       initiatedBy: Nip46ConnectionInitiator.nostrconnect,
     );
 
+    // No relay is opened until the user approves: the URI can come from a
+    // link any page opens, and its relays are the client's choice (#31). A
+    // rejected connection so never reaches the network.
     await _sessionStore.saveSession(session);
-    await _startRelays(session);
 
     state = state.copyWith(
       sessions: [...state.sessions, session],
@@ -277,6 +287,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       sessions: updatedSessions,
       pendingApproval: null,
     );
+
+    // A nostrconnect session opens its relays only now (#31). The connect
+    // response below waits for them to connect.
+    if (pending.initiatedBy == Nip46ConnectionInitiator.nostrconnect) {
+      await _startRelays(approved);
+    }
 
     // In the bunker flow this answers the client's connect request with
     // "ack". In the nostrconnect flow there was no request: the client waits

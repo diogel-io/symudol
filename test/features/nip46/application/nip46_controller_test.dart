@@ -164,9 +164,40 @@ void main() {
       expect(controller.state.sessions.first.clientName, 'Test Client');
     });
 
-    test('starts relay for the session', () async {
-      await controller.importNostrconnectToken(buildNostrconnect());
+    test('opens no relay until the connection is approved (#31)', () async {
+      // A real point, so the connect response can be encrypted to it.
+      final client = const DartNostrCryptoService().derivePublicKey('11' * 32);
+      await controller.importNostrconnectToken(
+        buildNostrconnect(pubkey: client),
+      );
+      expect(relayService.connectedSessions, isEmpty);
+
+      await controller.approveConnection();
+
       expect(relayService.connectedSessions, hasLength(1));
+      // The connect response, carrying the secret, goes out on them.
+      expect(relayService.capturedPublishes, hasLength(1));
+    });
+
+    test('a rejected connection never opens a relay (#31)', () async {
+      await controller.importNostrconnectToken(buildNostrconnect());
+
+      await controller.rejectConnection();
+
+      expect(relayService.connectedSessions, isEmpty);
+      expect(relayService.capturedPublishes, isEmpty);
+    });
+
+    test('refuses a client that is already connected (#31)', () async {
+      await controller.importNostrconnectToken(buildNostrconnect());
+      await controller.approveConnection();
+
+      await expectLater(
+        controller.importNostrconnectToken(buildNostrconnect(secret: 'again')),
+        throwsA(isA<Nip46AlreadyConnectedException>()),
+      );
+      expect(controller.state.sessions, hasLength(1));
+      expect(controller.state.pendingApproval, isNull);
     });
 
     test('throws on malformed URI', () async {

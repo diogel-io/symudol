@@ -1,10 +1,14 @@
 import 'dart:math';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../domain/nip46_connection_token.dart';
 
 class Nip46TokenCodec {
   const Nip46TokenCodec._();
+
+  /// The most relays a nostrconnect:// URI may name (#31).
+  static const maxNostrconnectRelays = 8;
 
   static Nip46BunkerToken generateBunkerToken({
     required String remoteSignerPubkey,
@@ -24,17 +28,40 @@ class Nip46TokenCodec {
     );
   }
 
-  static Nip46NostrconnectToken parseNostrconnect(String uri) {
+  /// Parses a client's nostrconnect:// URI. Its relays must be `wss://`, or
+  /// `ws://` too when [allowInsecureRelays] (debug and profile builds, for
+  /// local test relays), and at most [maxNostrconnectRelays]: the URI can come
+  /// from a link any page opens (#31).
+  static Nip46NostrconnectToken parseNostrconnect(
+    String uri, {
+    bool allowInsecureRelays = !kReleaseMode,
+  }) {
     final parsed = _parseUri(uri, 'nostrconnect');
     final clientPubkey = parsed.host;
     _validateHex64(clientPubkey, 'nostrconnect client pubkey');
 
     final queryParams = parsed.queryParametersAll;
-    final relays = _extractRelays(queryParams);
+    final relays = _extractRelays(queryParams).toSet().toList();
     if (relays.isEmpty) {
       throw const Nip46TokenParseException(
         'nostrconnect:// token must include at least one relay',
       );
+    }
+    if (relays.length > maxNostrconnectRelays) {
+      throw const Nip46TokenParseException(
+        'nostrconnect:// token names too many relays',
+      );
+    }
+    for (final relay in relays) {
+      final relayUri = Uri.tryParse(relay);
+      final scheme = relayUri?.scheme;
+      final allowed =
+          scheme == 'wss' || (allowInsecureRelays && scheme == 'ws');
+      if (relayUri == null || !allowed || relayUri.host.isEmpty) {
+        throw const Nip46TokenParseException(
+          'nostrconnect:// relays must be wss:// URLs',
+        );
+      }
     }
 
     final secret = _requireParam(queryParams, 'secret', 'nostrconnect');

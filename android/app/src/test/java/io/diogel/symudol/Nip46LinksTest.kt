@@ -64,6 +64,17 @@ class Nip46LinksTest {
     }
 
     @Test
+    fun aRecreatedActivityDoesNotHandOverItsLaunchLinkAgain() {
+        val links = Nip46Links(context)
+
+        assertTrue(links.receiveOnCreate(view(link), recreated = false))
+        assertEquals(link, links.call("takeLink").value)
+
+        assertFalse(links.receiveOnCreate(view(link), recreated = true))
+        assertNull(links.call("takeLink").value)
+    }
+
+    @Test
     fun theLatestLinkWins() {
         val links = Nip46Links(context)
         val second = link.replace("s1", "s2")

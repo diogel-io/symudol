@@ -153,6 +153,16 @@ void main() {
       expect(messages.single, isNot(contains('top-secret')));
     });
 
+    test('a link for a client already connected says so', () async {
+      importError = const Nip46AlreadyConnectedException();
+      links.pending = _link;
+
+      await handler().start();
+
+      expect(approvalsOpened, 0);
+      expect(messages.single, 'This client is already connected.');
+    });
+
     test('a failed import shows a message and opens nothing', () async {
       importError = StateError('relay down');
       links.pending = _link;

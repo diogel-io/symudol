@@ -91,6 +91,8 @@ class Nip46LinkHandler {
     try {
       await _importLink(link);
       _openApproval();
+    } on Nip46AlreadyConnectedException {
+      _showMessage('This client is already connected.');
     } on Nip46TokenParseException {
       _showMessage('This nostrconnect:// link isn’t valid.');
     } catch (e) {

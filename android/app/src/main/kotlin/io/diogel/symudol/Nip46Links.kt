@@ -45,6 +45,13 @@ class Nip46Links(private val context: Context) {
         return true
     }
 
+    /**
+     * [receive] for the intent an activity is created with. A recreated activity keeps its
+     * launch intent, whose link was handed over already, so it is ignored then.
+     */
+    fun receiveOnCreate(intent: Intent?, recreated: Boolean): Boolean =
+        if (recreated) false else receive(intent)
+
     fun attach(channel: MethodChannel) {
         this.channel = channel
     }
