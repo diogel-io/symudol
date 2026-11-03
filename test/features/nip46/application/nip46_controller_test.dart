@@ -1477,6 +1477,42 @@ void main() {
           expect(sessionStore.sessions.single.usesNip04, isTrue);
         },
       );
+
+      test(
+        'a nostrconnect:// link imported as the controller starts is saved (#31)',
+        () async {
+          final session = await storedSession();
+          await vaultController.unlock('1234');
+          // A cold start from a link: the controller is made unlocked, and the
+          // link imported before its sessions have been read.
+          sessionStore
+            ..requireKey = true
+            ..storageKey = null;
+          controller.dispose();
+          relayService = FakeNip46RelayService();
+          controller = Nip46Controller(
+            sessionStore: sessionStore,
+            vaultService: vaultService,
+            vaultController: vaultController,
+            relayService: relayService,
+            crypto: DartNip46Crypto(const DartNostrCryptoService()),
+            notifier: notifier,
+          );
+
+          await controller.importNostrconnectToken(
+            'nostrconnect://${'c' * 64}?secret=s1'
+            '&relay=${Uri.encodeComponent('wss://r.example.com')}',
+          );
+
+          expect(sessionStore.sessions, hasLength(2));
+          expect(controller.state.pendingApproval?.clientPubkey, 'c' * 64);
+          // The stored session is loaded too, not dropped.
+          expect(
+            controller.state.sessions.map((s) => s.id),
+            contains(session.id),
+          );
+        },
+      );
     });
   });
 }

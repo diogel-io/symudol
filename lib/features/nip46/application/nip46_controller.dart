@@ -191,6 +191,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Parses a nostrconnect:// token, starts a session, and publishes the connect response.
   Future<void> importNostrconnectToken(String uri) async {
     final parsed = Nip46TokenCodec.parseNostrconnect(uri);
+    // A link can arrive as the controller starts: the store has the vault's
+    // key only once the sessions are read (#31, #32).
+    await _loadSessions();
     final sessionPrivkey = _generatePrivkey();
     final sessionPubkey = _crypto.derivePublicKey(sessionPrivkey);
 

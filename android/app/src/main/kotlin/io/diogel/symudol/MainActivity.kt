@@ -50,6 +50,8 @@ class MainActivity : FlutterFragmentActivity() {
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
     // The NIP-46 foreground service and its request notices (#29).
     private var nip46Background: Nip46Background? = null
+    // nostrconnect: links for NIP-46 pairing (#31).
+    private val nip46Links by lazy { Nip46Links(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         DiogelLog.d(TAG) { "onCreate: action=${intent?.action}" }
@@ -59,6 +61,7 @@ class MainActivity : FlutterFragmentActivity() {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
+        nip46Links.receive(intent)
         initialNip55Intent = router.parse(intent)
         initialNip55Intent?.let { router.activate(it, markDelivered = false) }
         DiogelLog.d(TAG) { "onCreate: activeRequestToken=${router.activeRequestToken}" }
@@ -97,6 +100,10 @@ class MainActivity : FlutterFragmentActivity() {
         nip46Background = Nip46Background(this, nip46Channel).also {
             nip46Channel.setMethodCallHandler(it::handle)
         }
+        // nostrconnect: links, taken by Dart once each (#31).
+        val linksChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Nip46Links.CHANNEL)
+        nip46Links.attach(linksChannel)
+        linksChannel.setMethodCallHandler(nip46Links::handle)
         // The vault backup's NIP-49 key derivation, which pure Dart runs too slowly (#25).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Scrypt.CHANNEL)
             .setMethodCallHandler(Scrypt::handle)
@@ -243,6 +250,7 @@ class MainActivity : FlutterFragmentActivity() {
         DiogelLog.d(TAG) { "onNewIntent: action=${intent.action}" }
         super.onNewIntent(intent)
         setIntent(intent)
+        if (nip46Links.receive(intent)) return
         val payload = router.parse(intent)
         if (payload != null) deliverNip55Payload(payload)
     }

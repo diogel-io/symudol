@@ -8,6 +8,22 @@ import '../application/nip46_providers.dart';
 import '../domain/nip46_permission_scope.dart';
 import '../domain/nip46_session.dart';
 
+// The open approval, so a link and the Connections screen don't both push
+// it (#31).
+Route<void>? _approvalRoute;
+
+/// Opens the approval for the pending connection, unless it is already open
+/// on [navigator].
+void openNip46ConnectApproval(NavigatorState navigator) {
+  final open = _approvalRoute;
+  if (open != null && open.isActive && open.navigator == navigator) return;
+  final route = MaterialPageRoute<void>(
+    builder: (_) => const Nip46ConnectApprovalScreen(),
+  );
+  _approvalRoute = route;
+  navigator.push(route);
+}
+
 class Nip46ConnectApprovalScreen extends ConsumerWidget {
   const Nip46ConnectApprovalScreen({super.key});
 

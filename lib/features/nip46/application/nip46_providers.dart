@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_relay_service.dart';
 import 'package:symudol/features/nip46/data/method_channel_nip46_background.dart';
+import 'package:symudol/features/nip46/data/method_channel_nip46_links.dart';
 import 'package:symudol/features/nip46/data/secure_storage_nip46_session_store.dart';
 import 'package:symudol/features/nip46/domain/nip46_pending_method_request.dart';
 import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'nip46_controller.dart';
+import 'nip46_link_handler.dart';
 
 final nip46RelayServiceProvider = Provider<Nip46RelayService>((ref) {
   final service = DartNip46RelayService();
@@ -31,6 +33,12 @@ final nip46CryptoProvider = Provider<DartNip46Crypto>((ref) {
 /// nothing answers its channel.
 final nip46BackgroundProvider = Provider<MethodChannelNip46Background>(
   (ref) => MethodChannelNip46Background(),
+);
+
+/// nostrconnect: links from other apps (#31). Never has a link where nothing
+/// answers its channel.
+final nip46LinksProvider = Provider<Nip46Links>(
+  (ref) => MethodChannelNip46Links(),
 );
 
 final nip46ControllerProvider =

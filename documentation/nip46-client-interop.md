@@ -16,6 +16,7 @@ Against the NIP-46 text in the Diogel workspace's NIPs reference (`46.md`):
 
 | Behaviour | Symudol |
 |---|---|
+| Pairing (#31) | Shows the `bunker://` token as a QR code and as text. Scans a client's `nostrconnect://` QR code with the camera, or takes a pasted URI. On Android, opens from a tapped `nostrconnect:` link; a link that arrives while the vault is locked waits in memory for the unlock. Every route ends at the same approval. |
 | `bunker://` connect | Checks the token's secret, asks the user, and replies `ack` to the client's request id. A secret is used once. |
 | `nostrconnect://` connect | Asks the user, then sends a connect response whose `result` is the URI's `secret`, with a fresh request id. |
 | `connect` from an approved client | Replies `ack` without asking again and keeps the session's grants. |
@@ -67,6 +68,17 @@ Run each check with each client, and record pass, fail or not supported.
 7. **Relay AUTH.** Pair using a relay that requires NIP-42 AUTH for kind 24133. Pairing and
    requests work, and the relay sees the session key in the AUTH event.
 8. **Logout.** Log out of the client. If it sends `logout`, the session disappears from Symudol.
+9. **Scan a client's code.** These need a phone, since the emulator's camera can't see the
+   desktop screen. Start the client's `nostrconnect://` flow so it shows a QR code. In Symudol,
+   open Remote Signing, tap +, choose Connect to a client and tap Scan QR code. Allow the camera.
+   Approve. The client accepts the connection.
+10. **Client scans Symudol's code.** Create a `bunker://` token in Symudol, and scan its QR code
+    with the client's "log in with a remote signer" scanner, on a phone client or a laptop camera.
+    Approve. The client shows the throwaway account.
+11. **Tap a link.** On the phone, open the client in a mobile browser and use its `nostrconnect:`
+    link or button. Symudol opens on the approval. Repeat with Symudol locked: it asks for the PIN
+    first, then shows the approval. Then refuse the camera permission and check that Scan
+    explains it and pasting still works.
 
 ## Latest Run
 
@@ -84,3 +96,6 @@ Not yet run for the #30 changes.
 | 6. `switch_relays` | | |
 | 7. Relay AUTH | | |
 | 8. Logout | | |
+| 9. Scan a client's code | | |
+| 10. Client scans Symudol's code | | |
+| 11. Tap a link | | |
