@@ -57,20 +57,10 @@ class SecureStorageNip46SessionStore implements Nip46SessionStore {
         for (final entry in _decodeList(raw))
           Nip46Session.fromJson(_openSecrets(entry)),
       ];
-      // A move whose delete failed, or was cut short, left the keys in the
-      // clear: delete them now, or after the next write.
-      if (await _storage.read(key: _legacyKey) != null) {
-        _legacyStored = true;
-        try {
-          await _storage.delete(key: _legacyKey);
-          _legacyStored = false;
-        } catch (e) {
-          diogelLog(
-            'SecureStorageNip46SessionStore: could not delete old sessions',
-            error: e,
-          );
-        }
-      }
+      // A move whose delete failed, or was cut short, may have left the keys
+      // in the clear: delete them now, or after the next write.
+      _legacyStored = true;
+      await _deleteLegacy();
     } else {
       await _loadLegacy();
     }
@@ -211,9 +201,20 @@ class SecureStorageNip46SessionStore implements Nip46SessionStore {
       for (final session in sessions) _sealSecrets(session, key!),
     ]);
     await _storage.write(key: _key, value: payload);
-    if (_legacyStored) {
+    if (_legacyStored) await _deleteLegacy();
+  }
+
+  /// Deletes the sessions stored before #32. A failure doesn't fail the
+  /// load or save it follows: it is tried again after the next write.
+  Future<void> _deleteLegacy() async {
+    try {
       await _storage.delete(key: _legacyKey);
       _legacyStored = false;
+    } catch (e) {
+      diogelLog(
+        'SecureStorageNip46SessionStore: could not delete old sessions',
+        error: e,
+      );
     }
   }
 

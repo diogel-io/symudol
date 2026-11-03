@@ -174,6 +174,26 @@ void main() {
       expect(storage.values[_v1], isNull);
     });
 
+    test('a failed delete of old sessions fails no load or save', () async {
+      final store = newStore()..useStorageKey(key);
+      await store.saveSession(_session('a'));
+      storage.values[_v1] = jsonEncode([_session('a').toJson()]);
+      storage.failDeletes = true;
+
+      final reopened = newStore()..useStorageKey(key);
+      final [session] = await reopened.listSessions();
+      expect(session.id, 'a');
+      await reopened.saveSession(_session('b'));
+      expect(storage.values[_v1], isNotNull);
+
+      // Deleted after the next write that can.
+      storage.failDeletes = false;
+      await reopened.saveSession(_session('c'));
+      expect(storage.values[_v1], isNull);
+      final sessions = await (newStore()..useStorageKey(key)).listSessions();
+      expect(sessions.map((s) => s.id), ['a', 'b', 'c']);
+    });
+
     test(
       'clearAll deletes both formats and the setting, and drops the key',
       () async {
@@ -214,6 +234,9 @@ class _MemoryStorage implements FlutterSecureStorage {
   /// Makes writes fail, as a secure-storage error would.
   bool failWrites = false;
 
+  /// Makes deletes fail.
+  bool failDeletes = false;
+
   @override
   dynamic noSuchMethod(Invocation invocation) {
     final args = invocation.namedArguments;
@@ -226,6 +249,9 @@ class _MemoryStorage implements FlutterSecureStorage {
         values[key!] = args[#value] as String;
         return Future<void>.value();
       case #delete:
+        if (failDeletes) {
+          return Future<void>.error(StateError('delete failed'));
+        }
         values.remove(key);
         return Future<void>.value();
     }
