@@ -111,8 +111,9 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
     try {
-      final sessions = await ref.read(nip46SessionStoreProvider).listSessions();
-      if (!mounted || sessions.isEmpty) return;
+      // Counted without the vault key, which the controller hands over (#32).
+      final count = await ref.read(nip46SessionStoreProvider).countSessions();
+      if (!mounted || count == 0) return;
       ref.read(nip46ControllerProvider);
     } catch (e) {
       diogelLog('Could not start NIP-46 on unlock', error: e);

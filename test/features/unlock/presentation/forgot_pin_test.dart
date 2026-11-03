@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/app/app.dart';
 import 'package:symudol/features/backup/application/backup_providers.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
+import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
 import 'package:symudol/features/nip55/data/nip55_native_mirror_sync.dart';
 import 'package:symudol/features/nip55/domain/nip55_client_permission.dart';
@@ -97,9 +98,12 @@ void main() {
   late _AnsweringGateway gateway;
   late String pubkey;
   late FakeBackupFiles backupFiles;
+  late FakeNip46SessionStore sessionStore;
 
   setUp(() async {
     backupFiles = FakeBackupFiles();
+    // Like the real store, it reads no session without the vault's key (#32).
+    sessionStore = FakeNip46SessionStore()..requireKey = true;
     PinLockoutCountdown.stopwatchFactory = () => clock.stopwatch();
     store = _UnreadableIdentitiesStore();
     gateway = _AnsweringGateway(store);
@@ -125,7 +129,7 @@ void main() {
           nip55PermissionStoreProvider.overrideWithValue(
             FakeNip55PermissionStore(),
           ),
-          nip46SessionStoreProvider.overrideWithValue(FakeNip46SessionStore()),
+          nip46SessionStoreProvider.overrideWithValue(sessionStore),
           nip55NativeSyncProvider.overrideWithValue(_QuietNativeSync()),
           backupFilesProvider.overrideWithValue(backupFiles),
         ],
@@ -222,14 +226,26 @@ void main() {
   testWidgets('erasing, while locked, names what is lost and returns to setup', (
     tester,
   ) async {
+    sessionStore.sessions.add(
+      Nip46Session(
+        id: 's1',
+        clientPubkey: 'client-s1',
+        remoteSignerPubkey: 'remote-s1',
+        remoteSignerPrivkey: 'secret-s1',
+        relays: const ['wss://relay.example'],
+        status: Nip46SessionStatus.active,
+        createdAt: DateTime(2026, 10, 1),
+      ),
+    );
     await pumpApp(tester);
 
     await openForgotPin(tester);
     await tester.tap(find.text('Erase and start again'));
     await tester.pumpAndSettle();
-    // Counted from the stored records, though the vault is locked.
+    // Counted from the stored records, though the vault is locked and the
+    // sessions themselves can't be read (#32).
     expect(find.text('• 2 identities and their private keys'), findsOneWidget);
-    expect(find.text('• 0 NIP-46 connections'), findsOneWidget);
+    expect(find.text('• 1 NIP-46 connection'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('wipeVaultConfirmationField')),
@@ -242,6 +258,7 @@ void main() {
     expect(find.byType(SetupVaultScreen), findsOneWidget);
     expect(await store.getWrappedDek(), isNull);
     expect(await store.getIdentities(), isEmpty);
+    expect(sessionStore.sessions, isEmpty);
   });
 
   testWidgets('works during a PIN lockout', (tester) async {

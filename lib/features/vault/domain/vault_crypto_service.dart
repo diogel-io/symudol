@@ -91,6 +91,11 @@ abstract class VaultCryptoService {
   /// not match, which (for a wrapped DEK) means the PIN was incorrect.
   Uint8List unwrapDek(String wrapped, Uint8List kek);
 
+  /// Derives a 256-bit key for one purpose, named by [info], from [dek] with
+  /// HKDF-SHA256. It is one-way: the subkey cannot give back the DEK. The
+  /// same DEK and [info] always give the same subkey (#32).
+  Uint8List deriveSubkey(Uint8List dek, String info);
+
   /// Encrypts [plaintext] with [key] using AES-256-GCM.
   ///
   /// Returns base64(nonce ‖ ciphertext ‖ tag).

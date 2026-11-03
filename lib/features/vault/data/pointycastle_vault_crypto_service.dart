@@ -47,6 +47,17 @@ class PointyCastleVaultCryptoService implements VaultCryptoService {
       _decryptBytes(wrapped, kek);
 
   @override
+  Uint8List deriveSubkey(Uint8List dek, String info) {
+    final hkdf = HKDFKeyDerivator(SHA256Digest())
+      ..init(
+        HkdfParameters(dek, _dekLength, null, utf8.encode(info)),
+      );
+    final out = Uint8List(_dekLength);
+    hkdf.deriveKey(null, 0, out, 0);
+    return out;
+  }
+
+  @override
   String encrypt(String plaintext, Uint8List key) =>
       _encryptBytes(Uint8List.fromList(utf8.encode(plaintext)), key);
 

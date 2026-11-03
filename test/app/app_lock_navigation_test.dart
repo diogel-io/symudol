@@ -138,8 +138,10 @@ void main() {
           nip55NativeSyncProvider.overrideWithValue(_NativeSync()),
           nip55GatewayProvider.overrideWithValue(_Gateway()),
           nip46RelayServiceProvider.overrideWithValue(FakeNip46RelayService()),
+          // Reads no session without the vault's key, like the real store
+          // (#32), so starting on unlock must count rather than read.
           nip46SessionStoreProvider.overrideWithValue(
-            FakeNip46SessionStore(List.of(sessions)),
+            FakeNip46SessionStore(List.of(sessions))..requireKey = true,
           ),
           nip46EnabledProvider.overrideWithValue(nip46Enabled),
           if (background != null)

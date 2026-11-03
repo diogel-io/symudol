@@ -1830,6 +1830,68 @@ void main() {
       );
     });
   });
+
+  group('VaultServiceImpl NIP-46 storage key (#32)', () {
+    late FakeBiometricVault biometric;
+
+    setUp(() {
+      biometric = FakeBiometricVault();
+      vaultService = VaultServiceImpl(
+        fakeStore,
+        clock: FakeMonotonicClock(),
+        vaultCryptoService: const _CheapKdfCryptoService(),
+        biometricVault: biometric,
+      );
+    });
+
+    test('is refused while locked or before a vault exists', () async {
+      await expectLater(
+        vaultService.nip46StorageKey(),
+        throwsA(isA<VaultLockedException>()),
+      );
+      await vaultService.createVault('123456');
+      await vaultService.lock();
+
+      await expectLater(
+        vaultService.nip46StorageKey(),
+        throwsA(isA<VaultLockedException>()),
+      );
+    });
+
+    test('is a 32-byte key, the same each time', () async {
+      await vaultService.createVault('123456');
+
+      final key = await vaultService.nip46StorageKey();
+
+      expect(key, hasLength(32));
+      expect(await vaultService.nip46StorageKey(), equals(key));
+    });
+
+    test('is the same after a PIN change and a biometric unlock', () async {
+      await vaultService.createVault('123456');
+      final key = await vaultService.nip46StorageKey();
+
+      await vaultService.changePin('123456', '654321');
+      await vaultService.lock();
+      await vaultService.unlock('654321');
+      expect(await vaultService.nip46StorageKey(), equals(key));
+
+      await vaultService.enableBiometricUnlock('654321');
+      await vaultService.lock();
+      await vaultService.unlockWithBiometric();
+      expect(await vaultService.nip46StorageKey(), equals(key));
+    });
+
+    test('differs for a vault set up after a wipe', () async {
+      await vaultService.createVault('123456');
+      final key = await vaultService.nip46StorageKey();
+
+      await vaultService.wipe();
+      await vaultService.createVault('123456');
+
+      expect(await vaultService.nip46StorageKey(), isNot(equals(key)));
+    });
+  });
 }
 
 /// The real AES-GCM wrapping over a trivially cheap Argon2id, so tests can
