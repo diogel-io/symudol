@@ -10,7 +10,9 @@ import '../features/navigation/presentation/main_navigation_screen.dart';
 import '../features/nip55/application/nip55_controller.dart';
 import '../features/nip55/application/nip55_providers.dart';
 import '../features/nip46/application/nip46_feature.dart';
+import '../features/nip46/application/nip46_link_handler.dart';
 import '../features/nip46/application/nip46_providers.dart';
+import '../features/nip46/presentation/nip46_connect_approval_screen.dart';
 import '../features/vault/application/vault_providers.dart';
 import '../features/vault/application/vault_controller.dart';
 import '../features/vault/domain/vault_state.dart';
@@ -29,6 +31,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
   /// The app's only navigator: screens pushed from Settings or Accounts, and
   /// dialogs, sit above `home` on it.
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  /// nostrconnect: links from other apps (#31).
+  Nip46LinkHandler? _nip46Links;
   Timer? _inactivityTimer;
   Timer? _backgroundLockTimer;
 
@@ -61,7 +67,36 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(nip55ControllerProvider.notifier).consumePendingNativeIntent();
+      _startNip46Links();
     });
+  }
+
+  /// Handles nostrconnect: links, in a build that shows NIP-46 (#26, #31).
+  void _startNip46Links() {
+    final handler = Nip46LinkHandler(
+      links: ref.read(nip46LinksProvider),
+      enabled: ref.read(nip46EnabledProvider),
+      isUnlocked: () =>
+          mounted &&
+          ref.read(vaultControllerProvider).vaultState is VaultUnlocked,
+      // Read only once a link is handled: creating the controller opens its
+      // relays (#26).
+      hasPendingApproval: () =>
+          ref.exists(nip46ControllerProvider) &&
+          ref.read(nip46ControllerProvider).pendingApproval != null,
+      importLink: (uri) => ref
+          .read(nip46ControllerProvider.notifier)
+          .importNostrconnectToken(uri),
+      openApproval: () {
+        final navigator = _navigatorKey.currentState;
+        if (navigator != null) openNip46ConnectApproval(navigator);
+      },
+      showMessage: (message) => _messengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(message)),
+      ),
+    );
+    _nip46Links = handler;
+    unawaited(handler.start());
   }
 
   @override
@@ -69,6 +104,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
     _inactivityTimer?.cancel();
     _backgroundLockTimer?.cancel();
     _pickingGraceTimer?.cancel();
+    _nip46Links?.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -262,6 +298,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
         previous != null &&
         previous.vaultState is! NoVault) {
       ref.invalidate(nip55PermissionControllerProvider);
+      _nip46Links?.onVaultWiped();
     }
 
     if (!isUnlocked) {
@@ -275,7 +312,10 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       return;
     }
 
-    if (!previousWasUnlocked) unawaited(_startNip46IfConnected());
+    if (!previousWasUnlocked) {
+      unawaited(_startNip46IfConnected());
+      unawaited(_nip46Links?.onUnlocked());
+    }
 
     // Handle NIP-55 resume after unlock
     final nip55State = ref.read(nip55ControllerProvider);
@@ -412,6 +452,7 @@ class DiogelAppState extends ConsumerState<DiogelApp>
       onPointerMove: (_) => _resetInactivityTimer(),
       child: MaterialApp(
         navigatorKey: _navigatorKey,
+        scaffoldMessengerKey: _messengerKey,
         title: 'Symudol',
         theme: DiogelTheme.darkTheme,
         home: isLoading && vaultState is NoVault

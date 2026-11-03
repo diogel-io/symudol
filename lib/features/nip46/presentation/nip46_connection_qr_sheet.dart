@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:symudol/app/route_pop.dart';
 import 'package:symudol/app/sensitive_clipboard.dart';
 import 'package:symudol/app/sensitive_selection.dart';
 
 import '../application/nip46_providers.dart';
 import '../domain/nip46_connection_token.dart';
+import 'nip46_qr_scan_screen.dart';
 
 class Nip46ConnectionQrSheet extends ConsumerStatefulWidget {
   const Nip46ConnectionQrSheet({super.key});
@@ -27,11 +29,16 @@ class _Nip46ConnectionQrSheetState
   final _importController = TextEditingController();
   bool _isImporting = false;
   String? _importError;
+  // Whether there is a camera to scan with (#31); null until known.
+  bool? _canScan;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    ref.read(nip46QrScannerProvider).isAvailable().then((available) {
+      if (mounted) setState(() => _canScan = available);
+    });
   }
 
   @override
@@ -71,7 +78,7 @@ class _Nip46ConnectionQrSheetState
             controller: _tabController,
             tabs: const [
               Tab(text: 'Generate bunker://'),
-              Tab(text: 'Import nostrconnect://'),
+              Tab(text: 'Connect to a client'),
             ],
           ),
           Expanded(
@@ -89,6 +96,7 @@ class _Nip46ConnectionQrSheetState
                   isImporting: _isImporting,
                   error: _importError,
                   onImport: _onImport,
+                  onScan: _canScan == true ? _onScan : null,
                 ),
               ],
             ),
@@ -120,6 +128,14 @@ class _Nip46ConnectionQrSheetState
         _isGenerating = false;
       });
     }
+  }
+
+  /// Scans a client's code and imports it as if it had been pasted (#31).
+  Future<void> _onScan() async {
+    final uri = await ref.read(nip46QrScannerProvider).scan(context);
+    if (uri == null || !mounted) return;
+    _importController.text = uri;
+    await _onImport();
   }
 
   Future<void> _onImport() async {
@@ -201,6 +217,8 @@ class _GenerateTab extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
+            _TokenQrCode(uri: token!.toUri()),
+            const SizedBox(height: 16),
             _TokenDisplay(uri: token!.toUri()),
             const SizedBox(height: 16),
             Text(
@@ -222,12 +240,15 @@ class _ImportTab extends StatelessWidget {
   final bool isImporting;
   final String? error;
   final VoidCallback onImport;
+  // Null with no camera: the button is hidden.
+  final VoidCallback? onScan;
 
   const _ImportTab({
     required this.controller,
     required this.isImporting,
     required this.error,
     required this.onImport,
+    required this.onScan,
   });
 
   @override
@@ -238,11 +259,20 @@ class _ImportTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Paste a nostrconnect:// URI from a client app (e.g. a QR code '
-            'scanned externally or copied from the client).',
+            'Scan the nostrconnect:// code a client app shows, or paste its '
+            'nostrconnect:// URI.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          if (onScan != null) ...[
+            OutlinedButton.icon(
+              key: const Key('nip46ScanQrCode'),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Scan QR code'),
+              onPressed: isImporting ? null : onScan,
+            ),
+            const SizedBox(height: 16),
+          ],
           // No Copy or Cut: the URI carries the client's secret (#96).
           NoSelectionCopy(
             child: TextField(
@@ -280,6 +310,31 @@ class _ImportTab extends StatelessWidget {
                 : const Text('Import and connect'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The bunker:// token as a QR code for a client to scan (#31). Dark on
+/// white with a quiet zone, so it scans in the dark theme too. FLAG_SECURE
+/// keeps it out of screenshots (SR-23).
+class _TokenQrCode extends StatelessWidget {
+  final String uri;
+  const _TokenQrCode({required this.uri});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Semantics(
+        label: 'bunker:// token QR code',
+        child: QrImageView(
+          key: const Key('nip46BunkerQrCode'),
+          data: uri,
+          size: 240,
+          backgroundColor: Colors.white,
+          padding: const EdgeInsets.all(16),
+          errorCorrectionLevel: QrErrorCorrectLevel.M,
+        ),
       ),
     );
   }

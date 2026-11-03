@@ -117,6 +117,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   StreamSubscription<Nip46InboundRelayEvent>? _inboundSub;
   StreamSubscription<VaultControllerState>? _vaultSub;
   VaultState? _lastVaultState;
+  // How many times the vault has been wiped, so work begun before a wipe
+  // can tell it belongs to the old vault (#31).
+  int _wipes = 0;
 
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
@@ -191,6 +194,27 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Parses a nostrconnect:// token, starts a session, and publishes the connect response.
   Future<void> importNostrconnectToken(String uri) async {
     final parsed = Nip46TokenCodec.parseNostrconnect(uri);
+    final wipes = _wipes;
+    // A link can arrive as the controller starts: the store has the vault's
+    // key only once the sessions are read (#31, #32).
+    await _loadSessions();
+    if (_wipedSince(wipes)) throw const Nip46VaultWipedException();
+    // The same link opened again, or a client that is already paired (#31).
+    // A session the client has never used may be one whose connect response
+    // never reached it, since its relays open only on approval: pairing again
+    // replaces it rather than leaving the client stuck. Only once the user
+    // approves, so a link alone can't remove a connection.
+    final replaces = <String>[];
+    for (final existing in state.sessions) {
+      if (existing.clientPubkey != parsed.clientPubkey ||
+          existing.status != Nip46SessionStatus.active) {
+        continue;
+      }
+      if (existing.lastUsedAt != null) {
+        throw const Nip46AlreadyConnectedException();
+      }
+      replaces.add(existing.id);
+    }
     final sessionPrivkey = _generatePrivkey();
     final sessionPubkey = _crypto.derivePublicKey(sessionPrivkey);
 
@@ -211,8 +235,29 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       initiatedBy: Nip46ConnectionInitiator.nostrconnect,
     );
 
-    await _sessionStore.saveSession(session);
-    await _startRelays(session);
+    // No relay is opened until the user approves: the URI can come from a
+    // link any page opens, and its relays are the client's choice (#31). A
+    // rejected connection so never reaches the network.
+    try {
+      await _sessionStore.saveSession(session);
+    } catch (_) {
+      if (_wipedSince(wipes)) throw const Nip46VaultWipedException();
+      rethrow;
+    }
+    if (_wipedSince(wipes)) {
+      // Wiped while saving: the session belongs to no vault, and no approval
+      // may be shown for it.
+      try {
+        await _sessionStore.deleteSession(session.id);
+      } catch (e) {
+        diogelLog(
+          'Nip46Controller: could not drop a session made before a wipe',
+          error: e.runtimeType,
+        );
+      }
+      throw const Nip46VaultWipedException();
+    }
+    if (replaces.isNotEmpty) _replacedOnApproval[session.id] = replaces;
 
     state = state.copyWith(
       sessions: [...state.sessions, session],
@@ -241,6 +286,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
+    final replaces = _replacedOnApproval[pending.id] ?? const <String>[];
 
     final identity = _vaultService.activeIdentity?.publicKey;
     final expiresAt = _expiresAtFor(timeframe);
@@ -265,6 +311,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
 
     await _sessionStore.saveSession(approved);
+    // Only once saved: a failed save leaves the approval to try again (#31).
+    _replacedOnApproval.remove(pending.id);
 
     final updatedSessions = state.sessions
         .map((s) => s.id == approved.id ? approved : s)
@@ -274,6 +322,24 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       sessions: updatedSessions,
       pendingApproval: null,
     );
+
+    // The unused sessions this connection replaces go now, unless the client
+    // used one meanwhile (#31).
+    // A failed revoke must not stop the new connection from completing.
+    for (final id in replaces) {
+      if (_sessionById(id)?.lastUsedAt != null) continue;
+      try {
+        await revokeSession(id);
+      } catch (e) {
+        diogelLog('Nip46Controller: could not remove a replaced session', error: e);
+      }
+    }
+
+    // A nostrconnect session opens its relays only now (#31). The connect
+    // response below waits for them to connect.
+    if (pending.initiatedBy == Nip46ConnectionInitiator.nostrconnect) {
+      await _startRelays(approved);
+    }
 
     // In the bunker flow this answers the client's connect request with
     // "ack". In the nostrconnect flow there was no request: the client waits
@@ -302,6 +368,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
+    // The sessions it would have replaced stay (#31).
+    _replacedOnApproval.remove(pending.id);
 
     if (pending.clientPubkey.isNotEmpty) {
       await _publishErrorResponse(
@@ -559,6 +627,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   // Holds the connect request ID during the bunker:// approval flow.
   String? _pendingConnectRequestId;
 
+  // The unused sessions each pending nostrconnect connection replaces once it
+  // is approved, by its session id (#31).
+  final Map<String, List<String>> _replacedOnApproval = {};
+
   Future<void> _initialize() async {
     state = state.copyWith(isLoading: true);
     _inboundSub = _relayService.inboundEvents.listen(_onInboundEvent);
@@ -637,6 +709,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         previous != null &&
         previous is! NoVault) {
       // The vault was wiped (#20): no session may keep answering.
+      _wipes++;
       unawaited(_dropAllSessions());
     }
   }
@@ -651,9 +724,17 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     await _releaseHeldRequests();
   }
 
+  /// Whether the vault has been wiped since [wipes] was read, including a
+  /// wipe the vault listener has not heard of yet.
+  bool _wipedSince(int wipes) =>
+      _wipes != wipes ||
+      (_vaultController.state.vaultState is NoVault &&
+          _lastVaultState is! NoVault);
+
   /// Stops every relay subscription and forgets every session in memory.
   /// The wipe has already cleared the store.
   Future<void> _dropAllSessions() async {
+    _replacedOnApproval.clear();
     for (final timer in _methodRequestTimers.values) {
       timer.cancel();
     }

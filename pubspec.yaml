@@ -51,6 +51,13 @@ dependencies:
   unorm_dart: ^0.3.3
   share_plus: ^13.3.1
   file_selector: ^1.1.0
+  # NIP-46 pairing (#31): the bunker:// token as a QR code, and the camera
+  # scanner for a client's nostrconnect:// code. flutter_zxing is zxing-cpp,
+  # with no Google ML Kit or Play Services code.
+  qr_flutter: ^4.1.0
+  flutter_zxing: ^3.1.0
+  # flutter_zxing's camera, used directly only to find whether there is one.
+  camera: ^0.12.2
 
 dev_dependencies:
   flutter_test:

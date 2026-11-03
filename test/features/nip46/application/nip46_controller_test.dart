@@ -164,10 +164,142 @@ void main() {
       expect(controller.state.sessions.first.clientName, 'Test Client');
     });
 
-    test('starts relay for the session', () async {
-      await controller.importNostrconnectToken(buildNostrconnect());
+    test('opens no relay until the connection is approved (#31)', () async {
+      // A real point, so the connect response can be encrypted to it.
+      final client = const DartNostrCryptoService().derivePublicKey('11' * 32);
+      await controller.importNostrconnectToken(
+        buildNostrconnect(pubkey: client),
+      );
+      expect(relayService.connectedSessions, isEmpty);
+
+      await controller.approveConnection();
+
       expect(relayService.connectedSessions, hasLength(1));
+      // The connect response, carrying the secret, goes out on them.
+      expect(relayService.capturedPublishes, hasLength(1));
     });
+
+    test('a rejected connection never opens a relay (#31)', () async {
+      await controller.importNostrconnectToken(buildNostrconnect());
+
+      await controller.rejectConnection();
+
+      expect(relayService.connectedSessions, isEmpty);
+      expect(relayService.capturedPublishes, isEmpty);
+    });
+
+    test('refuses a client that has used its session (#31)', () async {
+      await vaultController.createVault('1234');
+      await controller.importNostrconnectToken(buildNostrconnect());
+      await controller.approveConnection();
+      // The client has made a request since, so it got its connect response.
+      final used = sessionStore.sessions.single.copyWith(
+        lastUsedAt: DateTime.utc(2026, 11, 3),
+      );
+      sessionStore.sessions
+        ..clear()
+        ..add(used);
+      await useRequestTimeout(Nip46Controller.defaultRequestTimeout);
+      expect(controller.state.sessions.single.lastUsedAt, isNotNull);
+
+      await expectLater(
+        controller.importNostrconnectToken(buildNostrconnect(secret: 'again')),
+        throwsA(isA<Nip46AlreadyConnectedException>()),
+      );
+      expect(controller.state.sessions.single.id, used.id);
+      expect(controller.state.pendingApproval, isNull);
+    });
+
+    test(
+      'pairing again replaces a session the client never used (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+
+        // The connect response may never have reached the client.
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+        expect(controller.state.pendingApproval?.pendingSecret, 'again');
+        // Kept until the user approves: a link alone removes nothing.
+        expect(sessionStore.sessions.map((s) => s.id), contains(first.id));
+
+        await controller.approveConnection();
+
+        expect(controller.state.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(sessionStore.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(relayService.connectedSessions, isNot(contains(first.id)));
+        expect(controller.state.sessions, hasLength(1));
+      },
+    );
+
+    test(
+      'a failed approval save still replaces the old session on retry (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+
+        sessionStore.failNextSaves = 1;
+        await expectLater(controller.approveConnection(), throwsStateError);
+        expect(sessionStore.sessions.map((s) => s.id), contains(first.id));
+
+        await controller.approveConnection();
+
+        expect(controller.state.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(sessionStore.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(controller.state.sessions, hasLength(1));
+      },
+    );
+
+    test(
+      'a failed removal of the old session still completes the pairing (#31)',
+      () async {
+        final client = const DartNostrCryptoService().derivePublicKey('22' * 32);
+        await controller.importNostrconnectToken(
+          buildNostrconnect(pubkey: client),
+        );
+        await controller.approveConnection();
+        await controller.importNostrconnectToken(
+          buildNostrconnect(pubkey: client, secret: 'again'),
+        );
+        final second = controller.state.pendingApproval!;
+        relayService.capturedPublishes.clear();
+
+        sessionStore.failNextDeletes = 1;
+        await controller.approveConnection();
+
+        expect(controller.state.pendingApproval, isNull);
+        expect(relayService.connectedSessions, contains(second.id));
+        // The connect response with the new secret still goes out.
+        expect(
+          relayService.capturedPublishes.map((p) => p['sessionId']),
+          contains(second.id),
+        );
+      },
+    );
+
+    test(
+      'rejecting a pairing again keeps the session it would replace (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+        await controller.rejectConnection();
+
+        expect(controller.state.sessions.single.id, first.id);
+        expect(sessionStore.sessions.single.id, first.id);
+        expect(relayService.connectedSessions, contains(first.id));
+      },
+    );
 
     test('throws on malformed URI', () async {
       await expectLater(
@@ -292,6 +424,26 @@ void main() {
 
       expect(controller.state.sessions, isEmpty);
       expect(controller.state.pendingApproval, isNull);
+      expect(relayService.connectedSessions, isEmpty);
+    });
+
+    test('a wipe while a link is being saved drops it (#31)', () async {
+      await vaultController.createVault('1234');
+      sessionStore.holdSaves = Completer<void>();
+      final import = controller.importNostrconnectToken(
+        'nostrconnect://${'c' * 64}?secret=s1'
+        '&relay=${Uri.encodeComponent('wss://r.example.com')}',
+      );
+      await sessionStore.saveHeld.future;
+
+      await vaultController.wipe();
+      await Future<void>.delayed(Duration.zero);
+      sessionStore.holdSaves!.complete();
+
+      await expectLater(import, throwsA(isA<Nip46VaultWipedException>()));
+      expect(controller.state.pendingApproval, isNull);
+      expect(controller.state.sessions, isEmpty);
+      expect(sessionStore.sessions, isEmpty);
       expect(relayService.connectedSessions, isEmpty);
     });
 
@@ -1475,6 +1627,42 @@ void main() {
           );
           await Future<void>.delayed(const Duration(milliseconds: 50));
           expect(sessionStore.sessions.single.usesNip04, isTrue);
+        },
+      );
+
+      test(
+        'a nostrconnect:// link imported as the controller starts is saved (#31)',
+        () async {
+          final session = await storedSession();
+          await vaultController.unlock('1234');
+          // A cold start from a link: the controller is made unlocked, and the
+          // link imported before its sessions have been read.
+          sessionStore
+            ..requireKey = true
+            ..storageKey = null;
+          controller.dispose();
+          relayService = FakeNip46RelayService();
+          controller = Nip46Controller(
+            sessionStore: sessionStore,
+            vaultService: vaultService,
+            vaultController: vaultController,
+            relayService: relayService,
+            crypto: DartNip46Crypto(const DartNostrCryptoService()),
+            notifier: notifier,
+          );
+
+          await controller.importNostrconnectToken(
+            'nostrconnect://${'c' * 64}?secret=s1'
+            '&relay=${Uri.encodeComponent('wss://r.example.com')}',
+          );
+
+          expect(sessionStore.sessions, hasLength(2));
+          expect(controller.state.pendingApproval?.clientPubkey, 'c' * 64);
+          // The stored session is loaded too, not dropped.
+          expect(
+            controller.state.sessions.map((s) => s.id),
+            contains(session.id),
+          );
         },
       );
     });

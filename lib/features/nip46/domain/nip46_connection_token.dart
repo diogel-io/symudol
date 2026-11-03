@@ -41,6 +41,24 @@ class Nip46NostrconnectToken {
   });
 }
 
+/// A nostrconnect:// URI from a client that already has an active session
+/// (#31). Pairing it again would answer that client twice.
+class Nip46AlreadyConnectedException implements Exception {
+  const Nip46AlreadyConnectedException();
+
+  @override
+  String toString() => 'This client is already connected.';
+}
+
+/// The vault was wiped while a connection was being made: it belonged to the
+/// old vault, so it was dropped (#31).
+class Nip46VaultWipedException implements Exception {
+  const Nip46VaultWipedException();
+
+  @override
+  String toString() => 'The Symudol vault was erased.';
+}
+
 class Nip46TokenParseException implements Exception {
   final String message;
   const Nip46TokenParseException(this.message);

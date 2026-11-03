@@ -158,11 +158,7 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
   /// pending tile, since a vault lock or Back closes the approval while the
   /// request stays pending (diogel-io/symudol#125).
   void _openApproval(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const Nip46ConnectApprovalScreen(),
-      ),
-    );
+    openNip46ConnectApproval(Navigator.of(context));
   }
 
   void _showConnectionSheet(BuildContext context) {

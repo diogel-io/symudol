@@ -117,6 +117,62 @@ void main() {
       );
     });
 
+    group('relays (#31)', () {
+      test('accepts wss://, and ws:// outside release builds', () {
+        final token = Nip46TokenCodec.parseNostrconnect(
+          buildNostrconnect(relays: ['wss://a.example.com', 'ws://10.0.2.2:10547']),
+        );
+        expect(token.relays, ['wss://a.example.com', 'ws://10.0.2.2:10547']);
+      });
+
+      test('refuses ws:// when insecure relays are not allowed', () {
+        expect(
+          () => Nip46TokenCodec.parseNostrconnect(
+            buildNostrconnect(relays: ['ws://relay.example.com']),
+            allowInsecureRelays: false,
+          ),
+          throwsA(isA<Nip46TokenParseException>()),
+        );
+      });
+
+      test('refuses relays that are not WebSocket URLs', () {
+        for (final relay in [
+          'https://relay.example.com',
+          'javascript:alert(1)',
+          'relay.example.com',
+          'wss://',
+        ]) {
+          expect(
+            () => Nip46TokenCodec.parseNostrconnect(
+              buildNostrconnect(relays: [relay]),
+            ),
+            throwsA(isA<Nip46TokenParseException>()),
+            reason: relay,
+          );
+        }
+      });
+
+      test('refuses more than the maximum, after dropping repeats', () {
+        final many = [
+          for (var i = 0; i <= Nip46TokenCodec.maxNostrconnectRelays; i++)
+            'wss://r$i.example.com',
+        ];
+        expect(
+          () => Nip46TokenCodec.parseNostrconnect(
+            buildNostrconnect(relays: many),
+          ),
+          throwsA(isA<Nip46TokenParseException>()),
+        );
+
+        final repeated = Nip46TokenCodec.parseNostrconnect(
+          buildNostrconnect(
+            relays: List.filled(20, 'wss://same.example.com'),
+          ),
+        );
+        expect(repeated.relays, ['wss://same.example.com']);
+      });
+    });
+
     test('throws on wrong scheme', () {
       expect(
         () => Nip46TokenCodec.parseNostrconnect(
