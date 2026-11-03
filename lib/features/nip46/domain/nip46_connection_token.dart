@@ -50,6 +50,15 @@ class Nip46AlreadyConnectedException implements Exception {
   String toString() => 'This client is already connected.';
 }
 
+/// The vault was wiped while a connection was being made: it belonged to the
+/// old vault, so it was dropped (#31).
+class Nip46VaultWipedException implements Exception {
+  const Nip46VaultWipedException();
+
+  @override
+  String toString() => 'The Symudol vault was erased.';
+}
+
 class Nip46TokenParseException implements Exception {
   final String message;
   const Nip46TokenParseException(this.message);

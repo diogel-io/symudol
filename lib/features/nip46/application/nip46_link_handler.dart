@@ -33,6 +33,8 @@ class Nip46LinkHandler {
 
   String? _held;
   bool _importing = false;
+  // Bumped by a wipe, so an import begun before it opens nothing (#31).
+  int _wipes = 0;
   StreamSubscription<void>? _subscription;
 
   Nip46LinkHandler({
@@ -63,8 +65,12 @@ class Nip46LinkHandler {
   /// Handles a link that arrived while the vault was locked.
   Future<void> onUnlocked() => _handleHeld();
 
-  /// A wiped vault drops a held link: it was meant for the old one.
-  void onVaultWiped() => _held = null;
+  /// A wiped vault drops a held link, and any link being imported: each was
+  /// meant for the old vault.
+  void onVaultWiped() {
+    _held = null;
+    _wipes++;
+  }
 
   void dispose() => unawaited(_subscription?.cancel());
 
@@ -88,22 +94,33 @@ class Nip46LinkHandler {
       return;
     }
     _importing = true;
+    final wipes = _wipes;
+    String? message;
     try {
       await _importLink(link);
-      _openApproval();
     } on Nip46AlreadyConnectedException {
-      _showMessage('This client is already connected.');
+      message = 'This client is already connected.';
     } on Nip46TokenParseException {
-      _showMessage('This nostrconnect:// link isn’t valid.');
+      message = 'This nostrconnect:// link isn’t valid.';
+    } on Nip46VaultWipedException {
+      // The link was meant for the old vault.
+      return;
     } catch (e) {
       // The error, never the link: it carries the client's secret.
       diogelLog(
         'Nip46LinkHandler: could not connect from a link',
         error: e.runtimeType,
       );
-      _showMessage('Symudol couldn’t connect to the client.');
+      message = 'Symudol couldn’t connect to the client.';
     } finally {
       _importing = false;
+    }
+    // Wiped during the import, though the import itself finished.
+    if (wipes != _wipes) return;
+    if (message != null) {
+      _showMessage(message);
+    } else if (_isUnlocked()) {
+      _openApproval();
     }
   }
 }

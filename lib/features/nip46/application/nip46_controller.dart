@@ -117,6 +117,9 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   StreamSubscription<Nip46InboundRelayEvent>? _inboundSub;
   StreamSubscription<VaultControllerState>? _vaultSub;
   VaultState? _lastVaultState;
+  // How many times the vault has been wiped, so work begun before a wipe
+  // can tell it belongs to the old vault (#31).
+  int _wipes = 0;
 
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
@@ -191,9 +194,11 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Parses a nostrconnect:// token, starts a session, and publishes the connect response.
   Future<void> importNostrconnectToken(String uri) async {
     final parsed = Nip46TokenCodec.parseNostrconnect(uri);
+    final wipes = _wipes;
     // A link can arrive as the controller starts: the store has the vault's
     // key only once the sessions are read (#31, #32).
     await _loadSessions();
+    if (_wipedSince(wipes)) throw const Nip46VaultWipedException();
     // The same link opened again, or a client that is already paired (#31).
     // A session the client has never used may be one whose connect response
     // never reached it, since its relays open only on approval: pairing again
@@ -233,7 +238,25 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // No relay is opened until the user approves: the URI can come from a
     // link any page opens, and its relays are the client's choice (#31). A
     // rejected connection so never reaches the network.
-    await _sessionStore.saveSession(session);
+    try {
+      await _sessionStore.saveSession(session);
+    } catch (_) {
+      if (_wipedSince(wipes)) throw const Nip46VaultWipedException();
+      rethrow;
+    }
+    if (_wipedSince(wipes)) {
+      // Wiped while saving: the session belongs to no vault, and no approval
+      // may be shown for it.
+      try {
+        await _sessionStore.deleteSession(session.id);
+      } catch (e) {
+        diogelLog(
+          'Nip46Controller: could not drop a session made before a wipe',
+          error: e.runtimeType,
+        );
+      }
+      throw const Nip46VaultWipedException();
+    }
     if (replaces.isNotEmpty) _replacedOnApproval[session.id] = replaces;
 
     state = state.copyWith(
@@ -686,6 +709,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         previous != null &&
         previous is! NoVault) {
       // The vault was wiped (#20): no session may keep answering.
+      _wipes++;
       unawaited(_dropAllSessions());
     }
   }
@@ -699,6 +723,13 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     }
     await _releaseHeldRequests();
   }
+
+  /// Whether the vault has been wiped since [wipes] was read, including a
+  /// wipe the vault listener has not heard of yet.
+  bool _wipedSince(int wipes) =>
+      _wipes != wipes ||
+      (_vaultController.state.vaultState is NoVault &&
+          _lastVaultState is! NoVault);
 
   /// Stops every relay subscription and forgets every session in memory.
   /// The wipe has already cleared the store.

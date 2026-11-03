@@ -427,6 +427,26 @@ void main() {
       expect(relayService.connectedSessions, isEmpty);
     });
 
+    test('a wipe while a link is being saved drops it (#31)', () async {
+      await vaultController.createVault('1234');
+      sessionStore.holdSaves = Completer<void>();
+      final import = controller.importNostrconnectToken(
+        'nostrconnect://${'c' * 64}?secret=s1'
+        '&relay=${Uri.encodeComponent('wss://r.example.com')}',
+      );
+      await sessionStore.saveHeld.future;
+
+      await vaultController.wipe();
+      await Future<void>.delayed(Duration.zero);
+      sessionStore.holdSaves!.complete();
+
+      await expectLater(import, throwsA(isA<Nip46VaultWipedException>()));
+      expect(controller.state.pendingApproval, isNull);
+      expect(controller.state.sessions, isEmpty);
+      expect(sessionStore.sessions, isEmpty);
+      expect(relayService.connectedSessions, isEmpty);
+    });
+
     test('locking keeps sessions running', () async {
       await vaultController.createVault('1234');
       await controller.initiateBunkerSession();

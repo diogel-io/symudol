@@ -41,6 +41,7 @@ void main() {
   late int approvalsOpened;
   late List<String> messages;
   Object? importError;
+  Completer<void>? holdImport;
 
   Nip46LinkHandler handler({bool enabled = true}) => Nip46LinkHandler(
     links: links,
@@ -48,6 +49,7 @@ void main() {
     isUnlocked: () => unlocked,
     hasPendingApproval: () => pendingApproval,
     importLink: (uri) async {
+      await holdImport?.future;
       if (importError != null) throw importError!;
       imported.add(uri);
       pendingApproval = true;
@@ -64,6 +66,7 @@ void main() {
     approvalsOpened = 0;
     messages = [];
     importError = null;
+    holdImport = null;
   });
 
   group('Nip46LinkHandler (#31)', () {
@@ -118,6 +121,45 @@ void main() {
       await subject.onUnlocked();
 
       expect(imported, isEmpty);
+    });
+
+    test('a wipe during the import opens nothing', () async {
+      links.pending = _link;
+      holdImport = Completer<void>();
+      final subject = handler();
+      final started = subject.start();
+      await pumpEventQueue();
+
+      subject.onVaultWiped();
+      holdImport!.complete();
+      await started;
+
+      expect(approvalsOpened, 0);
+      expect(messages, isEmpty);
+    });
+
+    test('an import the controller drops for a wipe shows nothing', () async {
+      links.pending = _link;
+      importError = const Nip46VaultWipedException();
+
+      await handler().start();
+
+      expect(approvalsOpened, 0);
+      expect(messages, isEmpty);
+    });
+
+    test('a lock during the import opens no approval', () async {
+      links.pending = _link;
+      holdImport = Completer<void>();
+      final started = handler().start();
+      await pumpEventQueue();
+
+      unlocked = false;
+      holdImport!.complete();
+      await started;
+
+      expect(imported, [_link]);
+      expect(approvalsOpened, 0);
     });
 
     test('a build that hides NIP-46 turns links off and handles none', () async {
