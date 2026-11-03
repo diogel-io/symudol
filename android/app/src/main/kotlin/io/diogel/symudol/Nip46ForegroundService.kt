@@ -17,7 +17,8 @@ import androidx.core.content.ContextCompat
  * background and the user wants remote signing (diogel-io/symudol#29).
  *
  * It holds no keys and does no crypto. It only runs while MainActivity exists: the activity
- * stops it when it is destroyed, when the vault locks and the native key is cleared (#9).
+ * stops it when it is destroyed, which is when the native key is cleared (#9). A vault lock
+ * leaves it running, so a request held for unlock can still reach the user.
  */
 class Nip46ForegroundService : Service() {
 
