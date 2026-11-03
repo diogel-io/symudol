@@ -162,6 +162,18 @@ void main() {
       );
     });
 
+    test('deletes old sessions left beside the encrypted ones', () async {
+      final store = newStore()..useStorageKey(key);
+      await store.saveSession(_session('a'));
+      // As after a move whose delete failed or was cut short.
+      storage.values[_v1] = jsonEncode([_session('a').toJson()]);
+
+      final [session] = await (newStore()..useStorageKey(key)).listSessions();
+
+      expect(session.id, 'a');
+      expect(storage.values[_v1], isNull);
+    });
+
     test(
       'clearAll deletes both formats and the setting, and drops the key',
       () async {

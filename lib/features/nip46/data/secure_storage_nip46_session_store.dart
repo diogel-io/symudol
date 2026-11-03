@@ -57,6 +57,20 @@ class SecureStorageNip46SessionStore implements Nip46SessionStore {
         for (final entry in _decodeList(raw))
           Nip46Session.fromJson(_openSecrets(entry)),
       ];
+      // A move whose delete failed, or was cut short, left the keys in the
+      // clear: delete them now, or after the next write.
+      if (await _storage.read(key: _legacyKey) != null) {
+        _legacyStored = true;
+        try {
+          await _storage.delete(key: _legacyKey);
+          _legacyStored = false;
+        } catch (e) {
+          diogelLog(
+            'SecureStorageNip46SessionStore: could not delete old sessions',
+            error: e,
+          );
+        }
+      }
     } else {
       await _loadLegacy();
     }
