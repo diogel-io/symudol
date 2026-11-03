@@ -201,6 +201,13 @@ abstract interface class VaultService {
   /// ContentProvider for native auto-approve.
   Future<String?> getActivePrivateKey();
 
+  /// The key that encrypts NIP-46 session keys at rest (#32), derived from
+  /// the DEK. It stays the same across PIN changes and biometric unlocks, and
+  /// it cannot give back the DEK or any identity key.
+  ///
+  /// Throws [VaultLockedException] if the vault is locked.
+  Future<Uint8List> nip46StorageKey();
+
   /// A backup file of every identity, each key encrypted with [passphrase]
   /// as a NIP-49 `ncryptsec` (#25). [pin] is checked like an unlock: it is
   /// charged, honours the lockout, and counts towards the wipe-after-N

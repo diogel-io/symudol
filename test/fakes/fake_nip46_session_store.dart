@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip46/domain/nip46_session_store.dart';
@@ -9,8 +10,30 @@ class FakeNip46SessionStore implements Nip46SessionStore {
   FakeNip46SessionStore([List<Nip46Session>? sessions])
     : sessions = sessions ?? [];
 
+  /// When set, reading or writing sessions needs a key, as the real store
+  /// does while sessions are stored (#32).
+  bool requireKey = false;
+
+  /// The key given with [useStorageKey], until [clearAll].
+  Uint8List? storageKey;
+
+  void _checkKey() {
+    if (requireKey && storageKey == null && sessions.isNotEmpty) {
+      throw const Nip46StoreLockedException();
+    }
+  }
+
   @override
-  Future<List<Nip46Session>> listSessions() async => List.of(sessions);
+  void useStorageKey(Uint8List key) => storageKey = Uint8List.fromList(key);
+
+  @override
+  Future<int> countSessions() async => sessions.length;
+
+  @override
+  Future<List<Nip46Session>> listSessions() async {
+    _checkKey();
+    return List.of(sessions);
+  }
 
   /// Makes this many of the next saves fail, as a secure-storage write
   /// error would.
@@ -25,6 +48,7 @@ class FakeNip46SessionStore implements Nip46SessionStore {
 
   @override
   Future<void> saveSession(Nip46Session session) async {
+    _checkKey();
     final hold = holdSaves;
     if (hold != null) {
       if (!saveHeld.isCompleted) saveHeld.complete();
@@ -44,6 +68,7 @@ class FakeNip46SessionStore implements Nip46SessionStore {
 
   @override
   Future<void> deleteSession(String id) async {
+    _checkKey();
     sessions.removeWhere((s) => s.id == id);
   }
 
@@ -52,6 +77,7 @@ class FakeNip46SessionStore implements Nip46SessionStore {
   @override
   Future<void> clearAll() async {
     sessions.clear();
+    storageKey = null;
     runInBackground = false;
   }
 

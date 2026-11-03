@@ -11,7 +11,8 @@ class Nip46Session {
   final String id;
   final String clientPubkey;
   final String remoteSignerPubkey;
-  // Session private key stored here; secured via flutter_secure_storage in the store.
+  // Session private key. The store encrypts it, and [pendingSecret], under
+  // the vault's NIP-46 storage key (#32).
   final String remoteSignerPrivkey;
   final List<String> relays;
   // Display hints only — never used for authorization.

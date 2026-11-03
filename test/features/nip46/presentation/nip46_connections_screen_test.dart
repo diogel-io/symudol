@@ -1,3 +1,4 @@
+import 'package:symudol/app/utils/concurrency_utils.dart';
 import 'package:symudol/features/nip46/application/nip46_controller.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
 import 'package:symudol/features/nip46/data/dart_nip46_crypto.dart';
@@ -14,10 +15,12 @@ import '../../../fakes/fake_vault_store.dart';
 import '../data/fake_nip46_relay_service.dart';
 import '../../../fakes/fake_nip46_session_store.dart';
 
+// The screen is only shown with the vault unlocked, and sessions are read
+// only then (#32).
+late VaultServiceImpl vaultService;
+late VaultController vaultController;
+
 Nip46Controller _buildController({List<Nip46Session> sessions = const []}) {
-  final vaultStore = FakeVaultStore();
-  final vaultService = VaultServiceImpl(vaultStore);
-  final vaultController = VaultController(vaultService);
   final relayService = FakeNip46RelayService();
   final crypto = DartNip46Crypto(const DartNostrCryptoService());
   return Nip46Controller(
@@ -41,6 +44,16 @@ Widget _buildSubject(Nip46Controller controller) {
 }
 
 void main() {
+  setUp(() async {
+    ConcurrencyUtils.useSynchronousTasks = true;
+    vaultService = VaultServiceImpl(FakeVaultStore());
+    await vaultService.createVault('1234');
+    vaultController = VaultController(vaultService);
+    await vaultController.initialize();
+  });
+
+  tearDown(() => ConcurrencyUtils.useSynchronousTasks = false);
+
   group('Nip46ConnectionsScreen', () {
     testWidgets('shows empty state when no sessions exist', (tester) async {
       await tester.pumpWidget(_buildSubject(_buildController()));

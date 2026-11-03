@@ -25,12 +25,12 @@ Future<void> confirmAndWipeVault(BuildContext context, WidgetRef ref) async {
   // A build that hides NIP-46 doesn't mention it, though the wipe still
   // clears any sessions an earlier build stored (#26).
   final showConnections = ref.read(nip46EnabledProvider);
-  // Read from the store: the NIP-46 controller starts relays when created.
+  // Counted in the store: the NIP-46 controller starts relays when created,
+  // and Forgot PIN has no vault key to read the sessions with (#32).
   final connectionCount = showConnections
       ? await _countOrNull(
           'NIP-46 sessions',
-          () async =>
-              (await ref.read(nip46SessionStoreProvider).listSessions()).length,
+          () => ref.read(nip46SessionStoreProvider).countSessions(),
         )
       : null;
   if (!context.mounted) return;

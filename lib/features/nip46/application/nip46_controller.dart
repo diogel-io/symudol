@@ -8,6 +8,7 @@ import 'package:symudol/features/nip55/domain/nip55_approval_timeframe.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_decision.dart';
 import 'package:symudol/features/nip55/domain/nip55_permission_parser.dart';
 import 'package:symudol/features/vault/application/vault_controller.dart';
+import 'package:symudol/features/vault/domain/vault_exceptions.dart';
 import 'package:symudol/features/vault/domain/vault_service.dart';
 import 'package:symudol/features/vault/domain/vault_state.dart';
 import 'package:state_notifier/state_notifier.dart';
@@ -560,11 +561,43 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   Future<void> _initialize() async {
     state = state.copyWith(isLoading: true);
+    _inboundSub = _relayService.inboundEvents.listen(_onInboundEvent);
+    // Listening from the start, so an unlock before the sessions are read
+    // still loads them (#32).
+    _lastVaultState = _vaultController.state.vaultState;
+    _vaultSub = _vaultController.stream.listen(_onVaultStateChanged);
+    await _loadSessions();
+  }
+
+  // Whether the stored sessions have been read. Until then no relay runs.
+  bool _sessionsLoaded = false;
+  Future<void>? _loading;
+
+  /// Reads the stored sessions and starts their relays. Their keys are
+  /// encrypted under the vault, so with the vault locked this waits for the
+  /// next unlock (#32).
+  Future<void> _loadSessions() =>
+      _loading ??= _readSessions().whenComplete(() => _loading = null);
+
+  Future<void> _readSessions() async {
+    if (_sessionsLoaded) return;
+    if (!await _provideStorageKey()) {
+      state = state.copyWith(isLoading: false);
+      return;
+    }
     try {
       final sessions = await _sessionStore.listSessions();
       final runInBackground = await _sessionStore.getRunInBackground();
+      _sessionsLoaded = true;
+      // A session made between the unlock and now, such as a new bunker
+      // token, is kept.
+      final loadedIds = {for (final s in sessions) s.id};
       state = state.copyWith(
-        sessions: sessions,
+        sessions: [
+          ...sessions,
+          for (final s in state.sessions)
+            if (!loadedIds.contains(s.id)) s,
+        ],
         isLoading: false,
         runInBackground: runInBackground,
       );
@@ -574,12 +607,21 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           await _startRelays(session);
         }
       }
-
-      _inboundSub = _relayService.inboundEvents.listen(_onInboundEvent);
-      _lastVaultState = _vaultController.state.vaultState;
-      _vaultSub = _vaultController.stream.listen(_onVaultStateChanged);
     } catch (e) {
       state = state.copyWith(isLoading: false, failure: e.toString());
+    }
+  }
+
+  /// Gives the store the vault's NIP-46 storage key, or returns false while
+  /// the vault is locked.
+  Future<bool> _provideStorageKey() async {
+    try {
+      final key = await _vaultService.nip46StorageKey();
+      _sessionStore.useStorageKey(key);
+      key.fillRange(0, key.length, 0);
+      return true;
+    } on VaultLockedException {
+      return false;
     }
   }
 
@@ -589,7 +631,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     final previous = _lastVaultState;
     _lastVaultState = vaultState.vaultState;
     if (vaultState.vaultState is VaultUnlocked && previous is! VaultUnlocked) {
-      unawaited(_releaseHeldRequests());
+      unawaited(_onUnlocked());
     }
     if (vaultState.vaultState is NoVault &&
         previous != null &&
@@ -597,6 +639,16 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       // The vault was wiped (#20): no session may keep answering.
       unawaited(_dropAllSessions());
     }
+  }
+
+  Future<void> _onUnlocked() async {
+    // Given on every unlock: a vault set up after a wipe has a new key.
+    if (_sessionsLoaded) {
+      await _provideStorageKey();
+    } else {
+      await _loadSessions();
+    }
+    await _releaseHeldRequests();
   }
 
   /// Stops every relay subscription and forgets every session in memory.

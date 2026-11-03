@@ -1399,5 +1399,84 @@ void main() {
         expect(controller.wantsBackgroundService, isFalse);
       });
     });
+
+    group('session keys under the vault (#32)', () {
+      Future<Nip46Session> storedSession() async {
+        await vaultController.createVault('1234');
+        await vaultController.createIdentity();
+        final session = await activeBunkerSession(perms: 'sign_event:1');
+        await vaultController.lock();
+        await Future<void>.delayed(Duration.zero);
+        return session;
+      }
+
+      test(
+        'a controller made while locked starts nothing until unlock',
+        () async {
+          final session = await storedSession();
+          // A restart: the store has no key until the vault unlocks.
+          sessionStore
+            ..requireKey = true
+            ..storageKey = null;
+          await useRequestTimeout(Nip46Controller.defaultRequestTimeout);
+
+          expect(controller.state.sessions, isEmpty);
+          expect(controller.state.isLoading, isFalse);
+          expect(relayService.connectedSessions, isEmpty);
+
+          await vaultController.unlock('1234');
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          expect(sessionStore.storageKey, isNotNull);
+          expect(controller.state.sessions.single.id, session.id);
+          expect(relayService.connectedSessions, {session.id});
+        },
+      );
+
+      test(
+        'after unlock then lock, requests are still held and saved (#29)',
+        () async {
+          await useRequestTimeout(const Duration(milliseconds: 300));
+          sessionStore.requireKey = true;
+          final session = await storedSession();
+
+          // Held, then refused once it times out.
+          await send(
+            session,
+            'sign_event',
+            id: 'note',
+            params: [
+              jsonEncode({'kind': 7, 'content': '+', 'tags': <Object>[]}),
+            ],
+          );
+          expect(notifier.shown, [session.id]);
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect(responses().last['error'], 'Request timed out');
+
+          // A NIP-04 request is held too, and the session's NIP-04 flag is
+          // still saved, under the key the store kept.
+          relayService.simulateInbound(
+            Nip46InboundRelayEvent(
+              eventId: 'event-nip04',
+              senderPubkey: nostrCrypto.derivePublicKey(clientPrivkey),
+              recipientPubkey: session.remoteSignerPubkey,
+              encryptedContent: nostrCrypto.nip04Encrypt(
+                privateKeyHex: clientPrivkey,
+                peerPubkeyHex: session.remoteSignerPubkey,
+                plaintext: jsonEncode({
+                  'id': 'old-client',
+                  'method': 'ping',
+                  'params': <String>[],
+                }),
+              ),
+              relay: 'wss://relay.example.com',
+              createdAt: 0,
+            ),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          expect(sessionStore.sessions.single.usesNip04, isTrue);
+        },
+      );
+    });
   });
 }

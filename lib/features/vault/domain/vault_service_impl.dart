@@ -1215,6 +1215,13 @@ class VaultServiceImpl implements VaultService {
     );
   }
 
+  /// HKDF info for [nip46StorageKey]. A new purpose needs its own info.
+  static const _nip46StorageKeyInfo = 'symudol/nip46-session-secrets/v1';
+
+  @override
+  Future<Uint8List> nip46StorageKey() async =>
+      _vaultCryptoService.deriveSubkey(_dekOrThrow(), _nip46StorageKeyInfo);
+
   Future<String> _activePrivateKeyFor(String identityLocalId) async {
     final record = await _activeRecordFor(identityLocalId);
     final privateKey = await ConcurrencyUtils.runTask(
