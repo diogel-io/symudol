@@ -263,7 +263,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
-    final replaces = _replacedOnApproval.remove(pending.id) ?? const [];
+    final replaces = _replacedOnApproval[pending.id] ?? const <String>[];
 
     final identity = _vaultService.activeIdentity?.publicKey;
     final expiresAt = _expiresAtFor(timeframe);
@@ -288,6 +288,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     );
 
     await _sessionStore.saveSession(approved);
+    // Only once saved: a failed save leaves the approval to try again (#31).
+    _replacedOnApproval.remove(pending.id);
 
     final updatedSessions = state.sessions
         .map((s) => s.id == approved.id ? approved : s)

@@ -235,6 +235,28 @@ void main() {
     );
 
     test(
+      'a failed approval save still replaces the old session on retry (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+
+        sessionStore.failNextSaves = 1;
+        await expectLater(controller.approveConnection(), throwsStateError);
+        expect(sessionStore.sessions.map((s) => s.id), contains(first.id));
+
+        await controller.approveConnection();
+
+        expect(controller.state.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(sessionStore.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(controller.state.sessions, hasLength(1));
+      },
+    );
+
+    test(
       'rejecting a pairing again keeps the session it would replace (#31)',
       () async {
         await controller.importNostrconnectToken(buildNostrconnect());

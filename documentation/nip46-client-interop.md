@@ -16,7 +16,7 @@ Against the NIP-46 text in the Diogel workspace's NIPs reference (`46.md`):
 
 | Behaviour | Symudol |
 |---|---|
-| Pairing (#31) | Shows the `bunker://` token as a QR code and as text. Scans a client's `nostrconnect://` QR code with the camera, or takes a pasted URI. On Android, opens from a tapped `nostrconnect:` link; a link that arrives while the vault is locked waits in memory for the unlock. Every route ends at the same approval. A `nostrconnect://` URI's relays must be `wss://` (`ws://` too in debug and profile builds), at most 8, and are opened only once the user approves, so a rejected or ignored link never reaches the network. A URI from a client whose session has answered a request is refused; one whose session was never used replaces it, since its connect response may not have arrived. |
+| Pairing (#31) | Shows the `bunker://` token as a QR code and as text. Scans a client's `nostrconnect://` QR code with the camera, or takes a pasted URI. On Android, opens from a tapped `nostrconnect:` link; a link that arrives while the vault is locked waits in memory for the unlock. Every route ends at the same approval. A `nostrconnect://` URI's relays must be `wss://` (`ws://` too in debug and profile builds), at most 8, and are opened only once the user approves, so a rejected or ignored link never reaches the network. A URI from a client whose session has answered a request is refused; a new connection from a client whose session was never used replaces that session, since its connect response may not have arrived, but only once the user approves it: a reject or timeout keeps the old session and its grants. |
 | `bunker://` connect | Checks the token's secret, asks the user, and replies `ack` to the client's request id. A secret is used once. |
 | `nostrconnect://` connect | Asks the user, then sends a connect response whose `result` is the URI's `secret`, with a fresh request id. |
 | `connect` from an approved client | Replies `ack` without asking again and keeps the session's grants. |
@@ -73,7 +73,8 @@ Run each check with each client, and record pass, fail or not supported.
    open Remote Signing, tap +, choose Connect to a client and tap Scan QR code. Allow the camera.
    Approve. The client accepts the connection. Then refuse the camera permission (in Android
    settings, if it was granted) and tap Scan QR code again: Symudol explains it can't use the
-   camera, and pasting the URI still works.
+   camera. Go back, start a new `nostrconnect://` flow in the client, paste its URI and tap
+   Import and connect. The approval opens; approve, and the client accepts the connection.
 10. **Client scans Symudol's code.** Create a `bunker://` token in Symudol, and scan its QR code
     with the client's "log in with a remote signer" scanner, on a phone client or a laptop camera.
     Approve. The client shows the throwaway account.
