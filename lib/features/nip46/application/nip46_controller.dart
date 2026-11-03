@@ -302,8 +302,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     // The unused sessions this connection replaces go now, unless the client
     // used one meanwhile (#31).
+    // A failed revoke must not stop the new connection from completing.
     for (final id in replaces) {
-      if (_sessionById(id)?.lastUsedAt == null) await revokeSession(id);
+      if (_sessionById(id)?.lastUsedAt != null) continue;
+      try {
+        await revokeSession(id);
+      } catch (e) {
+        diogelLog('Nip46Controller: could not remove a replaced session', error: e);
+      }
     }
 
     // A nostrconnect session opens its relays only now (#31). The connect

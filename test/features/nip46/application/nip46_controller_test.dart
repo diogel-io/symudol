@@ -257,6 +257,33 @@ void main() {
     );
 
     test(
+      'a failed removal of the old session still completes the pairing (#31)',
+      () async {
+        final client = const DartNostrCryptoService().derivePublicKey('22' * 32);
+        await controller.importNostrconnectToken(
+          buildNostrconnect(pubkey: client),
+        );
+        await controller.approveConnection();
+        await controller.importNostrconnectToken(
+          buildNostrconnect(pubkey: client, secret: 'again'),
+        );
+        final second = controller.state.pendingApproval!;
+        relayService.capturedPublishes.clear();
+
+        sessionStore.failNextDeletes = 1;
+        await controller.approveConnection();
+
+        expect(controller.state.pendingApproval, isNull);
+        expect(relayService.connectedSessions, contains(second.id));
+        // The connect response with the new secret still goes out.
+        expect(
+          relayService.capturedPublishes.map((p) => p['sessionId']),
+          contains(second.id),
+        );
+      },
+    );
+
+    test(
       'rejecting a pairing again keeps the session it would replace (#31)',
       () async {
         await controller.importNostrconnectToken(buildNostrconnect());

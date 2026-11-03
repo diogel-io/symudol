@@ -66,9 +66,17 @@ class FakeNip46SessionStore implements Nip46SessionStore {
     }
   }
 
+  /// Makes this many of the next deletes fail, as a secure-storage error
+  /// would.
+  int failNextDeletes = 0;
+
   @override
   Future<void> deleteSession(String id) async {
     _checkKey();
+    if (failNextDeletes > 0) {
+      failNextDeletes--;
+      throw StateError('secure storage delete failed');
+    }
     sessions.removeWhere((s) => s.id == id);
   }
 
