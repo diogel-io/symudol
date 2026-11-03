@@ -105,7 +105,7 @@ List<RelayListEntry> applyRelayEdits(
     final was = before[entry.url];
     final now = after[entry.url];
     if (was != null && now == null) continue; // removed
-    result.add(now != null && now != was ? now : entry);
+    result.add(now == null || now == was ? entry : _merged(entry, was, now));
   }
   final kept = {for (final entry in result) entry.url};
   for (final entry in edited) {
@@ -114,4 +114,22 @@ List<RelayListEntry> applyRelayEdits(
     if (!kept.contains(entry.url) && changed) result.add(entry);
   }
   return result;
+}
+
+/// [latest] with each marker the user changed from [loaded] to [edited], so
+/// a marker the user left alone keeps what another app set. A relay the user
+/// added takes the user's markers. When that would leave neither marker on,
+/// [latest] is kept, since a relay must be read or write.
+RelayListEntry _merged(
+  RelayListEntry latest,
+  RelayListEntry? loaded,
+  RelayListEntry edited,
+) {
+  final read = loaded == null || edited.read != loaded.read
+      ? edited.read
+      : latest.read;
+  final write = loaded == null || edited.write != loaded.write
+      ? edited.write
+      : latest.write;
+  return read || write ? latest.copyWith(read: read, write: write) : latest;
 }

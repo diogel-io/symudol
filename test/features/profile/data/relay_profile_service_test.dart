@@ -371,6 +371,27 @@ void main() {
       expect(lookup.createdAt, DateTime.fromMillisecondsSinceEpoch(5000));
     });
 
+    test('of two lists created at once, the lowest id is kept', () async {
+      NostrEvent list(String id, String relay) => NostrEvent(
+        id: id,
+        kind: 10002,
+        content: '',
+        sig: 'sig',
+        pubkey: alice,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(5000),
+        tags: [
+          ['r', relay],
+        ],
+      );
+      // The higher id arrives first: relay.damus.io is asked before indexers.
+      client.held['wss://relay.damus.io'] = [list('bb', 'wss://b.example.com')];
+      client.held[indexer] = [list('aa', 'wss://a.example.com')];
+
+      final lookup = await service.fetchRelayList(alice);
+
+      expect(lookup.entries, const [RelayListEntry('wss://a.example.com')]);
+    });
+
     test('no list is told apart from no answer', () async {
       final none = await service.fetchRelayList(alice);
       expect(none.found, isFalse);

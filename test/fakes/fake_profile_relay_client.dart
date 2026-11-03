@@ -62,12 +62,16 @@ class FakeProfileRelayClient implements ProfileRelayClient {
   /// How long each query takes, so a test can act while one is in flight.
   Duration queryDelay = Duration.zero;
 
+  /// How long each publish takes, so a test can act while one is in flight.
+  Duration publishDelay = Duration.zero;
+
   @override
   Future<Map<String, RelayPublishResult>> publish({
     required SignedNostrEvent event,
     required List<String> relays,
     Duration timeout = const Duration(seconds: 8),
   }) async {
+    if (publishDelay > Duration.zero) await Future<void>.delayed(publishDelay);
     if (publishError case final Object error) throw error;
     published.add((event: event, relays: relays));
     return {

@@ -183,7 +183,9 @@ class RelayProfileService {
   ) => _client.publish(event: event, relays: relays);
 
   /// The most recent of [events] of [kind] signed by [pubkeyHex], or null. A
-  /// relay can answer with any event, so the others are ignored.
+  /// relay can answer with any event, so the others are ignored. Of two
+  /// created at the same time, the one with the lowest id is kept, as NIP-01
+  /// asks relays to, so the choice does not depend on which arrived first.
   static NostrEvent? _newest(
     List<NostrEvent> events,
     int kind,
@@ -193,8 +195,15 @@ class RelayProfileService {
     NostrEvent? newest;
     for (final event in events) {
       if (event.kind != kind || event.pubkey != pubkeyHex) continue;
-      if (newest == null ||
-          (event.createdAt ?? epoch).isAfter(newest.createdAt ?? epoch)) {
+      if (newest == null) {
+        newest = event;
+        continue;
+      }
+      final created = event.createdAt ?? epoch;
+      final newestCreated = newest.createdAt ?? epoch;
+      if (created.isAfter(newestCreated) ||
+          (created.isAtSameMomentAs(newestCreated) &&
+              (event.id ?? '').compareTo(newest.id ?? '') < 0)) {
         newest = event;
       }
     }

@@ -224,4 +224,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RelayListScreen), findsNothing);
   });
+
+  testWidgets('a save in progress can\'t be discarded', (tester) async {
+    holdList([
+      ['r', 'wss://a.example.com'],
+    ]);
+    await openScreen(tester);
+    await load(tester);
+    await tester.tap(find.byTooltip('Remove a.example.com'));
+    await tester.enterText(
+      find.byKey(const Key('relayListAddField')),
+      'b.example.com',
+    );
+    await tester.tap(find.byTooltip('Add relay'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    relays.publishDelay = const Duration(seconds: 5);
+    await tester.tap(find.text('Sign and publish'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.pageBack();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Discard changes?'), findsNothing);
+    expect(find.byType(RelayListScreen), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    expect(find.text('Relays published'), findsOneWidget);
+  });
 }

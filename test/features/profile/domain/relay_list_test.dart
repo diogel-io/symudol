@@ -132,6 +132,28 @@ void main() {
         expect(applyRelayEdits(latest, loaded, loaded), isEmpty);
       },
     );
+    test('each marker the user changed is merged on its own (#141 review)', () {
+      // Loaded write only; the user turns read on; another app made it read
+      // only. Write was not the user's change, so the newer value stands.
+      const loaded = [RelayListEntry(a, read: false)];
+      const edited = [RelayListEntry(a)];
+      const latest = [RelayListEntry(a, write: false)];
+
+      expect(applyRelayEdits(latest, loaded, edited), const [
+        RelayListEntry(a, write: false),
+      ]);
+    });
+
+    test('a merge that would turn both markers off keeps the newer entry', () {
+      // The user turns read off; another app turned write off.
+      const loaded = [RelayListEntry(a)];
+      const edited = [RelayListEntry(a, read: false)];
+      const latest = [RelayListEntry(a, write: false)];
+
+      expect(applyRelayEdits(latest, loaded, edited), const [
+        RelayListEntry(a, write: false),
+      ]);
+    });
   });
 
   group('createdAfter', () {

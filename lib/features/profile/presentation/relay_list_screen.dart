@@ -127,9 +127,11 @@ class _RelayListScreenState extends ConsumerState<RelayListScreen> {
     final editing = editor.phase == RelayListEditorPhase.editing;
 
     return PopScope(
-      canPop: !(editing && editor.dirty),
+      // A save that has started publishes even if the screen closes, so it
+      // can't be discarded; the screen stays until it ends.
+      canPop: !(editing && (editor.dirty || editor.saving)),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _confirmDiscard();
+        if (!didPop && !editor.saving) _confirmDiscard();
       },
       child: Scaffold(
         appBar: AppBar(
