@@ -5,6 +5,11 @@
          builds (see src/debug, src/profile) — release needs it declared
          here explicitly. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- NIP-46 in the background (#29): an opt-in foreground service keeps the relay
+         connections open, and a content-free notice says a request waits for unlock. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
@@ -47,6 +52,15 @@
                 <data android:scheme="@string/scheme_nostrsigner" />
             </intent-filter>
         </activity>
+        <!-- Holds no keys and does no crypto; stopped when MainActivity goes (#29). -->
+        <service
+            android:name=".Nip46ForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps Nostr remote signer (NIP-46) relay connections open while the user has turned on background remote signing." />
+        </service>
         <provider
             android:name=".Nip55ContentProvider"
             android:authorities="${applicationId}.SIGN_EVENT;${applicationId}.SIGN_MESSAGE;${applicationId}.NIP44_ENCRYPT;${applicationId}.NIP44_DECRYPT;${applicationId}.NIP04_ENCRYPT;${applicationId}.NIP04_DECRYPT;${applicationId}.DECRYPT_ZAP_EVENT;${applicationId}.GET_PUBLIC_KEY;${applicationId}.PING"

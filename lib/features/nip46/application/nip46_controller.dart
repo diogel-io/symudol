@@ -27,6 +27,7 @@ import '../domain/nip46_response.dart';
 import '../domain/nip46_session.dart';
 import '../domain/nip46_session_store.dart';
 import '../domain/nip46_sign_event.dart';
+import 'nip46_background.dart';
 
 class Nip46State {
   final List<Nip46Session> sessions;
@@ -38,6 +39,10 @@ class Nip46State {
   final String? failure;
   final String? lastSuccessMessage;
 
+  /// Whether the user wants remote signing kept running while Symudol is in
+  /// the background (#29).
+  final bool runInBackground;
+
   const Nip46State({
     this.sessions = const [],
     this.pendingApproval,
@@ -45,6 +50,7 @@ class Nip46State {
     this.isLoading = false,
     this.failure,
     this.lastSuccessMessage,
+    this.runInBackground = false,
   });
 
   bool get hasPendingAction =>
@@ -57,6 +63,7 @@ class Nip46State {
     bool? isLoading,
     Object? failure = _sentinel,
     Object? lastSuccessMessage = _sentinel,
+    bool? runInBackground,
   }) {
     return Nip46State(
       sessions: sessions ?? this.sessions,
@@ -70,6 +77,7 @@ class Nip46State {
       lastSuccessMessage: lastSuccessMessage == _sentinel
           ? this.lastSuccessMessage
           : lastSuccessMessage as String?,
+      runInBackground: runInBackground ?? this.runInBackground,
     );
   }
 }
@@ -98,6 +106,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   final Nip46RelayService _relayService;
   final DartNip46Crypto _crypto;
   final Nip46ApprovalPolicy _approvalPolicy;
+  final Nip46Notifier _notifier;
   final DateTime Function() _now;
   final Random _random;
 
@@ -110,6 +119,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   // LRU dedup cache for processed event IDs.
   final LinkedHashMap<String, bool> _processedEventIds = LinkedHashMap();
+
+  // Requests that arrived while the vault was locked, oldest first, by
+  // session and request id (#29).
+  final Map<String, _HeldRequest> _heldRequests = {};
 
   // Session saves, one at a time (see _updateSession).
   Future<void> _saveQueue = Future.value();
@@ -126,6 +139,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     required Nip46RelayService relayService,
     required DartNip46Crypto crypto,
     Nip46ApprovalPolicy approvalPolicy = const Nip46ApprovalPolicy(),
+    Nip46Notifier notifier = const NoopNip46Notifier(),
     DateTime Function()? now,
     Duration requestTimeout = defaultRequestTimeout,
   })  : _requestTimeout = requestTimeout,
@@ -135,6 +149,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         _relayService = relayService,
         _crypto = crypto,
         _approvalPolicy = approvalPolicy,
+        _notifier = notifier,
         _now = now ?? DateTime.now,
         _random = Random.secure(),
         super(const Nip46State()) {
@@ -473,24 +488,37 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
   /// Revokes a session — stops relays, deletes from store, removes from state.
   Future<void> revokeSession(String sessionId) async {
-    // Its queued requests are answered first, while the relays still run.
+    // Its waiting requests are answered first, while the relays still run.
     final session = _sessionById(sessionId);
     // Out of state at once, so no save started from here on can keep it
     // (see [_updateSession]); its grants go with it (#28).
     state = state.copyWith(
       sessions: state.sessions.where((s) => s.id != sessionId).toList(),
     );
-    final queued = state.pendingMethodRequests
-        .where((pending) => pending.sessionId == sessionId)
-        .toList();
-    for (final pending in queued) {
-      _takePendingMethodRequest(pending.key);
+    // Its queued and held requests (#29) are all taken before the first
+    // await, so no timeout can answer one a second time or remove one
+    // mid-loop, and an answer that fails cannot skip the relay stop and
+    // delete below.
+    final requestIds = [
+      for (final pending in state.pendingMethodRequests.toList())
+        if (pending.sessionId == sessionId &&
+            _takePendingMethodRequest(pending.key) != null)
+          pending.request.id,
+      for (final entry in _heldRequests.entries.toList())
+        if (entry.value.sessionId == sessionId)
+          ?_takeHeldRequest(entry.key)?.request.id,
+    ];
+    for (final requestId in requestIds) {
       if (session == null) continue;
-      await _publishErrorResponse(
-        session: session,
-        requestId: pending.request.id,
-        error: 'Session has been revoked.',
-      );
+      try {
+        await _publishErrorResponse(
+          session: session,
+          requestId: requestId,
+          error: 'Session has been revoked.',
+        );
+      } catch (e) {
+        diogelLog('Nip46Controller: could not answer a request', error: e);
+      }
     }
     try {
       await _relayService.stopSession(sessionId);
@@ -501,6 +529,22 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       await _enqueueSave(() => _sessionStore.deleteSession(sessionId));
     }
   }
+
+  /// Turns background running on or off (#29). The app starts the service
+  /// when it goes to the background with this on and a session active.
+  Future<void> setRunInBackground(bool value) async {
+    state = state.copyWith(runInBackground: value);
+    try {
+      await _sessionStore.setRunInBackground(value);
+    } catch (e) {
+      diogelLog('Nip46Controller: could not save background running', error: e);
+    }
+  }
+
+  /// Whether going to the background should start the service.
+  bool get wantsBackgroundService =>
+      state.runInBackground &&
+      state.sessions.any((s) => s.status == Nip46SessionStatus.active);
 
   void clearMessages() {
     state = state.copyWith(
@@ -518,7 +562,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     state = state.copyWith(isLoading: true);
     try {
       final sessions = await _sessionStore.listSessions();
-      state = state.copyWith(sessions: sessions, isLoading: false);
+      final runInBackground = await _sessionStore.getRunInBackground();
+      state = state.copyWith(
+        sessions: sessions,
+        isLoading: false,
+        runInBackground: runInBackground,
+      );
 
       for (final session in sessions) {
         if (session.status == Nip46SessionStatus.active) {
@@ -535,10 +584,13 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   }
 
   void _onVaultStateChanged(VaultControllerState vaultState) {
-    // Lock and unlock need nothing here: relay connections stay alive, and
-    // signing fails at the method handler if the vault is locked.
+    // Relay connections stay alive across a lock. Requests that arrived while
+    // it was locked were held, and are decided now (#29).
     final previous = _lastVaultState;
     _lastVaultState = vaultState.vaultState;
+    if (vaultState.vaultState is VaultUnlocked && previous is! VaultUnlocked) {
+      unawaited(_releaseHeldRequests());
+    }
     if (vaultState.vaultState is NoVault &&
         previous != null &&
         previous is! NoVault) {
@@ -568,8 +620,34 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       sessions: const [],
       pendingApproval: null,
       pendingMethodRequests: const [],
+      // The wipe cleared the store, the setting with it.
+      runInBackground: false,
     );
-    // Every queued request gets its one answer before the relays stop.
+    // Every queued or held request gets its one answer before the relays
+    // stop. Held ones are answered from the sessions as they were, all taken
+    // before the first await so no timeout can remove one mid-loop.
+    final heldAll = _heldRequests.values.toList();
+    _heldRequests.clear();
+    for (final held in heldAll) {
+      held.timer.cancel();
+      unawaited(
+        _notifySafely(() => _notifier.cancelHeldRequest(held.sessionId)),
+      );
+    }
+    for (final held in heldAll) {
+      for (final session in sessions) {
+        if (session.id != held.sessionId) continue;
+        try {
+          await _publishErrorResponse(
+            session: session,
+            requestId: held.request.id,
+            error: 'The Symudol vault was erased',
+          );
+        } catch (e) {
+          diogelLog('Nip46Controller: could not answer a request', error: e);
+        }
+      }
+    }
     for (final pending in queued) {
       for (final session in sessions) {
         if (session.id != pending.sessionId) continue;
@@ -692,6 +770,19 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       session = refreshed;
     }
 
+    await _decide(session, request, usesNip04, arrivedAt: _now());
+  }
+
+  /// Answers [request] by the policy: signs it, refuses it, queues it for
+  /// review, or holds it while the vault is locked. A held request comes back
+  /// here on unlock with its original [arrivedAt], so it keeps the time it
+  /// has left (#29).
+  Future<void> _decide(
+    Nip46Session session,
+    Nip46Request request,
+    bool usesNip04, {
+    required DateTime arrivedAt,
+  }) async {
     final vaultState = _vaultController.state.vaultState;
     final activeId = _vaultService.activeIdentity?.publicKey;
 
@@ -750,13 +841,24 @@ class Nip46Controller extends StateNotifier<Nip46State> {
           error: reason,
         );
       case Nip46RequireReview():
-        await _queueMethodRequest(session, request, usesNip04);
-      case Nip46RequireUnlock(:final reason):
-        await _publishErrorResponse(
-          session: session,
-          requestId: request.id,
-          error: reason,
+        await _queueMethodRequest(
+          session,
+          request,
+          usesNip04,
+          arrivedAt: arrivedAt,
         );
+      case Nip46RequireUnlock(:final reason):
+        // Locked: held, never signed, and decided after unlock (#29). With
+        // no vault or no active identity there is nothing to wait for.
+        if (vaultState is VaultLocked || vaultState is SessionExpired) {
+          await _holdRequest(session, request, usesNip04, arrivedAt);
+        } else {
+          await _publishErrorResponse(
+            session: session,
+            requestId: request.id,
+            error: reason,
+          );
+        }
     }
   }
 
@@ -1158,12 +1260,14 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     return result;
   }
 
-  /// Queues [request] for review, with its own timeout from now.
+  /// Queues [request] for review, timing out [_requestTimeout] after it
+  /// arrived.
   Future<void> _queueMethodRequest(
     Nip46Session session,
     Nip46Request request,
-    bool usesNip04,
-  ) async {
+    bool usesNip04, {
+    required DateTime arrivedAt,
+  }) async {
     final identity = _vaultService.activeIdentity;
     if (identity == null) {
       await _publishErrorResponse(
@@ -1179,16 +1283,19 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       usesNip04: usesNip04,
       identityLocalId: identity.localId,
       identityPubkey: identity.publicKey,
-      receivedAt: _now(),
+      receivedAt: arrivedAt,
       clientPubkey: session.clientPubkey,
       clientName: session.clientName,
       clientUrl: session.clientUrl,
     );
     final queued = state.pendingMethodRequests;
-    // The same request sent again: the first one gets the answer.
-    if (queued.any((q) => q.key == pending.key)) return;
-    if (queued.where((q) => q.sessionId == session.id).length >=
-        maxPendingRequestsPerSession) {
+    // The same request sent again, queued or still held for unlock (#29):
+    // the first one gets the answer.
+    if (queued.any((q) => q.key == pending.key) ||
+        _heldRequests.containsKey(pending.key)) {
+      return;
+    }
+    if (_waitingFor(session.id) >= maxPendingRequestsPerSession) {
       await _publishErrorResponse(
         session: session,
         requestId: request.id,
@@ -1197,8 +1304,17 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       return;
     }
 
+    final left = _timeLeft(arrivedAt);
+    if (left == null) {
+      await _publishErrorResponse(
+        session: session,
+        requestId: request.id,
+        error: 'Request timed out',
+      );
+      return;
+    }
     state = state.copyWith(pendingMethodRequests: [...queued, pending]);
-    _methodRequestTimers[pending.key] = Timer(_requestTimeout, () async {
+    _methodRequestTimers[pending.key] = Timer(left, () async {
       if (_takePendingMethodRequest(pending.key) == null) return;
       await _publishErrorResponse(
         session: session,
@@ -1206,6 +1322,106 @@ class Nip46Controller extends StateNotifier<Nip46State> {
         error: 'Request timed out',
       );
     });
+  }
+
+  /// How long a request that arrived at [arrivedAt] may still wait, or null
+  /// once its [_requestTimeout] has passed.
+  Duration? _timeLeft(DateTime arrivedAt) {
+    final left = _requestTimeout - _now().difference(arrivedAt);
+    return left > Duration.zero ? left : null;
+  }
+
+  /// Requests from [sessionId] waiting for review or for unlock.
+  int _waitingFor(String sessionId) =>
+      state.pendingMethodRequests.where((q) => q.sessionId == sessionId).length +
+      _heldRequests.values.where((h) => h.sessionId == sessionId).length;
+
+  /// Holds [request] until the vault unlocks, or until it times out
+  /// [_requestTimeout] after it arrived, and notifies the user (#29).
+  Future<void> _holdRequest(
+    Nip46Session session,
+    Nip46Request request,
+    bool usesNip04,
+    DateTime arrivedAt,
+  ) async {
+    final key = '${session.id}/${request.id}';
+    // The same request sent again, held or still queued for review from
+    // before the lock: the first one gets the answer.
+    if (_heldRequests.containsKey(key) ||
+        state.pendingMethodRequests.any((q) => q.key == key)) {
+      return;
+    }
+    final left = _timeLeft(arrivedAt);
+    if (_waitingFor(session.id) >= maxPendingRequestsPerSession ||
+        left == null) {
+      await _publishErrorResponse(
+        session: session,
+        requestId: request.id,
+        error: left == null ? 'Request timed out' : 'Too many pending requests',
+      );
+      return;
+    }
+    _heldRequests[key] = _HeldRequest(
+      sessionId: session.id,
+      request: request,
+      usesNip04: usesNip04,
+      arrivedAt: arrivedAt,
+      timer: Timer(left, () async {
+        final held = _takeHeldRequest(key);
+        if (held == null) return;
+        final current = _sessionById(held.sessionId) ?? session;
+        await _publishErrorResponse(
+          session: current,
+          requestId: held.request.id,
+          error: 'Request timed out',
+        );
+      }),
+    );
+    await _notifySafely(() => _notifier.showHeldRequest(session.id));
+  }
+
+  /// Removes the held request with [key], cancels its timer, and clears its
+  /// session's notice when it was the last one.
+  _HeldRequest? _takeHeldRequest(String key) {
+    final held = _heldRequests.remove(key);
+    if (held == null) return null;
+    held.timer.cancel();
+    if (!_heldRequests.values.any((h) => h.sessionId == held.sessionId)) {
+      unawaited(
+        _notifySafely(() => _notifier.cancelHeldRequest(held.sessionId)),
+      );
+    }
+    return held;
+  }
+
+  /// On unlock, decides every held request as if it had just arrived, but
+  /// with the time it has left (#29).
+  Future<void> _releaseHeldRequests() async {
+    for (final key in _heldRequests.keys.toList()) {
+      final held = _takeHeldRequest(key);
+      if (held == null) continue;
+      final session = _sessionById(held.sessionId);
+      if (session == null) continue;
+      try {
+        await _decide(
+          session,
+          held.request,
+          held.usesNip04,
+          arrivedAt: held.arrivedAt,
+        );
+      } catch (e) {
+        diogelLog('Nip46Controller: could not decide a held request', error: e);
+      }
+    }
+  }
+
+  /// A notification that cannot be shown must not stop a request.
+  Future<void> _notifySafely(Future<void> Function() notify) async {
+    try {
+      await notify();
+    } catch (e) {
+      diogelLog('Nip46Controller: could not update the notification', error: e);
+    }
   }
 
   Future<void> _publishResponse({
@@ -1341,8 +1557,28 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     for (final timer in _methodRequestTimers.values) {
       timer.cancel();
     }
+    for (final held in _heldRequests.values) {
+      held.timer.cancel();
+    }
     _connectApprovalTimer?.cancel();
     _relayService.dispose();
     super.dispose();
   }
+}
+
+/// A request that arrived while the vault was locked (#29).
+class _HeldRequest {
+  final String sessionId;
+  final Nip46Request request;
+  final bool usesNip04;
+  final DateTime arrivedAt;
+  final Timer timer;
+
+  _HeldRequest({
+    required this.sessionId,
+    required this.request,
+    required this.usesNip04,
+    required this.arrivedAt,
+    required this.timer,
+  });
 }

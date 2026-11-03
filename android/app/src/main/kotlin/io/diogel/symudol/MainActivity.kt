@@ -48,6 +48,8 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingCompletionRunnable: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
+    // The NIP-46 foreground service and its request notices (#29).
+    private var nip46Background: Nip46Background? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         DiogelLog.d(TAG) { "onCreate: action=${intent?.action}" }
@@ -90,6 +92,11 @@ class MainActivity : FlutterFragmentActivity() {
         val biometricVault = BiometricVault(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BiometricVault.CHANNEL)
             .setMethodCallHandler(biometricVault::handle)
+        // NIP-46 in the background: the foreground service and request notices (#29).
+        val nip46Channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Nip46Background.CHANNEL)
+        nip46Background = Nip46Background(this, nip46Channel).also {
+            nip46Channel.setMethodCallHandler(it::handle)
+        }
         // The vault backup's NIP-49 key derivation, which pure Dart runs too slowly (#25).
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Scrypt.CHANNEL)
             .setMethodCallHandler(Scrypt::handle)
@@ -211,7 +218,20 @@ class MainActivity : FlutterFragmentActivity() {
         // The engine goes with the activity (configuration changes are handled in place), and
         // with it the Dart lock timers: the ContentProvider must not keep signing (#9).
         Nip55CryptoBridge.clearActiveKey()
+        // Nor may the NIP-46 service keep the process up without an engine to serve (#29).
+        nip46Background?.detach()
+        nip46Background = null
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        // The notification permission asked for when NIP-46 background running is turned on (#29).
+        if (nip46Background?.onPermissionResult(requestCode) == true) return
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onResume() {

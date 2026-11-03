@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../fakes/fake_nip46_session_store.dart';
+import '../../nip46/data/fake_nip46_relay_service.dart';
 import '../../../fakes/fake_nip55_permission_store.dart';
 import '../../../fakes/fake_vault_store.dart';
 
@@ -180,6 +181,9 @@ void main() {
           vaultStoreProvider.overrideWithValue(vaultStore),
           nip55PermissionStoreProvider.overrideWithValue(grantStore),
           nip46SessionStoreProvider.overrideWithValue(sessionStore),
+          // Unlocking with a stored session starts NIP-46 (#29): no real
+          // relay sockets in a test.
+          nip46RelayServiceProvider.overrideWithValue(FakeNip46RelayService()),
           nip55NativeSyncProvider.overrideWithValue(nativeSync),
         ],
         child: const DiogelApp(),

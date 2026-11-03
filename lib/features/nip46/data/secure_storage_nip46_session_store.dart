@@ -9,6 +9,7 @@ import '../domain/nip46_session_store.dart';
 
 class SecureStorageNip46SessionStore implements Nip46SessionStore {
   static const _key = 'nip46_sessions_v1';
+  static const _runInBackgroundKey = 'nip46_run_in_background_v1';
 
   final FlutterSecureStorage _storage;
   List<Nip46Session>? _cache;
@@ -80,7 +81,16 @@ class SecureStorageNip46SessionStore implements Nip46SessionStore {
   Future<void> clearAll() async {
     _cache = [];
     await _storage.delete(key: _key);
+    await _storage.delete(key: _runInBackgroundKey);
   }
+
+  @override
+  Future<bool> getRunInBackground() async =>
+      await _storage.read(key: _runInBackgroundKey) == 'true';
+
+  @override
+  Future<void> setRunInBackground(bool value) =>
+      _storage.write(key: _runInBackgroundKey, value: value.toString());
 
   Future<void> _write(List<Nip46Session> sessions) async {
     final payload = jsonEncode(sessions.map((s) => s.toJson()).toList());

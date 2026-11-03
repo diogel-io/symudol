@@ -102,9 +102,17 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: activeSessions.length,
+            // The sessions, then the background switch: a request waiting
+            // on a session matters more than the setting.
+            itemCount: activeSessions.length + 1,
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
+              if (index == activeSessions.length) {
+                return _BackgroundSwitch(
+                  value: state.runInBackground,
+                  onChanged: (value) => _setRunInBackground(context, ref, value),
+                );
+              }
               final session = activeSessions[index];
               return _SessionTile(
                 session: session,
@@ -120,6 +128,28 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
             },
           );
         },
+      ),
+    );
+  }
+
+  /// Turns background running on or off, asking for the notification
+  /// permission when it is turned on (#29).
+  Future<void> _setRunInBackground(
+    BuildContext context,
+    WidgetRef ref,
+    bool value,
+  ) async {
+    await ref.read(nip46ControllerProvider.notifier).setRunInBackground(value);
+    if (!value) return;
+    final background = ref.read(nip46BackgroundProvider);
+    await background.requestNotificationPermission();
+    if (await background.notificationsAllowed() || !context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Notifications are off, so Symudol cannot tell you about requests '
+          'while it is locked.',
+        ),
       ),
     );
   }
@@ -169,6 +199,32 @@ class Nip46ConnectionsScreen extends ConsumerWidget {
             child: const Text('Revoke'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Keeps remote signing running in the background (#29). Signing there
+/// still needs the vault unlocked.
+class _BackgroundSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _BackgroundSwitch({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: SwitchListTile(
+        key: const Key('nip46RunInBackground'),
+        value: value,
+        onChanged: onChanged,
+        title: const Text('Keep running in the background'),
+        subtitle: const Text(
+          'Keeps these connections open while Symudol is in the background. '
+          'Requests are only signed while the vault is unlocked: set the '
+          'background lock delay to allow it.',
+        ),
       ),
     );
   }

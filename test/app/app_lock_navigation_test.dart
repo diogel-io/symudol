@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import 'package:symudol/app/app.dart';
 import 'package:symudol/app/utils/concurrency_utils.dart';
+import 'package:symudol/features/nip46/application/nip46_feature.dart';
 import 'package:symudol/features/nip46/application/nip46_providers.dart';
+import 'package:symudol/features/nip46/data/method_channel_nip46_background.dart';
 import 'package:symudol/features/nip46/domain/nip46_relay_event.dart';
 import 'package:symudol/features/nip46/domain/nip46_session.dart';
 import 'package:symudol/features/nip55/application/nip55_providers.dart';
@@ -84,6 +86,29 @@ class _Gateway implements Nip55Gateway {
   Future<Uint8List?> getAppIcon(String packageName) async => null;
 }
 
+/// Records the foreground service being started and stopped (#29).
+class _FakeBackground extends MethodChannelNip46Background {
+  int starts = 0;
+  int stops = 0;
+
+  @override
+  Future<void> start() async => starts++;
+
+  @override
+  Future<void> stop() async => stops++;
+}
+
+/// A connected client, stored before this run (#29).
+final _storedSession = Nip46Session(
+  id: 'stored-1',
+  clientPubkey: 'c' * 64,
+  remoteSignerPubkey: 'd' * 64,
+  remoteSignerPrivkey: '${'0' * 63}5',
+  relays: const ['wss://relay.example.com'],
+  status: Nip46SessionStatus.active,
+  createdAt: DateTime(2026, 11, 2),
+);
+
 /// Avoids real relay connections from the identity's avatar.
 class _RelayProfileService extends RelayProfileService {
   @override
@@ -95,7 +120,12 @@ void main() {
   setUp(() => ConcurrencyUtils.useSynchronousTasks = true);
   tearDown(() => ConcurrencyUtils.useSynchronousTasks = false);
 
-  Future<ProviderContainer> pumpUnlockedApp(WidgetTester tester) async {
+  Future<ProviderContainer> pumpUnlockedApp(
+    WidgetTester tester, {
+    List<Nip46Session> sessions = const [],
+    bool nip46Enabled = true,
+    MethodChannelNip46Background? background,
+  }) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
@@ -109,8 +139,11 @@ void main() {
           nip55GatewayProvider.overrideWithValue(_Gateway()),
           nip46RelayServiceProvider.overrideWithValue(FakeNip46RelayService()),
           nip46SessionStoreProvider.overrideWithValue(
-            FakeNip46SessionStore([]),
+            FakeNip46SessionStore(List.of(sessions)),
           ),
+          nip46EnabledProvider.overrideWithValue(nip46Enabled),
+          if (background != null)
+            nip46BackgroundProvider.overrideWithValue(background),
           nip55PermissionStoreProvider.overrideWithValue(
             FakeNip55PermissionStore(),
           ),
@@ -547,6 +580,28 @@ void main() {
       expect(find.textContaining('a remote note'), findsWidgets);
     });
 
+    testWidgets('one held while locked is shown after the unlock (#29)', (
+      tester,
+    ) async {
+      final container = await pumpUnlockedApp(tester);
+      await connectClient(tester, container);
+      await container.read(vaultControllerProvider.notifier).lock();
+      await tester.pumpAndSettle();
+      final before = responses(container).length;
+
+      await sendSignEvent(tester, container, 'held-1');
+
+      // Not answered, and no approval over the unlock screen.
+      expect(responses(container), hasLength(before));
+      expect(find.text('Unlock Vault').hitTestable(), findsWidgets);
+      expect(find.text('Approval Request'), findsNothing);
+
+      await enterPin(tester);
+
+      expect(find.text('Approval Request').hitTestable(), findsOneWidget);
+      expect(find.textContaining('a remote note'), findsWidgets);
+    });
+
     testWidgets('the home shell does not start NIP-46', (tester) async {
       final container = await pumpUnlockedApp(tester);
       await sendPublicKeyRequest(container);
@@ -557,6 +612,90 @@ void main() {
       expect(find.text('Share public key').hitTestable(), findsOneWidget);
       expect(container.exists(nip46ControllerProvider), isFalse);
       expect(container.exists(nip46RelayServiceProvider), isFalse);
+    });
+  });
+
+  // NIP-46 starts on unlock, and the foreground service keeps it running in
+  // the background when the user wants it (diogel-io/symudol#29).
+  group('NIP-46 in the background (#29)', () {
+    Future<void> goToBackground(WidgetTester tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+    }
+
+    Future<void> comeBack(WidgetTester tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('unlocking with a stored session starts it', (tester) async {
+      final container = await pumpUnlockedApp(
+        tester,
+        sessions: [_storedSession],
+      );
+
+      expect(container.exists(nip46ControllerProvider), isTrue);
+      final relay =
+          container.read(nip46RelayServiceProvider) as FakeNip46RelayService;
+      expect(relay.connectedSessions, {_storedSession.id});
+    });
+
+    testWidgets('a build that hides NIP-46 does not start it', (tester) async {
+      final container = await pumpUnlockedApp(
+        tester,
+        sessions: [_storedSession],
+        nip46Enabled: false,
+      );
+
+      expect(container.exists(nip46ControllerProvider), isFalse);
+      expect(container.exists(nip46RelayServiceProvider), isFalse);
+    });
+
+    testWidgets('revoking the last session stops the service', (tester) async {
+      final background = _FakeBackground();
+      final container = await pumpUnlockedApp(
+        tester,
+        sessions: [_storedSession],
+        background: background,
+      );
+      final controller = container.read(nip46ControllerProvider.notifier);
+      await controller.setRunInBackground(true);
+      expect(background.stops, 0);
+
+      // As when a client logs out while Symudol is in the background.
+      await controller.revokeSession(_storedSession.id);
+      await tester.pump();
+
+      expect(background.stops, 1);
+    });
+
+    testWidgets('the service runs in the background only when turned on', (
+      tester,
+    ) async {
+      final background = _FakeBackground();
+      final container = await pumpUnlockedApp(
+        tester,
+        sessions: [_storedSession],
+        background: background,
+      );
+
+      await goToBackground(tester);
+      await comeBack(tester);
+      expect(background.starts, 0);
+
+      await container
+          .read(nip46ControllerProvider.notifier)
+          .setRunInBackground(true);
+      await goToBackground(tester);
+      expect(background.starts, 1);
+
+      await comeBack(tester);
+      expect(background.stops, greaterThanOrEqualTo(1));
+      expect(find.text('Unlock Vault'), findsNothing);
     });
   });
 }
