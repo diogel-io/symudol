@@ -71,14 +71,15 @@ Run each check with each client, and record pass, fail or not supported.
 9. **Scan a client's code.** These need a phone, since the emulator's camera can't see the
    desktop screen. Start the client's `nostrconnect://` flow so it shows a QR code. In Symudol,
    open Remote Signing, tap +, choose Connect to a client and tap Scan QR code. Allow the camera.
-   Approve. The client accepts the connection.
+   Approve. The client accepts the connection. Then refuse the camera permission (in Android
+   settings, if it was granted) and tap Scan QR code again: Symudol explains it can't use the
+   camera, and pasting the URI still works.
 10. **Client scans Symudol's code.** Create a `bunker://` token in Symudol, and scan its QR code
     with the client's "log in with a remote signer" scanner, on a phone client or a laptop camera.
     Approve. The client shows the throwaway account.
 11. **Tap a link.** On the phone, open the client in a mobile browser and use its `nostrconnect:`
     link or button. Symudol opens on the approval. Repeat with Symudol locked: it asks for the PIN
-    first, then shows the approval. Then refuse the camera permission and check that Scan
-    explains it and pasting still works.
+    first, then shows the approval.
 
 ## Latest Run
 

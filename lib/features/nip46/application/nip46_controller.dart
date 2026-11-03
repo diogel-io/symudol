@@ -197,8 +197,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // The same link opened again, or a client that is already paired (#31).
     // A session the client has never used may be one whose connect response
     // never reached it, since its relays open only on approval: pairing again
-    // replaces it rather than leaving the client stuck.
-    for (final existing in [...state.sessions]) {
+    // replaces it rather than leaving the client stuck. Only once the user
+    // approves, so a link alone can't remove a connection.
+    final replaces = <String>[];
+    for (final existing in state.sessions) {
       if (existing.clientPubkey != parsed.clientPubkey ||
           existing.status != Nip46SessionStatus.active) {
         continue;
@@ -206,7 +208,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       if (existing.lastUsedAt != null) {
         throw const Nip46AlreadyConnectedException();
       }
-      await revokeSession(existing.id);
+      replaces.add(existing.id);
     }
     final sessionPrivkey = _generatePrivkey();
     final sessionPubkey = _crypto.derivePublicKey(sessionPrivkey);
@@ -232,6 +234,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // link any page opens, and its relays are the client's choice (#31). A
     // rejected connection so never reaches the network.
     await _sessionStore.saveSession(session);
+    if (replaces.isNotEmpty) _replacedOnApproval[session.id] = replaces;
 
     state = state.copyWith(
       sessions: [...state.sessions, session],
@@ -260,6 +263,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
+    final replaces = _replacedOnApproval.remove(pending.id) ?? const [];
 
     final identity = _vaultService.activeIdentity?.publicKey;
     final expiresAt = _expiresAtFor(timeframe);
@@ -294,6 +298,12 @@ class Nip46Controller extends StateNotifier<Nip46State> {
       pendingApproval: null,
     );
 
+    // The unused sessions this connection replaces go now, unless the client
+    // used one meanwhile (#31).
+    for (final id in replaces) {
+      if (_sessionById(id)?.lastUsedAt == null) await revokeSession(id);
+    }
+
     // A nostrconnect session opens its relays only now (#31). The connect
     // response below waits for them to connect.
     if (pending.initiatedBy == Nip46ConnectionInitiator.nostrconnect) {
@@ -327,6 +337,8 @@ class Nip46Controller extends StateNotifier<Nip46State> {
 
     _connectApprovalTimer?.cancel();
     _connectApprovalTimer = null;
+    // The sessions it would have replaced stay (#31).
+    _replacedOnApproval.remove(pending.id);
 
     if (pending.clientPubkey.isNotEmpty) {
       await _publishErrorResponse(
@@ -584,6 +596,10 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   // Holds the connect request ID during the bunker:// approval flow.
   String? _pendingConnectRequestId;
 
+  // The unused sessions each pending nostrconnect connection replaces once it
+  // is approved, by its session id (#31).
+  final Map<String, List<String>> _replacedOnApproval = {};
+
   Future<void> _initialize() async {
     state = state.copyWith(isLoading: true);
     _inboundSub = _relayService.inboundEvents.listen(_onInboundEvent);
@@ -679,6 +695,7 @@ class Nip46Controller extends StateNotifier<Nip46State> {
   /// Stops every relay subscription and forgets every session in memory.
   /// The wipe has already cleared the store.
   Future<void> _dropAllSessions() async {
+    _replacedOnApproval.clear();
     for (final timer in _methodRequestTimers.values) {
       timer.cancel();
     }

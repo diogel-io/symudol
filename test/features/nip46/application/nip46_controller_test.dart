@@ -221,11 +221,34 @@ void main() {
         await controller.importNostrconnectToken(
           buildNostrconnect(secret: 'again'),
         );
+        expect(controller.state.pendingApproval?.pendingSecret, 'again');
+        // Kept until the user approves: a link alone removes nothing.
+        expect(sessionStore.sessions.map((s) => s.id), contains(first.id));
+
+        await controller.approveConnection();
 
         expect(controller.state.sessions.map((s) => s.id), isNot(contains(first.id)));
         expect(sessionStore.sessions.map((s) => s.id), isNot(contains(first.id)));
         expect(relayService.connectedSessions, isNot(contains(first.id)));
-        expect(controller.state.pendingApproval?.pendingSecret, 'again');
+        expect(controller.state.sessions, hasLength(1));
+      },
+    );
+
+    test(
+      'rejecting a pairing again keeps the session it would replace (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+        await controller.rejectConnection();
+
+        expect(controller.state.sessions.single.id, first.id);
+        expect(sessionStore.sessions.single.id, first.id);
+        expect(relayService.connectedSessions, contains(first.id));
       },
     );
 

@@ -46,6 +46,8 @@ class Nip46Links(private val context: Context) {
         val link = linkFrom(intent) ?: return false
         DiogelLog.d(TAG) { "receive: a nostrconnect link arrived" }
         pendingLink = link
+        // This link is not taken yet, whatever came before it.
+        linkTaken = false
         channel?.invokeMethod("linkAvailable", null)
         return true
     }

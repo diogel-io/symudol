@@ -98,6 +98,21 @@ class Nip46LinksTest {
     }
 
     @Test
+    fun aNewLinkNotTakenYetSurvivesARecreateAfterAnEarlierOneWasTaken() {
+        val first = Nip46Links(context)
+        first.receiveOnCreate(view(link), savedState = null)
+        first.call("takeLink")
+        // A second link arrives through onNewIntent, which makes it the activity's intent.
+        val second = link.replace("s1", "s2")
+        first.receive(view(second))
+
+        val (recreated, state) = recreate(first)
+
+        assertTrue(recreated.receiveOnCreate(view(second), state))
+        assertEquals(second, recreated.call("takeLink").value)
+    }
+
+    @Test
     fun theSavedStateHoldsNoLink() {
         val first = Nip46Links(context)
         first.receiveOnCreate(view(link), savedState = null)
