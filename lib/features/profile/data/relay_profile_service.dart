@@ -6,6 +6,7 @@ import '../domain/nostr_profile.dart';
 import '../domain/profile_network_settings.dart';
 import '../../requests/domain/signed_nostr_event.dart';
 import '../domain/profile_relays.dart';
+import '../domain/relay_list.dart';
 import 'profile_relay_client.dart';
 
 /// Finds an identity's profile metadata (NIP-01 kind 0) where it lives: on
@@ -121,6 +122,66 @@ class RelayProfileService {
     List<String> relays,
   ) => _client.publish(event: event, relays: relays);
 
+  /// Looks up the identity's newest relay list (NIP-65 kind 10002) on the
+  /// profile and indexer relays chosen in Settings (diogel-io/symudol#88).
+  ///
+  /// Throws [ProfileFetchException] when no relay answered, so a save can't
+  /// overwrite a list it never read. Each relay learns [pubkeyHex] and the
+  /// device's IP address, so call this only when the user has asked
+  /// (diogel-io/symudol#83).
+  Future<RelayListLookup> fetchRelayList(String pubkeyHex) async {
+    try {
+      final settings = await _settings();
+      final result = await _client.query(
+        kinds: const [_relayListKind],
+        author: pubkeyHex,
+        relays: profileRelays(
+          const [],
+          settings.profileRelays,
+          settings.indexerRelays,
+        ),
+      );
+      if (result.answered.isEmpty) {
+        throw StateError('No relay answered');
+      }
+      final newest = _newest(result.events, _relayListKind, pubkeyHex);
+      return RelayListLookup(
+        tags: newest?.tags,
+        createdAt: newest?.createdAt,
+        searchedRelays: result.answered.toList(),
+      );
+    } catch (error) {
+      throw ProfileFetchException(error);
+    }
+  }
+
+  /// Where a relay list replacing [previous] with [next] is published: both
+  /// lists' write relays, where clients look for the identity's events, and
+  /// the profile and indexer relays, which NIP-65 asks clients to spread
+  /// relay lists to (diogel-io/symudol#88).
+  Future<List<String>> relayListPublishRelays(
+    List<RelayListEntry> previous,
+    List<RelayListEntry> next,
+  ) async {
+    final settings = await _settings();
+    List<String> writes(List<RelayListEntry> entries) => [
+      for (final entry in entries)
+        if (entry.write) entry.url,
+    ];
+    return profileRelays(
+      [...writes(next), ...writes(previous)],
+      settings.profileRelays,
+      settings.indexerRelays,
+    );
+  }
+
+  /// Sends the signed relay list [event] to [relays] and reports how each
+  /// answered (diogel-io/symudol#88).
+  Future<Map<String, RelayPublishResult>> publishRelayList(
+    SignedNostrEvent event,
+    List<String> relays,
+  ) => _client.publish(event: event, relays: relays);
+
   /// The most recent of [events] of [kind] signed by [pubkeyHex], or null. A
   /// relay can answer with any event, so the others are ignored.
   static NostrEvent? _newest(
@@ -173,6 +234,30 @@ class ProfileLookup {
   /// The https Blossom servers the identity lists (kind 10063), in its order
   /// of preference; empty when it lists none.
   final List<String> blossomServers;
+}
+
+/// What a relay list lookup found (diogel-io/symudol#88).
+class RelayListLookup {
+  const RelayListLookup({
+    this.tags,
+    this.createdAt,
+    this.searchedRelays = const [],
+  });
+
+  /// The newest kind 10002's tags; null when no relay held one.
+  final List<List<String>>? tags;
+
+  /// When the newest kind 10002 was created; null when no relay held one.
+  final DateTime? createdAt;
+
+  /// The relays that answered.
+  final List<String> searchedRelays;
+
+  /// Whether a relay held a list for the identity.
+  bool get found => tags != null;
+
+  /// The relays the newest list names.
+  List<RelayListEntry> get entries => relayListFromTags(tags);
 }
 
 /// The profile could not be fetched or read.
