@@ -11,10 +11,10 @@ import '../application/profile_editor.dart';
 import '../application/profile_providers.dart';
 import '../data/nip05_client.dart';
 import '../data/profile_image_picker.dart';
-import '../data/profile_relay_client.dart';
 import '../domain/profile_content.dart';
 import '../domain/profile_image.dart';
 import '../domain/profile_relays.dart';
+import 'publish_results_sheet.dart';
 
 /// Labels for the text fields, by kind 0 key.
 const Map<String, String> _labels = {
@@ -147,7 +147,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       _fill(ref.read(profileEditorProvider(_pubkey)).form);
       await showModalBottomSheet<void>(
         context: context,
-        builder: (context) => _PublishResultsSheet(results: results),
+        builder: (context) =>
+            PublishResultsSheet(title: 'Profile published', results: results),
       );
     } on ProfileSaveException catch (error) {
       if (!mounted) return;
@@ -814,58 +815,6 @@ class _PublishDialog extends StatelessWidget {
           child: const Text('Sign and publish'),
         ),
       ],
-    );
-  }
-}
-
-/// How each relay answered a published profile.
-class _PublishResultsSheet extends StatelessWidget {
-  const _PublishResultsSheet({required this.results});
-
-  final Map<String, RelayPublishResult> results;
-
-  @override
-  Widget build(BuildContext context) {
-    final accepted = results.values.where((result) => result.accepted).length;
-    return SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.all(DiogelSpacing.space4),
-        children: [
-          Text(
-            'Profile published',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: DiogelSpacing.space2),
-          Text('$accepted of ${results.length} relays accepted it.'),
-          const SizedBox(height: DiogelSpacing.space3),
-          for (final MapEntry(key: relay, value: result) in results.entries)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                switch (result.status) {
-                  RelayPublishStatus.accepted => Icons.check_circle,
-                  RelayPublishStatus.rejected => Icons.cancel,
-                  RelayPublishStatus.noAnswer => Icons.help_outline,
-                },
-                color: switch (result.status) {
-                  RelayPublishStatus.accepted => DiogelColors.stateSuccess,
-                  RelayPublishStatus.rejected => DiogelColors.stateError,
-                  RelayPublishStatus.noAnswer => DiogelColors.textTertiary,
-                },
-              ),
-              title: Text(relayHost(relay)),
-              subtitle: Text(
-                switch (result.status) {
-                      RelayPublishStatus.accepted => 'Accepted',
-                      RelayPublishStatus.rejected => 'Rejected',
-                      RelayPublishStatus.noAnswer => 'No answer',
-                    } +
-                    (result.message.isEmpty ? '' : ': ${result.message}'),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
