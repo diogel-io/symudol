@@ -195,12 +195,18 @@ class Nip46Controller extends StateNotifier<Nip46State> {
     // key only once the sessions are read (#31, #32).
     await _loadSessions();
     // The same link opened again, or a client that is already paired (#31).
-    if (state.sessions.any(
-      (s) =>
-          s.clientPubkey == parsed.clientPubkey &&
-          s.status == Nip46SessionStatus.active,
-    )) {
-      throw const Nip46AlreadyConnectedException();
+    // A session the client has never used may be one whose connect response
+    // never reached it, since its relays open only on approval: pairing again
+    // replaces it rather than leaving the client stuck.
+    for (final existing in [...state.sessions]) {
+      if (existing.clientPubkey != parsed.clientPubkey ||
+          existing.status != Nip46SessionStatus.active) {
+        continue;
+      }
+      if (existing.lastUsedAt != null) {
+        throw const Nip46AlreadyConnectedException();
+      }
+      await revokeSession(existing.id);
     }
     final sessionPrivkey = _generatePrivkey();
     final sessionPubkey = _crypto.derivePublicKey(sessionPrivkey);

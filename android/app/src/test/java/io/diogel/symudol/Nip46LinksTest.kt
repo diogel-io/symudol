@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Bundle
 import androidx.test.core.app.ApplicationProvider
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -63,15 +64,50 @@ class Nip46LinksTest {
         assertNull(links.call("takeLink").value)
     }
 
+    /** The activity is recreated: a new [Nip46Links] gets what the old one saved. */
+    private fun recreate(old: Nip46Links): Pair<Nip46Links, Bundle> {
+        val state = Bundle().also(old::saveState)
+        return Nip46Links(context) to state
+    }
+
     @Test
-    fun aRecreatedActivityDoesNotHandOverItsLaunchLinkAgain() {
-        val links = Nip46Links(context)
+    fun aRecreatedActivityDoesNotHandOverATakenLinkAgain() {
+        val first = Nip46Links(context)
+        assertTrue(first.receiveOnCreate(view(link), savedState = null))
+        assertEquals(link, first.call("takeLink").value)
 
-        assertTrue(links.receiveOnCreate(view(link), recreated = false))
-        assertEquals(link, links.call("takeLink").value)
+        val (second, state) = recreate(first)
 
-        assertFalse(links.receiveOnCreate(view(link), recreated = true))
-        assertNull(links.call("takeLink").value)
+        assertFalse(second.receiveOnCreate(view(link), state))
+        assertNull(second.call("takeLink").value)
+        // Still taken after a further recreate.
+        val (third, again) = recreate(second)
+        assertFalse(third.receiveOnCreate(view(link), again))
+    }
+
+    @Test
+    fun aRecreatedActivityKeepsALinkNotTakenYet() {
+        val first = Nip46Links(context)
+        first.receiveOnCreate(view(link), savedState = null)
+
+        // Recreated before Dart took it.
+        val (second, state) = recreate(first)
+
+        assertTrue(second.receiveOnCreate(view(link), state))
+        assertEquals(link, second.call("takeLink").value)
+    }
+
+    @Test
+    fun theSavedStateHoldsNoLink() {
+        val first = Nip46Links(context)
+        first.receiveOnCreate(view(link), savedState = null)
+        first.call("takeLink")
+
+        val (_, state) = recreate(first)
+
+        for (key in state.keySet()) {
+            assertFalse(state.get(key).toString().contains("secret"))
+        }
     }
 
     @Test

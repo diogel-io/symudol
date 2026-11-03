@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Bundle
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -16,12 +17,16 @@ import io.flutter.plugin.common.MethodChannel
  */
 class Nip46Links(private val context: Context) {
     private var pendingLink: String? = null
+    // Whether Dart has taken a link from this activity, kept across a recreate: a boolean,
+    // never the link, which carries the client's secret.
+    private var linkTaken = false
     private var channel: MethodChannel? = null
 
     companion object {
         const val CHANNEL = "io.diogel.symudol/nip46_links"
         const val ALIAS = "io.diogel.symudol.Nip46LinkAlias"
         private const val TAG = "Diogel-Nip46Links"
+        private const val STATE_LINK_TAKEN = "io.diogel.symudol.nip46LinkTaken"
 
         /**
          * The `nostrconnect:` link [intent] opens, or null. A link reopened from recents is
@@ -47,10 +52,20 @@ class Nip46Links(private val context: Context) {
 
     /**
      * [receive] for the intent an activity is created with. A recreated activity keeps its
-     * launch intent, whose link was handed over already, so it is ignored then.
+     * intent: its link is ignored once Dart has taken it, and kept if Dart had not yet.
      */
-    fun receiveOnCreate(intent: Intent?, recreated: Boolean): Boolean =
-        if (recreated) false else receive(intent)
+    fun receiveOnCreate(intent: Intent?, savedState: Bundle?): Boolean {
+        if (savedState?.getBoolean(STATE_LINK_TAKEN, false) == true) {
+            linkTaken = true
+            return false
+        }
+        return receive(intent)
+    }
+
+    /** Keeps whether a link was taken, for [receiveOnCreate] after a recreate. */
+    fun saveState(outState: Bundle) {
+        outState.putBoolean(STATE_LINK_TAKEN, linkTaken)
+    }
 
     fun attach(channel: MethodChannel) {
         this.channel = channel
@@ -61,6 +76,7 @@ class Nip46Links(private val context: Context) {
             "takeLink" -> {
                 val link = pendingLink
                 pendingLink = null
+                if (link != null) linkTaken = true
                 result.success(link)
             }
             "setLinksEnabled" -> {

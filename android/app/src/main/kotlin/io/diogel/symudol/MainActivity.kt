@@ -61,7 +61,7 @@ class MainActivity : FlutterFragmentActivity() {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         currentActivity = WeakReference(this)
         super.onCreate(savedInstanceState)
-        nip46Links.receiveOnCreate(intent, recreated = savedInstanceState != null)
+        nip46Links.receiveOnCreate(intent, savedInstanceState)
         initialNip55Intent = router.parse(intent)
         initialNip55Intent?.let { router.activate(it, markDelivered = false) }
         DiogelLog.d(TAG) { "onCreate: activeRequestToken=${router.activeRequestToken}" }
@@ -244,6 +244,11 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onResume() {
         currentActivity = WeakReference(this)
         super.onResume()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        nip46Links.saveState(outState)
     }
 
     override fun onNewIntent(intent: Intent) {

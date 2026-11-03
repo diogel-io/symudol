@@ -188,17 +188,46 @@ void main() {
       expect(relayService.capturedPublishes, isEmpty);
     });
 
-    test('refuses a client that is already connected (#31)', () async {
+    test('refuses a client that has used its session (#31)', () async {
+      await vaultController.createVault('1234');
       await controller.importNostrconnectToken(buildNostrconnect());
       await controller.approveConnection();
+      // The client has made a request since, so it got its connect response.
+      final used = sessionStore.sessions.single.copyWith(
+        lastUsedAt: DateTime.utc(2026, 11, 3),
+      );
+      sessionStore.sessions
+        ..clear()
+        ..add(used);
+      await useRequestTimeout(Nip46Controller.defaultRequestTimeout);
+      expect(controller.state.sessions.single.lastUsedAt, isNotNull);
 
       await expectLater(
         controller.importNostrconnectToken(buildNostrconnect(secret: 'again')),
         throwsA(isA<Nip46AlreadyConnectedException>()),
       );
-      expect(controller.state.sessions, hasLength(1));
+      expect(controller.state.sessions.single.id, used.id);
       expect(controller.state.pendingApproval, isNull);
     });
+
+    test(
+      'pairing again replaces a session the client never used (#31)',
+      () async {
+        await controller.importNostrconnectToken(buildNostrconnect());
+        await controller.approveConnection();
+        final first = controller.state.sessions.single;
+
+        // The connect response may never have reached the client.
+        await controller.importNostrconnectToken(
+          buildNostrconnect(secret: 'again'),
+        );
+
+        expect(controller.state.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(sessionStore.sessions.map((s) => s.id), isNot(contains(first.id)));
+        expect(relayService.connectedSessions, isNot(contains(first.id)));
+        expect(controller.state.pendingApproval?.pendingSecret, 'again');
+      },
+    );
 
     test('throws on malformed URI', () async {
       await expectLater(
