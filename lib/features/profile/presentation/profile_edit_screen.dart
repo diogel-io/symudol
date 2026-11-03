@@ -14,6 +14,7 @@ import '../data/profile_image_picker.dart';
 import '../domain/profile_content.dart';
 import '../domain/profile_image.dart';
 import '../domain/profile_relays.dart';
+import 'publish_dialog.dart';
 import 'publish_results_sheet.dart';
 
 /// Labels for the text fields, by kind 0 key.
@@ -135,7 +136,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       _fill(ref.read(profileEditorProvider(_pubkey)).form);
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => _PublishDialog(
+        builder: (context) => PublishDialog(
+          subject: 'profile',
           identityName: widget.identity.displayName ?? 'this identity',
           relays: prepared.publishRelays,
         ),
@@ -773,46 +775,6 @@ class _UploadDialog extends StatelessWidget {
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Upload'),
-        ),
-      ],
-    );
-  }
-}
-
-class _PublishDialog extends StatelessWidget {
-  const _PublishDialog({required this.identityName, required this.relays});
-
-  final String identityName;
-  final List<String> relays;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Sign and publish?'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Symudol will sign this profile with $identityName and publish '
-              'it to ${relays.length} relays:',
-            ),
-            const SizedBox(height: DiogelSpacing.space2),
-            for (final relay in relays) Text(relayHost(relay)),
-            const SizedBox(height: DiogelSpacing.space3),
-            const Text('Anyone can read a published profile.'),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Sign and publish'),
         ),
       ],
     );

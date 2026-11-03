@@ -8,6 +8,7 @@ import '../application/profile_providers.dart';
 import '../application/relay_list_editor.dart';
 import '../domain/profile_relays.dart';
 import '../domain/relay_list.dart';
+import 'publish_dialog.dart';
 import 'publish_results_sheet.dart';
 
 /// NIP-65 suggests keeping each kind of relay to 2 to 4.
@@ -71,7 +72,8 @@ class _RelayListScreenState extends ConsumerState<RelayListScreen> {
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => _PublishDialog(
+        builder: (context) => PublishDialog(
+          subject: 'relay list',
           identityName: widget.identity.displayName ?? 'this identity',
           relays: prepared.publishRelays,
         ),
@@ -427,46 +429,6 @@ class _NoList extends StatelessWidget {
         FilledButton(
           onPressed: onCreate,
           child: const Text('Create a relay list'),
-        ),
-      ],
-    );
-  }
-}
-
-class _PublishDialog extends StatelessWidget {
-  const _PublishDialog({required this.identityName, required this.relays});
-
-  final String identityName;
-  final List<String> relays;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Sign and publish?'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Symudol will sign this relay list with $identityName and '
-              'publish it to ${relays.length} relays:',
-            ),
-            const SizedBox(height: DiogelSpacing.space2),
-            for (final relay in relays) Text(relayHost(relay)),
-            const SizedBox(height: DiogelSpacing.space3),
-            const Text('Anyone can read a published relay list.'),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Sign and publish'),
         ),
       ],
     );
