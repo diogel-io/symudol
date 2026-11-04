@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
+import 'package:symudol/features/accounts/presentation/widgets/identity_tile.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/domain/nostr_profile.dart';
 import 'package:symudol/features/profile/domain/profile_network_settings.dart';
@@ -194,8 +195,19 @@ void main() {
       find.descendant(of: appBar, matching: find.byType(Image)),
       findsOneWidget, // the Symudol logo
     );
-    // The identity tiles keep their picture, or its fallback icon.
-    expect(find.byIcon(Icons.person), findsWidgets);
+    // The loaded identity's tile still shows its picture.
+    final account1Image = find.descendant(
+      of: find.ancestor(
+        of: find.text('Account 1'),
+        matching: find.byType(IdentityTile),
+      ),
+      matching: find.byType(Image),
+    );
+    expect(account1Image, findsOneWidget);
+    expect(
+      (tester.widget<Image>(account1Image).image as NetworkImage).url,
+      'https://example.com/one.png',
+    );
   });
 
   testWidgets('no profile and a failure are reported differently', (
