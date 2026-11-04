@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/features/profile/data/relay_profile_service.dart';
 import 'package:symudol/features/profile/domain/profile_network_settings.dart';
 import 'package:symudol/features/profile/domain/profile_relays.dart';
+import 'package:symudol/features/profile/domain/relay_list.dart';
 
 import '../../../fakes/fake_profile_relay_client.dart';
 
@@ -350,6 +351,82 @@ void main() {
     client.held[indexer] = [_event(alice, 0, 10, content: 'not json')];
 
     expect(service.fetchProfile(alice), throwsA(isA<ProfileFetchException>()));
+  });
+
+  group('relay list (#88)', () {
+    test('the newest list is found on the defaults and indexers', () async {
+      client.held[indexer] = [
+        _relayList(alice, ['wss://old.example.com'], 1),
+        _relayList(alice, [own], 5),
+        _relayList(mallory, ['wss://mallory.example.com'], 9),
+      ];
+
+      final lookup = await service.fetchRelayList(alice);
+
+      final query = client.queries.single;
+      expect(query.kinds, [10002]);
+      expect(query.relays, [...defaultProfileRelays, ...defaultIndexerRelays]);
+      expect(lookup.found, isTrue);
+      expect(lookup.entries, const [RelayListEntry(own)]);
+      expect(lookup.createdAt, DateTime.fromMillisecondsSinceEpoch(5000));
+    });
+
+    test('of two lists created at once, the lowest id is kept', () async {
+      NostrEvent list(String id, String relay) => NostrEvent(
+        id: id,
+        kind: 10002,
+        content: '',
+        sig: 'sig',
+        pubkey: alice,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(5000),
+        tags: [
+          ['r', relay],
+        ],
+      );
+      // The higher id arrives first: relay.damus.io is asked before indexers.
+      client.held['wss://relay.damus.io'] = [list('bb', 'wss://b.example.com')];
+      client.held[indexer] = [list('aa', 'wss://a.example.com')];
+
+      final lookup = await service.fetchRelayList(alice);
+
+      expect(lookup.entries, const [RelayListEntry('wss://a.example.com')]);
+    });
+
+    test('no list is told apart from no answer', () async {
+      final none = await service.fetchRelayList(alice);
+      expect(none.found, isFalse);
+      expect(none.searchedRelays, isNotEmpty);
+
+      client.unreachable.addAll([
+        ...defaultProfileRelays,
+        ...defaultIndexerRelays,
+      ]);
+      await expectLater(
+        service.fetchRelayList(alice),
+        throwsA(isA<ProfileFetchException>()),
+      );
+    });
+
+    test(
+      'a list is published to both lists\' write relays and the indexers',
+      () async {
+        final targets = await service.relayListPublishRelays(
+          const [
+            RelayListEntry('wss://old.example.com'),
+            RelayListEntry('wss://read-only.example.com', write: false),
+          ],
+          const [RelayListEntry(own), RelayListEntry('wss://nos.lol')],
+        );
+
+        expect(targets, [
+          own,
+          'wss://nos.lol',
+          'wss://old.example.com',
+          ...defaultProfileRelays.where((relay) => relay != 'wss://nos.lol'),
+          ...defaultIndexerRelays,
+        ]);
+      },
+    );
   });
 }
 

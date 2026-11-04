@@ -57,6 +57,16 @@ void main() {
     expect(profiles.requested, isEmpty);
   });
 
+  testWidgets('only the active identity offers its relays (#88)', (
+    tester,
+  ) async {
+    await pumpAccounts(tester);
+
+    expect(find.byTooltip('Relays'), findsOneWidget);
+    expect(find.byTooltip('Edit profile'), findsOneWidget);
+    expect(profiles.requested, isEmpty);
+  });
+
   testWidgets('the confirmation names the relays chosen in Settings (#45)', (
     tester,
   ) async {

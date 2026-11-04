@@ -14,6 +14,7 @@ import '../domain/nostr_profile.dart';
 import '../domain/profile_content.dart';
 import '../domain/profile_image.dart';
 import '../domain/profile_load_state.dart';
+import '../domain/replaceable_event.dart';
 import 'profile_providers.dart';
 
 /// Where the profile editor stands.
@@ -417,28 +418,17 @@ class ProfileEditorNotifier extends Notifier<ProfileEditorState> {
     return results;
   }
 
-  /// How far ahead of this phone's clock an event can be dated: relays
-  /// commonly refuse events more than about 15 minutes in the future.
-  static const Duration _maxAhead = Duration(minutes: 10);
-
-  /// Now, or a second after [current] when that is not earlier: a
-  /// replaceable event must be newer than the one it replaces, or relays
-  /// keep the old one. Throws [ProfileSaveException] when that would date
-  /// the event further ahead than relays accept, because then no update can
-  /// replace [current] (diogel-io/symudol#118 review).
+  /// Now, or a second after [current]: see [createdAfter]. Throws
+  /// [ProfileSaveException] when no update can replace [current].
   static DateTime _createdAfter(DateTime? current) {
-    final now = DateTime.fromMillisecondsSinceEpoch(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000 * 1000,
-    );
-    if (current == null || now.isAfter(current)) return now;
-    final next = current.add(const Duration(seconds: 1));
-    if (next.isAfter(now.add(_maxAhead))) {
+    try {
+      return createdAfter(current);
+    } on ReplaceableEventDateException {
       throw const ProfileSaveException(
         "This identity's newest profile is dated ahead of this phone's clock, "
         'so relays would keep it over an update. Check the date and time on '
         'this phone, and in the app that published that profile.',
       );
     }
-    return next;
   }
 }
