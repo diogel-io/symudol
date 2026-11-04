@@ -166,6 +166,38 @@ void main() {
     expect(find.text('Profile loaded'), findsOneWidget);
   });
 
+  testWidgets('no avatar in the app bar, even with a picture (#146)', (
+    tester,
+  ) async {
+    profiles.profile = const NostrProfile(
+      name: 'one',
+      picture: 'https://example.com/one.png',
+    );
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byTooltip('Load profile').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Load profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Profile loaded'), findsOneWidget);
+
+    final appBar = find.byType(AppBar);
+    expect(
+      find.descendant(of: appBar, matching: find.byType(CircleAvatar)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byIcon(Icons.person)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byType(Image)),
+      findsOneWidget, // the Symudol logo
+    );
+    // The identity tiles keep their picture, or its fallback icon.
+    expect(find.byIcon(Icons.person), findsWidgets);
+  });
+
   testWidgets('no profile and a failure are reported differently', (
     tester,
   ) async {

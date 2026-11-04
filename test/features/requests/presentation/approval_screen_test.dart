@@ -208,6 +208,16 @@ void main() {
 
       expect(find.text('Approval Request'), findsOneWidget);
       expect(find.text('Example App'), findsOneWidget);
+      // No user icon in the app bar (#146).
+      final appBar = find.byType(AppBar);
+      expect(
+        find.descendant(of: appBar, matching: find.byType(CircleAvatar)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: appBar, matching: find.byIcon(Icons.person)),
+        findsNothing,
+      );
       // Opening the screen with an active identity fetches no profile
       // (diogel-io/symudol#83).
       expect(profileService.requested, isEmpty);

@@ -13,7 +13,6 @@ import '../../vault/application/vault_providers.dart';
 import 'widgets/identity_tile.dart';
 import 'widgets/create_identity_dialog.dart';
 import 'widgets/import_identity_dialog.dart';
-import 'widgets/profile_avatar.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -70,12 +69,6 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             Text('Symudol', style: Theme.of(context).textTheme.titleLarge),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: DiogelSpacing.space4),
-            child: const ProfileAvatar(),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(DiogelSpacing.space4),

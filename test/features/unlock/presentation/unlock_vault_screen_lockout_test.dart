@@ -59,6 +59,22 @@ void main() {
       })
       .length;
 
+  testWidgets('the app bar shows no user icon (#146)', (tester) async {
+    await pumpApp(tester);
+
+    expect(find.byType(UnlockVaultScreen), findsOneWidget);
+    expect(find.text('Symudol'), findsOneWidget);
+    final appBar = find.byType(AppBar);
+    expect(
+      find.descendant(of: appBar, matching: find.byType(CircleAvatar)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byIcon(Icons.person)),
+      findsNothing,
+    );
+  });
+
   testWidgets('a lockout disables the PIN pad and counts down', (tester) async {
     await lockOutFor(const Duration(minutes: 15));
     await pumpApp(tester);
