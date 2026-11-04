@@ -146,8 +146,8 @@ A change to any of these needs the security review:
 
 - [ ] [documentation/threat-model.md](documentation/threat-model.md) is updated in the same pull
       request when the change adds or changes an asset, a trust boundary, or a control. An open,
-      exploitable weakness appears there only after its fix ships; until then it is reported
-      privately, as above.
+      exploitable weakness appears there only after its fix ships, or as a one-line pointer to an
+      issue that is already public; until then it is reported privately, as above.
 
 ### Recording the review
 
