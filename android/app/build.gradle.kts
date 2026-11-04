@@ -16,7 +16,9 @@ val keyProperties = Properties().apply {
 }
 
 fun uploadSetting(property: String, variable: String): String? =
-    (System.getenv(variable) ?: keyProperties.getProperty(property))?.takeIf { it.isNotBlank() }
+    // Blank values are ignored per source, so an empty variable falls back to the file.
+    System.getenv(variable)?.takeIf { it.isNotBlank() }
+        ?: keyProperties.getProperty(property)?.takeIf { it.isNotBlank() }
 
 val uploadStoreFile = uploadSetting("storeFile", "SYMUDOL_UPLOAD_STORE_FILE")
 val uploadStorePassword = uploadSetting("storePassword", "SYMUDOL_UPLOAD_STORE_PASSWORD")
