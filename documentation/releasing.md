@@ -52,7 +52,10 @@ there is work to put in it. The release workflow closes it when the release is c
    against the release PR's head commit, which is the code that ships, and record the line that
    enforces each one, what it covers and what it does not, and the test that holds it. The review
    is recorded privately, naming the head commit it read. After the merge, a `docs:` PR moves the
-   threat model's `Baseline:` to the `v<version>` tag. A weakness it finds is reported and fixed as
+   threat model's `Baseline:` to the `v<version>` tag. The baseline moves only when the whole
+   document has been re-checked, so that review also re-reads the assets, boundaries, adversaries,
+   accepted risks, findings and verification hooks against the same head, and the `docs:` PR
+   carries any row it corrected. A weakness it finds is reported and fixed as
    [SECURITY.md](../SECURITY.md) describes, and the release waits for the fix.
    If the release PR's head changes after the review, for example to fix what it found, review the
    difference before merging and record the new head. The release PR's **Security review** section
