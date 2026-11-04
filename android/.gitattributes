@@ -1,0 +1,5 @@
+# The committed Gradle wrapper (#148): keep each launcher's line endings whatever
+# core.autocrlf is set to, as `gradle init` does.
+/gradlew        text eol=lf
+*.bat           text eol=crlf
+*.jar           binary
