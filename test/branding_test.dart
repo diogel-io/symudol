@@ -21,6 +21,8 @@ void main() {
           // Log tags and the application id aren't shown to users.
           if (line.contains("name: 'Diogel'")) continue;
           if (text.contains('io.diogel.symudol')) continue;
+          // Nor is the website's address, such as the privacy policy (#39).
+          if (text.startsWith("'https://diogel.io/")) continue;
           offending.add('${file.path}:${i + 1}: $text');
         }
       }

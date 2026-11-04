@@ -58,6 +58,8 @@ dependencies:
   flutter_zxing: ^3.1.0
   # flutter_zxing's camera, used directly only to find whether there is one.
   camera: ^0.12.2
+  # Settings opens the privacy policy in the browser (#39).
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

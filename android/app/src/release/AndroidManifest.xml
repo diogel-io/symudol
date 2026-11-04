@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- NIP-46 is hidden in release builds (#26), so they leave out what only NIP-46 uses (#39):
+         the background service with its notification (#29), and the camera for scanning a
+         nostrconnect:// code (#31). Google Play would otherwise ask for a foreground-service
+         declaration and list a camera permission for features nobody can reach.
+         Delete this file when NIP-46 ships in release builds. Until then a release build made
+         with SYMUDOL_ENABLE_NIP46 has no QR scanning and no background running. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <application>
+        <service android:name=".Nip46ForegroundService" tools:node="remove" />
+    </application>
+</manifest>
