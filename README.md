@@ -191,6 +191,13 @@ flutter build apk --release --dart-define=SYMUDOL_ENABLE_NIP46=true
 
 The flag is `kNip46Enabled` in `lib/features/nip46/application/nip46_feature.dart`.
 
+## Security
+
+To report a vulnerability, follow [SECURITY.md](SECURITY.md): use GitHub private vulnerability
+reporting, or email support@threenine.co.uk with "Symudol security" in the subject. Never open a
+public issue for one. What Symudol protects, where its trust boundaries are, and its known limits
+are in [the threat model](documentation/threat-model.md).
+
 ## Licence
 
 Symudol is released under the MIT licence. See [LICENSE](LICENSE).

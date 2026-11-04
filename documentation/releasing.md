@@ -46,10 +46,28 @@ there is work to put in it. The release workflow closes it when the release is c
 ## Cutting a release
 
 1. Check that every issue in the version's milestone is closed or moved to a later milestone.
-2. Get CI to run on the release PR. release-please opens it with the workflow `GITHUB_TOKEN`, and
+2. Finish the release's security review, as the Diogel release process requires. Every release
+   reviews what changed since the last tag against [the threat model](threat-model.md); with no
+   earlier tag, `v1.0.0` reviews what changed since the threat model's `Baseline:` commit. The first
+   release (`v1.0.0`) and every minor release (`x.Y.0`) also re-read every control in its section 4
+   against the release PR's head commit, which is the code that ships, and record the line that
+   enforces each one, what it covers and what it does not, and the test that holds it. The review
+   is recorded privately, naming the head commit it read. For `v1.0.0` and every minor release
+   (the releases that walk every control), a `docs:` PR moves the threat model's `Baseline:` to the
+   `v<version>` tag once the release has shipped; a patch release leaves the baseline where it
+   is. The baseline moves only when the whole document has been re-checked, so that review also
+   re-reads the assets, boundaries, adversaries, accepted risks, findings and verification hooks
+   against the same head, and the `docs:` PR carries any row it corrected. A weakness it finds is
+   reported and fixed as [SECURITY.md](../SECURITY.md) describes, and the release waits for the
+   fix.
+   If the release PR's head changes after the review, for example to fix what it found, review the
+   difference before merging and record the new head. The release PR's **Security review** section
+   says only that the review is complete, at which head commit, and its outcome; the details stay in
+   the private record.
+3. Get CI to run on the release PR. release-please opens it with the workflow `GITHUB_TOKEN`, and
    GitHub does not start workflows for that token's events, so close and reopen the PR, or push
    an empty commit to its branch.
-3. Review the version, the `pubspec.yaml` bump and the `CHANGELOG.md` section. If a commit is in
+4. Review the version, the `pubspec.yaml` bump and the `CHANGELOG.md` section. If a commit is in
    the wrong section, fix the message, not the generated PR: edit the merged PR's body to add
 
    ```text
@@ -59,7 +77,7 @@ there is work to put in it. The release workflow closes it when the release is c
    ```
 
    and the next run regenerates the release PR from it.
-4. Merge the release PR. The release workflow tags the merge commit `v<version>`, creates the
+5. Merge the release PR. The release workflow tags the merge commit `v<version>`, creates the
    GitHub release with the changelog section as its notes, labels the PR `autorelease: tagged`, and
    closes the milestone.
 
