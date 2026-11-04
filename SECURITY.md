@@ -91,6 +91,8 @@ A change to any of these needs the security review:
 - `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/`,
   `android/app/proguard-rules.pro` and `android/app/build.gradle.kts`
 - `pubspec.yaml`, `pubspec.lock` and `.github/workflows/*`
+- `SECURITY.md`, `documentation/threat-model.md` and `documentation/releasing.md`, which define the
+  controls, this review, and the release steps
 - anything else that touches cryptography, key material, persistence, or what another app or
   client may ask for
 
