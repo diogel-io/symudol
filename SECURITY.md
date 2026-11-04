@@ -117,8 +117,10 @@ A change to any of these needs the security review:
 
 **Secrets**
 
-- [ ] No key, PIN, plaintext, event content or ciphertext reaches logs, crash reports, the
-      network, or a backup. Logging goes only through `DiogelLog` and `diogelLog` (T11).
+- [ ] No key or PIN reaches logs, crash reports, the network, or a backup. Plaintext, event
+      content and ciphertext reach none of these either, except the network for the operation the
+      user approved (such as a signed event or NIP-46 response sent to its relays). Logging goes
+      only through `DiogelLog` and `diogelLog` (T11).
 - [ ] The native key copy is cleared on lock and never outlives the unlock (T6).
 - [ ] Secrets copied to the clipboard are marked sensitive, and a copied nsec is cleared (T13).
 - [ ] Backup and device transfer stay off for app data (B5, T12).
@@ -156,6 +158,10 @@ A change to any of these needs the security review:
    linked from the pull request, and the decision comes first.
 3. Agents apply the same checklist: the Diogel workspace's `review-pr` and `diogel-code-review`
    skills check it for any Symudol pull request that touches a sensitive path.
+4. A release pull request is the exception: its **Security review** section records only that the
+   release's security review is complete, at which head commit, and its outcome, as
+   [documentation/releasing.md](documentation/releasing.md#cutting-a-release) describes. The
+   checklist evidence for a release is in that private review.
 
 Each release also has a security review before its release PR merges; see
 [documentation/releasing.md](documentation/releasing.md#cutting-a-release).

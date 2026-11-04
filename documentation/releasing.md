@@ -47,7 +47,8 @@ there is work to put in it. The release workflow closes it when the release is c
 
 1. Check that every issue in the version's milestone is closed or moved to a later milestone.
 2. Finish the release's security review, as the Diogel release process requires. Every release
-   reviews what changed since the last tag against [the threat model](threat-model.md). The first
+   reviews what changed since the last tag against [the threat model](threat-model.md); with no
+   earlier tag, `v1.0.0` reviews what changed since the threat model's `Baseline:` commit. The first
    release (`v1.0.0`) and every minor release (`x.Y.0`) also re-read every control in its section 4
    against the release PR's head commit, which is the code that ships, and record the line that
    enforces each one, what it covers and what it does not, and the test that holds it. The review

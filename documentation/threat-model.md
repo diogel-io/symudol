@@ -13,8 +13,8 @@ against `5057dca`.
 - A pull request that adds an asset, a trust boundary or a control, or that changes one listed
   here, updates this document in the same pull request. The security review checklist in
   [SECURITY.md](../SECURITY.md) applies to every change touching a security-sensitive path.
-- Each minor release's security review re-reads every control against the code and moves the
-  baseline to the commit it checked.
+- Each minor release's security review re-reads every control, and the rest of this document,
+  against the release PR's head; after the release, the baseline moves to its `v<version>` tag.
 - **Disclosure rule.** This repository is public. A newly found weakness is reported privately, as
   described in [SECURITY.md](../SECURITY.md), never in a public issue. It appears here only after
   its fix ships, or as a one-line pointer to an issue that is already public.
@@ -87,7 +87,7 @@ unlocked the bootloader.
 
 | ID | Threat | Control | Owner | Residual risk |
 |----|--------|---------|-------|---------------|
-| T1 | An app claims to be a trusted client and has that client's remembered decisions applied | The caller comes only from Android (`callingPackage` and the certificate from the package manager). MainActivity receives only a token, never the request or the caller (gap analysis H1) | #7 (closed); #84 for grants without a certificate | A grant stored without a certificate matches any app with that package name (`_matchesClient` in `nip55_approval_policy.dart`). Since #17 a grant is never saved without a certificate (`_saveGrant` in `nip55_controller.dart:1296-1302`), so only grants stored before then are exposed. See F4 |
+| T1 | An app claims to be a trusted client and has that client's remembered decisions applied | The caller comes only from Android (`callingPackage` and the certificate from the package manager). MainActivity receives only a token, never the request or the caller (gap analysis H1) | #7 (closed); #84 for grants without a certificate | Grants without a certificate: F4 (#84) |
 | T2 | A request is attributed to Symudol itself, whose grants would then serve any caller | Symudol as its own caller is treated as unknown in the bridge and the provider, and no grant names Symudol's package (gap analysis M3) | #11 (closed) | Low |
 | T3 | A remembered grant for one kind signs every kind in the background | A broad allow (any kind) is never stored as a remembered decision (`isRememberable`), and `sign_event` without an integer kind matches no grant | #5, #10 (closed) | Low |
 | T4 | A remembered `sign_message` grant signs a Nostr event, since `sha256` of an event's serialised form is its id (gap analysis H2) | `sign_message` refuses any message that is an event serialisation, in both the intent and the provider paths (`_isEventSerialisationMessage` in `nip55_controller.dart`) | #8 (closed) | Low |
@@ -108,7 +108,7 @@ unlocked the bootloader.
 | T19 | A NIP-46 request that needs review is never shown, and the client times out | NIP-46 requests are reviewed on the Approval screen (`pendingMethodRequests`, `lib/features/nip46/application/nip46_providers.dart:72`). A request that times out is answered with an error | #27 (closed, PRs #134 and #135) | Low |
 | T20 | Relays learn which pubkeys the user holds and when the app is opened | Profiles are fetched only when the user asks, after a confirmation that names the relays | #83 (closed, PR #90). See F3 | When the user asks, the named relays learn the pubkey and the IP address |
 | T21 | A relay replays or reorders NIP-46 requests | Events from any key other than the session's client are dropped. Subscriptions use `since`. Duplicate event ids are ignored | #30 (closed, PR #112) | Low |
-| T22 | A release build is signed with a developer's debug key, which is not protected or managed like a release key; anyone holding that key can sign an update that Android installs over Symudol (gap analysis R1) | None yet. `build.gradle.kts` signs release with `signingConfigs.getByName("debug")` (`android/app/build.gradle.kts:35-37`) | #37 (open) | Release blocker |
+| T22 | Release signing (gap analysis R1) | See [#37](https://github.com/diogel-io/symudol/issues/37) | #37 (open) | Release blocker |
 | T23 | The vault is unlocked with a biometric the owner didn't choose to give: a finder enrols their own fingerprint, or forces the owner's finger | Biometric unlock is opt-in and needs the PIN to turn on. The Keystore key needs `BIOMETRIC_STRONG` for each use and is invalidated when a fingerprint is added (`BiometricVault.kt:244-248`). The PIN is needed after a reboot or 72 h from the last PIN check (`vault_service_impl.dart:69`; [biometric-unlock.md](biometric-unlock.md)) | #23 (closed, PR #107; hardening PR #109) | A forced finger works within 72 h of the last PIN, as with any phone's fingerprint unlock. A fingerprint unlock also clears a PIN lockout |
 | T24 | The nsec is shown or copied to someone other than the owner, or handed out after the vault locks | The export screen warns first, asks for the PIN (charged like an unlock) and keeps the key hidden until the user asks. A copy is marked sensitive and cleared after 60 s. A lock that starts during the export hands out nothing (`vault_service_impl.dart:857-893`, `export_key_screen.dart:12-20`) | #24 (closed, PR #132) | Once shown or copied, the key is outside Symudol's control |
 | T25 | A stolen backup file is opened by guessing its passphrase, or a crafted file exhausts the phone on restore | A backup needs the PIN and a passphrase of at least 12 characters (`vault_service_impl.dart:795-807`). Keys are NIP-49 `ncryptsec` under scrypt `log_n` 16. Restore refuses a cost above `log_n` 20, files over 1 MiB and more than 100 identities (`nip49.dart:17-21`, `vault_backup.dart:14-17`) | #25 (closed, PR #130) | A weak passphrase can be guessed offline |
@@ -129,18 +129,9 @@ issue are listed in section 4 and not repeated here unless more detail is needed
 
 ### Open
 
-#### F4 - A grant without a certificate matches any signer of that package
+#### F4 - Grants without a certificate
 
-Severity: low. Owner: [diogel-io/symudol#84](https://github.com/diogel-io/symudol/issues/84).
-
-`_matchesClient` and `Nip55PermissionMirror.certificateMatches` still match a grant with no
-certificate (`nip55_approval_policy.dart:169-173`, `Nip55PermissionMirror.kt:267-269`). Since #17,
-new grants are always saved with the caller's certificate (`nip55_controller.dart:1296-1302`), so
-the exposure is limited to grants stored before then.
-
-Required change: treat a grant without a certificate as unmatched, or bind it to the certificate on
-first use with the user's confirmation. The native mirror (`Nip55PermissionMirror.kt`) must
-follow.
+Open, low severity: see [diogel-io/symudol#84](https://github.com/diogel-io/symudol/issues/84).
 
 ### Closed
 
@@ -276,9 +267,8 @@ These are covered by automated tests today, and must stay covered:
 2. **NIP-46 for Android 1.0.** Decided in #26 (PR #111): NIP-46 is hidden in release builds unless
    built with `SYMUDOL_ENABLE_NIP46` (`lib/features/nip46/application/nip46_feature.dart:10-11`).
    T17, T19 and T21 are closed (#28, #27, #30).
-3. **Grants without a certificate (F4).** #84 owns it: treat them as unmatched, or bind on first
-   use with the user's confirmation.
-4. **Release signing (T22).** #37 owns it, and it blocks release.
+3. **Grants without a certificate (F4).** #84.
+4. **Release signing (T22).** #37, a release blocker.
 
 ## References
 
