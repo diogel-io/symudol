@@ -19,6 +19,8 @@ import org.robolectric.RobolectricTestRunner
 class Nip55PermissionMirrorWipeTest {
     private val identity = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
     private val client = "com.example.client"
+    // A grant without a certificate matches no caller (#84).
+    private val clientCert = "AA:BB:CC"
     private val noInputs = Nip55PermissionMirror.ScopeInputs(null, null, null)
 
     private lateinit var context: Context
@@ -32,6 +34,7 @@ class Nip55PermissionMirrorWipeTest {
             .put("id", "grant-1")
             .put("identityPubkey", identity)
             .put("packageName", client)
+            .put("certificateSha256", clientCert)
             .put("scope", JSONObject().put("type", "get_public_key"))
             .put("decision", "allow")
         mirror.syncGrants(JSONArray().put(grant).toString())
@@ -45,12 +48,12 @@ class Nip55PermissionMirrorWipeTest {
 
     @Test
     fun wipe_clearsGrantsAndActivePubkey() {
-        assertTrue(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
+        assertTrue(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, clientCert) == "allow")
 
         assertTrue(mirror.wipe())
 
         assertTrue(mirror.listGrants().isEmpty())
-        assertFalse(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, null) == "allow")
+        assertFalse(mirror.rememberedDecision(client, "get_public_key", identity, noInputs, clientCert) == "allow")
         assertNull(mirror.getActiveIdentityPubkey())
     }
 

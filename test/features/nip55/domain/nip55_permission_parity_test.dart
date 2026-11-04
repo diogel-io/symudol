@@ -72,8 +72,11 @@ void main() {
       'createdAt': '2026-01-01T00:00:00.000Z',
     };
 
-    test('a missing certificate key reads as any caller', () {
-      expect(Nip55PermissionGrant.fromJson(json()).certificateSha256, isNull);
+    test('a missing certificate key reads as null, which matches no caller '
+        '(#84)', () {
+      final grant = Nip55PermissionGrant.fromJson(json());
+      expect(grant.certificateSha256, isNull);
+      expect(grant.hasCertificate, isFalse);
     });
 
     test('a null certificate reads as unresolved, and stays so', () {

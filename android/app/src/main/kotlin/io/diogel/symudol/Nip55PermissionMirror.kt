@@ -239,10 +239,9 @@ class Nip55PermissionMirror(private val context: Context) {
                 id = obj.getString("id"),
                 identityPubkey = obj.getString("identityPubkey"),
                 packageName = obj.stringOrNull("packageName"),
-                // Dart writes a JSON null when it could not read the caller's certificate. A null
-                // here would match every certificate (certificateMatches), letting another app with
-                // the same package name use the grant, so it stays a value no caller has
-                // (REQ-NIP55-010).
+                // Dart writes a JSON null when it could not read the caller's certificate, and it
+                // stays a value no caller has (REQ-NIP55-010). A missing key is a grant from before
+                // certificates were recorded, which matches no caller either (#84).
                 certificateSha256 = if (obj.has("certificateSha256")) {
                     obj.stringOrNull("certificateSha256") ?: UNRESOLVED_CERTIFICATE
                 } else {
@@ -265,8 +264,9 @@ class Nip55PermissionMirror(private val context: Context) {
         }
 
         internal fun certificateMatches(grant: Grant, callerCertSha256: String?): Boolean {
-            // If the grant has no certificate recorded, it matches any caller
-            if (grant.certificateSha256 == null) return true
+            // A grant without a certificate (made before #7) matches no caller: a reinstall
+            // signed by someone else would otherwise inherit it, as in Dart's policy (#84).
+            if (grant.certificateSha256 == null) return false
             // Fail closed: if the grant requires a cert but we can't determine
             // the caller's certificate, deny the match. This ensures native
             // auto-approve is at least as strict as the Dart approval policy.

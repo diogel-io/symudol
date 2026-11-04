@@ -331,6 +331,46 @@ void main() {
       expect(decision, isA<RequireReview>());
       expect((decision as RequireReview).canRemember, isFalse);
     });
+
+    group('a grant without a certificate (#84)', () {
+      Nip55ApprovalDecision decide(
+        Nip55PermissionDecision remembered, {
+        String? certificateSha256,
+      }) => policy.decide(
+        request: _request(now: now),
+        vaultState: const VaultUnlocked(),
+        activeIdentityPubkey: identity,
+        grants: [
+          _grant(
+            identityPubkey: identity,
+            packageName: 'com.example.client',
+            scope: const SignEventScope(1),
+            decision: remembered,
+            now: now,
+            certificateSha256: certificateSha256,
+          ),
+        ],
+      );
+
+      test('never auto-allows', () {
+        expect(decide(Nip55PermissionDecision.allow), isA<RequireReview>());
+      });
+
+      test('never auto-rejects', () {
+        expect(decide(Nip55PermissionDecision.reject), isA<RequireReview>());
+      });
+
+      test('a grant with a certificate matches only that certificate', () {
+        expect(
+          decide(Nip55PermissionDecision.allow, certificateSha256: 'AA:BB'),
+          isA<AutoAllow>(),
+        );
+        expect(
+          decide(Nip55PermissionDecision.allow, certificateSha256: 'CC:DD'),
+          isA<RequireReview>(),
+        );
+      });
+    });
   });
 }
 
@@ -357,12 +397,13 @@ Nip55PermissionGrant _grant({
   required Nip55PermissionDecision decision,
   required DateTime now,
   DateTime? expiresAt,
+  String? certificateSha256 = 'AA:BB',
 }) {
   return Nip55PermissionGrant(
     id: 'grant-${scope.wire}-$decision',
     identityPubkey: identityPubkey,
     packageName: packageName,
-    certificateSha256: 'AA:BB',
+    certificateSha256: certificateSha256,
     scope: scope,
     decision: decision,
     createdAt: now,

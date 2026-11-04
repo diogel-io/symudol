@@ -268,6 +268,10 @@ class _TrustedAppCard extends StatelessWidget {
 
   String _statusLabel(Nip55PermissionGrant grant) {
     if (grant.isExpired) return 'Expired';
+    // It matches no caller, so it is never applied (#84).
+    if (!grant.hasCertificate) {
+      return 'Not tied to a signing certificate: asks each time';
+    }
     final expiry = grant.expiresAt;
     if (expiry == null) return 'No expiry';
     return 'Expires ${_formatDate(expiry)}';
