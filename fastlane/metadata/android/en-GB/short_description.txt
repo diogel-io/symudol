@@ -1,0 +1,1 @@
+Keep your Nostr keys on your phone. Approve each app request before it signs.

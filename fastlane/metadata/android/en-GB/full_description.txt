@@ -1,0 +1,34 @@
+Symudol is a Nostr signer for Android. It keeps your Nostr private keys on your phone, so the apps you use never hold them. When an app wants to post as you, share your public key, or encrypt and decrypt a message, it asks Symudol, and you decide.
+
+YOUR KEYS STAY ON YOUR PHONE
+• Create a new Nostr identity, or import one from an nsec or an encrypted (NIP-49) backup.
+• Keep several identities and choose which one is active.
+• Your keys live in a vault encrypted with your 6-digit PIN, using Argon2id and AES-256-GCM.
+• Unlock with your fingerprint or face if you like. The PIN is still needed after a restart.
+• The vault locks itself when you leave the app or stop using it, after a delay you choose.
+• Optionally, wipe the vault after a number of wrong PINs.
+
+YOU APPROVE EVERY REQUEST
+• Apps on your phone reach Symudol through the Android signer standard, NIP-55.
+• Each request shows which app is asking, which identity it wants, and exactly what it wants signed, encrypted or decrypted.
+• Approve or reject it. If you trust an app, remember your decision for that app and that kind of request.
+• See and revoke every remembered decision in Trusted Nostr apps.
+• Supports get_public_key, sign_event, NIP-04 and NIP-44 encryption and decryption, and zap event decryption.
+
+YOUR PROFILE
+• Edit your Nostr profile: name, picture, banner, about, website, NIP-05 address and lightning address.
+• Edit your relay list (NIP-65).
+• Choose the relays and the media server Symudol uses.
+
+PRIVATE BY DESIGN
+• No accounts, no analytics, no crash reporting, no adverts and no tracking.
+• Symudol sends nothing to its developers. It connects only to the Nostr relays, media server and NIP-05 domains you use.
+• Android cloud backup is off, and Symudol's screens are kept out of screenshots and the recent-apps preview.
+• Back up your vault to an encrypted file that you keep. The backup holds your identities. Your decisions for apps are not in it, so on a new phone you approve your apps again.
+
+OPEN SOURCE
+Symudol is open source under the MIT licence. Read the code, the security policy and the threat model at github.com/diogel-io/symudol.
+
+Symudol is part of Diogel, a suite of Nostr signers: Porwr for your browser, Symudol for your phone, and Bancwr for teams. Learn more at diogel.io.
+
+Symudol is a signer, not a social app or a wallet. Use it with your favourite Nostr apps that support Android signers.

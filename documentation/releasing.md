@@ -83,3 +83,35 @@ there is work to put in it. The release workflow closes it when the release is c
 
 Building, signing and uploading the app to the Play Store or TestFlight is not automated yet; do it
 from the tag.
+
+## Google Play listing
+
+The store listing lives in `fastlane/metadata/android/en-GB/`, in the layout Google Play tooling
+and F-Droid both read (#39). Nothing installs or runs fastlane yet: the files are the source the
+Play Console is filled from, and the listing text changes through PRs like the code.
+
+| File | Play Console field | Limit |
+| --- | --- | --- |
+| `title.txt` | App name | 30 characters |
+| `short_description.txt` | Short description | 80 characters |
+| `full_description.txt` | Full description | 4,000 characters |
+| `images/icon.png` | App icon | 512×512 PNG |
+| `images/featureGraphic.png` | Feature graphic | 1024×500 PNG or JPEG, no transparency |
+| `images/phoneScreenshots/` | Phone screenshots | 2 to 8; long side at most twice the short side, 1200×2400 here |
+
+- The icon is the launcher icon, `assets/images/symudol.png` on `#111827`. The feature graphic is
+  the Symudol share card (workspace `60-marketing/brand/images/share/symudol-share.svg`) cropped to
+  1024×500.
+- `fastlane/README.md` says how the screenshots were taken. `FLAG_SECURE` blanks
+  every capture (`backup-and-screen-capture-decision.md`), so they come from a local build with
+  that line disabled, which is never committed.
+- The privacy policy is `https://diogel.io/privacy/symudol`, from diogel-io/website, and
+  Settings → Privacy policy opens it. Keep that address stable: the Play Console links to it.
+- The data safety, content rating and other Play Console answers are kept in the workspace, in
+  `10-products/symudol/releases/play-store-submission.md`.
+
+Release builds hide NIP-46 (#26), so `android/app/src/release/AndroidManifest.xml` removes what only
+NIP-46 uses: the camera, the foreground service and its notification permission. Play then asks for
+no foreground-service declaration. Delete that file, and `ReleaseManifestTest`, when NIP-46 ships in
+release builds; until then a release build made with `SYMUDOL_ENABLE_NIP46` has no QR scanning and
+no background running.
