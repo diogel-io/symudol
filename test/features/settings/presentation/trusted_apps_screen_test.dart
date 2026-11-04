@@ -31,6 +31,7 @@ void main() {
           id: 'grant-2',
           identityPubkey: 'abcdef1234567890',
           packageName: 'com.example.nostr',
+          certificateSha256: 'AA:BB',
           scope: const Nip04DecryptScope(),
           decision: Nip55PermissionDecision.reject,
           createdAt: DateTime(2026, 5, 2, 11, 0),
@@ -52,6 +53,34 @@ void main() {
     expect(find.textContaining('Rejected • NIP-04 decrypt'), findsOneWidget);
     expect(find.textContaining('No expiry'), findsNWidgets(2));
     expect(find.textContaining('Last used 2026-05-03 09:30'), findsWidgets);
+    expect(find.textContaining('signing certificate'), findsNothing);
+  });
+
+  testWidgets('a grant without a certificate says it asks each time (#84)', (
+    tester,
+  ) async {
+    final store = FakeNip55PermissionStore()
+      ..grants.addAll([
+        _grant('legacy', const SignEventScope(1)),
+        Nip55PermissionGrant(
+          id: 'unresolved',
+          identityPubkey: 'pubkey',
+          packageName: 'com.example.nostr',
+          certificateSha256: nip55UnresolvedCertificate,
+          scope: const GetPublicKeyScope(),
+          decision: Nip55PermissionDecision.allow,
+          createdAt: DateTime(2026, 5, 1),
+        ),
+      ]);
+
+    await tester.pumpWidget(_app(store));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Not tied to a signing certificate: asks each time'),
+      findsNWidgets(2),
+    );
+    expect(find.textContaining('No expiry'), findsNothing);
   });
 
   testWidgets('TrustedAppsScreen revokes one permission', (tester) async {

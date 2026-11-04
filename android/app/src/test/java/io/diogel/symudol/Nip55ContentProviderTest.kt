@@ -422,6 +422,19 @@ class Nip55ContentProviderTest {
         assertNull(query("GET_PUBLIC_KEY", "login"))
     }
 
+    @Test
+    fun aGrantFromBeforeCertificatesWereRecordedMatchesNoCaller() {
+        // No certificateSha256 key at all: a reinstall signed by someone else must not inherit
+        // the old app's remembered decisions (#84).
+        grants(
+            grant("get_public_key").apply { remove("certificateSha256") },
+            grant("sign_event", kind = 1).apply { remove("certificateSha256") },
+        )
+
+        assertNull(query("GET_PUBLIC_KEY", "login"))
+        assertNull(signEvent(event(1)))
+    }
+
     // ── The provider bound (#18) ───────────────────────────────────────────
 
     @Test

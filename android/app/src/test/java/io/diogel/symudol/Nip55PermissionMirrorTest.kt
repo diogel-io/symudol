@@ -35,6 +35,8 @@ class Nip55PermissionMirrorTest {
     private val identity = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789" // 64-char hex pubkey
     private val peerA = "aaaa11110000000000000000000000000000000000000000000000000000000000" // 64-char peer pubkey
     private val peerB = "bbbb22220000000000000000000000000000000000000000000000000000000000"
+    // The caller's certificate, recorded in each grant: one without it matches no caller (#84).
+    private val clientCert = "abc123"
 
     private fun makeGrant(
         scopeType: String,
@@ -43,7 +45,7 @@ class Nip55PermissionMirrorTest {
         packageName: String = "com.example.app",
         decision: String = "allow",
         identityPubkey: String = identity,
-        certificateSha256: String? = null,
+        certificateSha256: String? = clientCert,
         expiresAtMillis: Long? = null,
         scopeRelayUrl: String? = null,
     ) = Grant(
@@ -292,10 +294,22 @@ class Nip55PermissionMirrorTest {
     // ════════════════════════════════════════════════════════════════════
 
     @Test
-    fun testCertificateMatches_grantHasNoCert_alwaysMatches() {
+    fun testCertificateMatches_grantHasNoCert_neverMatches() {
+        // A grant from before certificates were recorded: a reinstall signed by someone else
+        // must not inherit it (#84).
         val grant = makeGrant(scopeType = "get_public_key", certificateSha256 = null)
-        assertTrue(certificateMatches(grant, "abc123"))
-        assertTrue(certificateMatches(grant, null))
+        assertFalse(certificateMatches(grant, "abc123"))
+        assertFalse(certificateMatches(grant, null))
+    }
+
+    @Test
+    fun testHasRemembered_grantHasNoCert_neitherAllowsNorRejects() {
+        val allow = listOf(makeGrant(scopeType = "get_public_key", certificateSha256 = null))
+        val reject = listOf(
+            makeGrant(scopeType = "get_public_key", decision = "reject", certificateSha256 = null)
+        )
+        assertFalse(hasRememberedAllow(allow, "com.example.app", "get_public_key", identity))
+        assertFalse(hasRememberedReject(reject, "com.example.app", "get_public_key", identity))
     }
 
     @Test
@@ -364,7 +378,7 @@ class Nip55PermissionMirrorTest {
         identityPubkey: String,
         eventKind: Int? = null,
         peerPubkey: String? = null,
-        callerCertSha256: String? = null,
+        callerCertSha256: String? = clientCert,
     ): Boolean = Nip55PermissionMirror.matches(
         grants, "allow", callerPackage, method, identityPubkey,
         eventKind = eventKind, peerPubkey = peerPubkey, callerCertSha256 = callerCertSha256,
@@ -376,8 +390,10 @@ class Nip55PermissionMirrorTest {
         method: String,
         identityPubkey: String,
         eventKind: Int? = null,
+        callerCertSha256: String? = clientCert,
     ): Boolean = Nip55PermissionMirror.matches(
         grants, "reject", callerPackage, method, identityPubkey, eventKind = eventKind,
+        callerCertSha256 = callerCertSha256,
     )
 
     @Test

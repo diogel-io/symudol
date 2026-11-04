@@ -166,11 +166,10 @@ class Nip55ApprovalPolicy {
         grant.packageName != clientIdentity.packageName) {
       return false;
     }
+    // A grant without a certificate (made before #7) matches no caller: a
+    // reinstall signed by someone else would otherwise inherit it (#84).
     final grantCert = grant.certificateSha256;
-    if (grantCert != null && grantCert != clientIdentity.certificateSha256) {
-      return false;
-    }
-    return true;
+    return grantCert != null && grantCert == clientIdentity.certificateSha256;
   }
 
   bool _isExpired(Nip55PermissionGrant grant) {

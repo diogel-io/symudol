@@ -1460,12 +1460,101 @@
     },
     {
       "id": "certificate/absent-from-grant",
-      "note": "A grant from before certificates were recorded matches any caller.",
+      "note": "A grant from before certificates were recorded matches no caller: a reinstall signed by someone else would otherwise inherit it (#84).",
       "grants": [
         {
           "id": "g52",
           "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "packageName": "com.example.client",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "DD:EE:FF"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/absent-from-grant-reject",
+      "note": "A remembered reject without a certificate is not applied either: the request is reviewed (#84).",
+      "grants": [
+        {
+          "id": "g52r",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": "DD:EE:FF"
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/absent-from-grant-and-request",
+      "note": "Neither side has a certificate: still no match (#84).",
+      "grants": [
+        {
+          "id": "g52n",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "allow",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        }
+      ],
+      "request": {
+        "method": "get_public_key",
+        "packageName": "com.example.client",
+        "certificateSha256": null
+      },
+      "expected": "none"
+    },
+    {
+      "id": "certificate/absent-from-grant-beside-bound",
+      "note": "Only the grant tied to the caller's certificate applies: its allow, not the reject without one, which would otherwise win (#84).",
+      "grants": [
+        {
+          "id": "g52a",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "scope": {
+            "type": "get_public_key"
+          },
+          "decision": "reject",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "lastUsedAt": null,
+          "expiresAt": null,
+          "userLabel": null
+        },
+        {
+          "id": "g52b",
+          "identityPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageName": "com.example.client",
+          "certificateSha256": "DD:EE:FF",
           "scope": {
             "type": "get_public_key"
           },

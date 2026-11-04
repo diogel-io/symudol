@@ -41,6 +41,13 @@ class Nip55PermissionGrant {
   bool get isRememberable =>
       !(decision == Nip55PermissionDecision.allow && scope.isBroad);
 
+  /// Whether the grant is tied to the caller's signing certificate. One that
+  /// isn't, from before certificates were recorded or with a certificate that
+  /// could not be read, matches no caller (#84, #17).
+  bool get hasCertificate =>
+      certificateSha256 != null &&
+      certificateSha256 != nip55UnresolvedCertificate;
+
   bool get isExpired {
     final expiry = expiresAt;
     return expiry != null && !expiry.isAfter(DateTime.now());
@@ -81,8 +88,9 @@ class Nip55PermissionGrant {
       id: json['id'] as String,
       identityPubkey: json['identityPubkey'] as String,
       packageName: json['packageName'] as String?,
-      // A missing key is a grant from before certificates were recorded: any
-      // caller. A null means the certificate could not be read: no caller.
+      // A missing key is a grant from before certificates were recorded, and a
+      // null means the certificate could not be read. Neither matches any
+      // caller (#84, #17).
       certificateSha256: json.containsKey('certificateSha256')
           ? json['certificateSha256'] as String? ?? nip55UnresolvedCertificate
           : null,
