@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symudol/features/accounts/presentation/accounts_screen.dart';
+import 'package:symudol/features/accounts/presentation/widgets/identity_tile.dart';
 import 'package:symudol/features/profile/application/profile_providers.dart';
 import 'package:symudol/features/profile/domain/nostr_profile.dart';
 import 'package:symudol/features/profile/domain/profile_network_settings.dart';
@@ -164,6 +165,49 @@ void main() {
 
     expect(profiles.requested, [first]);
     expect(find.text('Profile loaded'), findsOneWidget);
+  });
+
+  testWidgets('no avatar in the app bar, even with a picture (#146)', (
+    tester,
+  ) async {
+    profiles.profile = const NostrProfile(
+      name: 'one',
+      picture: 'https://example.com/one.png',
+    );
+    await pumpAccounts(tester);
+
+    await tester.tap(find.byTooltip('Load profile').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Load profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Profile loaded'), findsOneWidget);
+
+    final appBar = find.byType(AppBar);
+    expect(
+      find.descendant(of: appBar, matching: find.byType(CircleAvatar)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byIcon(Icons.person)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: appBar, matching: find.byType(Image)),
+      findsOneWidget, // the Symudol logo
+    );
+    // The loaded identity's tile still shows its picture.
+    final account1Image = find.descendant(
+      of: find.ancestor(
+        of: find.text('Account 1'),
+        matching: find.byType(IdentityTile),
+      ),
+      matching: find.byType(Image),
+    );
+    expect(account1Image, findsOneWidget);
+    expect(
+      (tester.widget<Image>(account1Image).image as NetworkImage).url,
+      'https://example.com/one.png',
+    );
   });
 
   testWidgets('no profile and a failure are reported differently', (

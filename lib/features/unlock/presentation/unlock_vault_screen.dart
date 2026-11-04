@@ -194,20 +194,6 @@ class _UnlockVaultScreenState extends ConsumerState<UnlockVaultScreen>
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: DiogelSpacing.space4),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: DiogelColors.surfaceContainerHigh,
-              child: const Icon(
-                Icons.person,
-                size: 20,
-                color: DiogelColors.textSecondary,
-              ),
-            ),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(

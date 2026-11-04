@@ -59,6 +59,38 @@ void main() {
       })
       .length;
 
+  testWidgets('the app bar shows no user icon, locked or expired (#146)', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+
+    void expectNoUserIcon() {
+      expect(find.byType(UnlockVaultScreen), findsOneWidget);
+      expect(find.text('Symudol'), findsOneWidget);
+      final appBar = find.byType(AppBar);
+      expect(
+        find.descendant(of: appBar, matching: find.byType(CircleAvatar)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: appBar, matching: find.byIcon(Icons.person)),
+        findsNothing,
+      );
+    }
+
+    expectNoUserIcon();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(UnlockVaultScreen)),
+    );
+    await container.read(vaultControllerProvider.notifier).expireSession();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Session Expired'), findsOneWidget);
+    expectNoUserIcon();
+  });
+
   testWidgets('a lockout disables the PIN pad and counts down', (tester) async {
     await lockOutFor(const Duration(minutes: 15));
     await pumpApp(tester);

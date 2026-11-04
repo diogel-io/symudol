@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../theme/tokens.dart';
-import '../../accounts/presentation/widgets/profile_avatar.dart';
 import '../../identity/domain/vault_identity.dart';
 import '../../nip46/application/nip46_providers.dart';
 import '../../nip46/domain/nip46_method.dart';
@@ -279,12 +278,6 @@ class _ApprovalContentState extends ConsumerState<_ApprovalContent> {
         // the request is approved or rejected (#121): no close button.
         automaticallyImplyLeading: false,
         title: const Text('Approval Request'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: DiogelSpacing.space4),
-            child: ProfileAvatar(),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
