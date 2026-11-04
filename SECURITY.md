@@ -136,6 +136,8 @@ A change to any of these needs the security review:
       reviewed.
 - [ ] Release builds still strip debug logging (`proguard-rules.pro`), and workflow changes keep
       secrets out of logs.
+- [ ] No keystore, `key.properties` or signing password is committed, and a release bundle's
+      signer matches the upload-key fingerprint recorded in `documentation/releasing.md`.
 
 **Tests**
 
