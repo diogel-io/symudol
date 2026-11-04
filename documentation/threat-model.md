@@ -13,8 +13,10 @@ against `5057dca`.
 - A pull request that adds an asset, a trust boundary or a control, or that changes one listed
   here, updates this document in the same pull request. The security review checklist in
   [SECURITY.md](../SECURITY.md) applies to every change touching a security-sensitive path.
-- Each minor release's security review re-reads every control, and the rest of this document,
-  against the release PR's head; after the release, the baseline moves to its `v<version>` tag.
+- The security review of `v1.0.0` and of every minor release re-reads every control, and the rest
+  of this document, against the release PR's head. Only after that whole-document re-check, and
+  once the release has shipped, does the baseline move to its `v<version>` tag; a patch release
+  leaves it where it is ([releasing.md](releasing.md#cutting-a-release)).
 - **Disclosure rule.** This repository is public. A newly found weakness is reported privately, as
   described in [SECURITY.md](../SECURITY.md), never in a public issue. It appears here only after
   its fix ships, or as a one-line pointer to an issue that is already public.
