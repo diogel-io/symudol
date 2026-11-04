@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,9 +7,41 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// The upload key signs release builds for Google Play (#37). It is read from android/key.properties
+// (gitignored; see key.properties.example) or from SYMUDOL_UPLOAD_* environment variables, which
+// override the file, so the passwords need not be written to disk. Nothing here is committed.
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun uploadSetting(property: String, variable: String): String? =
+    // Blank values are ignored per source, so an empty variable falls back to the file.
+    System.getenv(variable)?.takeIf { it.isNotBlank() }
+        ?: keyProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+
+val uploadStoreFile = uploadSetting("storeFile", "SYMUDOL_UPLOAD_STORE_FILE")
+val uploadStorePassword = uploadSetting("storePassword", "SYMUDOL_UPLOAD_STORE_PASSWORD")
+val uploadKeyAlias = uploadSetting("keyAlias", "SYMUDOL_UPLOAD_KEY_ALIAS")
+val uploadKeyPassword = uploadSetting("keyPassword", "SYMUDOL_UPLOAD_KEY_PASSWORD")
+val uploadSettings = mapOf(
+    "storeFile" to uploadStoreFile,
+    "storePassword" to uploadStorePassword,
+    "keyAlias" to uploadKeyAlias,
+    "keyPassword" to uploadKeyPassword,
+)
+val hasUploadKey = uploadSettings.values.all { it != null }
+val missingUploadSettings = uploadSettings.filterValues { it == null }.keys
+// Half a configuration is a mistake, not "no key". Checked only when a release task runs (below),
+// so debug builds, unit tests and Gradle Sync still work.
+val uploadKeyPartlyConfigured = !hasUploadKey && missingUploadSettings.size < uploadSettings.size
+
 android {
     namespace = "io.diogel.symudol"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned rather than taken from the Flutter plugin, so a Flutter upgrade cannot change them
+    // without a reviewed diff (#37).
+    // 36: the API the app is compiled against; matches targetSdk.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -16,12 +50,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "io.diogel.symudol"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // 24: the floor set by url_launcher_android and image_picker_android.
+        minSdk = 24
+        // 36: Google Play's target API level requirement for new apps in 2026.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -30,11 +63,23 @@ android {
         buildConfig = true
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = file(uploadStoreFile!!)
+                storePassword = uploadStorePassword
+                keyAlias = uploadKeyAlias
+                keyPassword = uploadKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Without the upload key, release APKs (`flutter run --release`, the emulator and
+            // device checks) fall back to the debug key; the guard below stops a Play bundle
+            // from ever being debug-signed.
+            signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
             // R8 strips Log.v/d/i from release builds (#14); set here, not left to the
             // Flutter plugin's default, so the rules always apply.
             isMinifyEnabled = true
@@ -54,6 +99,30 @@ android {
 
 kotlin {
     jvmToolchain(17)
+}
+
+val missingUploadKeyMessage =
+    "No upload key: create android/key.properties (see android/key.properties.example) or set " +
+        "SYMUDOL_UPLOAD_STORE_FILE, SYMUDOL_UPLOAD_STORE_PASSWORD, SYMUDOL_UPLOAD_KEY_ALIAS and " +
+        "SYMUDOL_UPLOAD_KEY_PASSWORD."
+
+gradle.taskGraph.whenReady {
+    if (hasUploadKey) return@whenReady
+    val releaseTasks = allTasks.filter { it.project == project && it.name.contains("Release") }
+    if (releaseTasks.isEmpty()) return@whenReady
+    if (uploadKeyPartlyConfigured) {
+        throw GradleException(
+            "The upload key is only partly configured; missing: ${missingUploadSettings.joinToString()}.",
+        )
+    }
+    // signReleaseBundle too, so signing a bundle directly cannot bypass the guard.
+    if (releaseTasks.any { it.name == "bundleRelease" || it.name == "signReleaseBundle" }) {
+        throw GradleException("$missingUploadKeyMessage A Play bundle is never debug-signed.")
+    }
+    if (releaseTasks.any { it.name == "assembleRelease" }) {
+        // Error level so `flutter build apk`, which hides Gradle warnings, still shows it.
+        logger.error("WARNING: $missingUploadKeyMessage This release APK is signed with the debug key.")
+    }
 }
 
 flutter {

@@ -1,0 +1,13 @@
+# Template for android/key.properties, which signs release builds with Symudol's upload key (#37).
+# Copy it to android/key.properties (gitignored) and fill in the values. Never commit the real
+# file, the keystore or the passwords. Keep the keystore outside every Git repository.
+#
+# Each value can instead come from an environment variable, which overrides this file:
+# SYMUDOL_UPLOAD_STORE_FILE, SYMUDOL_UPLOAD_STORE_PASSWORD, SYMUDOL_UPLOAD_KEY_ALIAS and
+# SYMUDOL_UPLOAD_KEY_PASSWORD. See documentation/releasing.md.
+
+# Absolute path to the upload keystore.
+storeFile=/path/outside/the/repository/symudol-upload.p12
+storePassword=change-me
+keyAlias=symudol-upload
+keyPassword=change-me

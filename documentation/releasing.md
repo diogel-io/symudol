@@ -81,8 +81,61 @@ there is work to put in it. The release workflow closes it when the release is c
    GitHub release with the changelog section as its notes, labels the PR `autorelease: tagged`, and
    closes the milestone.
 
-Building, signing and uploading the app to the Play Store or TestFlight is not automated yet; do it
-from the tag.
+Building, signing and uploading are not automated: do them from the tag, as the next section
+describes. TestFlight is not set up yet.
+
+## Building and signing a release
+
+Google Play gets an Android App Bundle signed with Symudol's **upload key**. Play then signs what
+users install with the **app signing key**, through Play App Signing (#37). The two keys are
+separate:
+
+| Key | Alias | Held | SHA-256 certificate fingerprint |
+| --- | --- | --- | --- |
+| App signing key | `symudol-app-signing` | Offline, with an offline backup; Play App Signing holds a copy uploaded with PEPK | `F6:88:2A:CD:85:CA:1A:5C:46:70:85:A9:50:0E:94:33:36:CD:E0:3D:7A:64:50:12:77:E9:D2:63:20:FE:57:E3` |
+| Upload key | `symudol-upload` | The release machine, outside every repository, with an offline backup | `E4:23:FF:9E:65:68:70:F7:1D:76:C6:03:3B:44:1E:0F:00:16:4B:45:4B:9D:23:6E:A2:DE:38:76:4A:95:AE:F9` |
+
+The fingerprints are public. The keystores and their passwords are not: never commit them, put them
+in an issue, or copy them into the workspace. `android/.gitignore` ignores `key.properties`,
+`*.p12`, `*.jks` and `*.keystore` as a backstop.
+
+1. Check out the release tag, `git checkout v<version>`.
+2. Point the build at the upload key, in one of two ways:
+   - copy `android/key.properties.example` to `android/key.properties` and fill it in; or
+   - set `SYMUDOL_UPLOAD_STORE_FILE`, `SYMUDOL_UPLOAD_STORE_PASSWORD`, `SYMUDOL_UPLOAD_KEY_ALIAS`
+     and `SYMUDOL_UPLOAD_KEY_PASSWORD`, which override the file, so the passwords need not be
+     written to disk.
+3. Build the bundle:
+
+   ```bash
+   flutter build appbundle --release
+   ```
+
+   Without the upload key this fails with `No upload key`, so a bundle for Play is never
+   debug-signed. `flutter build apk --release` still works without the key: it signs with the debug
+   key and prints a warning, which is what the emulator and `nip55_device_check.sh --symudol-apk`
+   use. Never distribute that APK.
+4. Check the signer, which must be the upload key's fingerprint above:
+
+   ```bash
+   keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab
+   ```
+
+5. Upload `build/app/outputs/bundle/release/app-release.aab` in the Play Console, to internal
+   testing first.
+6. Delete `android/key.properties` once the bundle is uploaded. Git ignores it, but it holds the
+   upload key's passwords; the environment variables avoid writing them to disk at all.
+
+`minSdk` (24), `targetSdk` (36) and `compileSdk` (36) are pinned in `android/app/build.gradle.kts`
+with the reason for each. A Flutter upgrade does not change them; raise them in a reviewed PR.
+
+**If the upload key is lost or leaked**, generate a new upload key, export its certificate
+(`keytool -export -rfc`), and use **Request reset** under Play Console → App signing. Update the
+fingerprint above. The app signing key is not affected, so installs keep updating.
+
+**If the app signing key is leaked**, anyone can sign an update that installs over Symudol, and
+existing installs cannot be moved to a new key except by Play's key upgrade, which only applies to
+newer Android versions. Treat it as a security incident under [SECURITY.md](../SECURITY.md).
 
 ## Google Play listing
 
