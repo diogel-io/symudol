@@ -123,7 +123,8 @@ in an issue, or copy them into the workspace. `android/.gitignore` ignores `key.
 
 5. Upload `build/app/outputs/bundle/release/app-release.aab` in the Play Console, to internal
    testing first.
-6. Delete `android/key.properties` if you created it, or leave it: it is ignored.
+6. Delete `android/key.properties` once the bundle is uploaded. Git ignores it, but it holds the
+   upload key's passwords; the environment variables avoid writing them to disk at all.
 
 `minSdk` (24), `targetSdk` (36) and `compileSdk` (36) are pinned in `android/app/build.gradle.kts`
 with the reason for each. A Flutter upgrade does not change them; raise them in a reviewed PR.

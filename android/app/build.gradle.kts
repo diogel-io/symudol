@@ -29,11 +29,10 @@ val uploadSettings = mapOf(
     "keyPassword" to uploadKeyPassword,
 )
 val hasUploadKey = uploadSettings.values.all { it != null }
-// Half a configuration is a mistake, not "no key": fail rather than quietly debug-sign.
-if (!hasUploadKey && uploadSettings.values.any { it != null }) {
-    val missing = uploadSettings.filterValues { it == null }.keys.joinToString()
-    throw GradleException("The upload key is only partly configured; missing: $missing.")
-}
+val missingUploadSettings = uploadSettings.filterValues { it == null }.keys
+// Half a configuration is a mistake, not "no key". Checked only when a release task runs (below),
+// so debug builds, unit tests and Gradle Sync still work.
+val uploadKeyPartlyConfigured = !hasUploadKey && missingUploadSettings.size < uploadSettings.size
 
 android {
     namespace = "io.diogel.symudol"
@@ -107,8 +106,15 @@ val missingUploadKeyMessage =
 
 gradle.taskGraph.whenReady {
     if (hasUploadKey) return@whenReady
-    val releaseTasks = allTasks.filter { it.project == project && it.name.endsWith("Release") }
-    if (releaseTasks.any { it.name == "bundleRelease" }) {
+    val releaseTasks = allTasks.filter { it.project == project && it.name.contains("Release") }
+    if (releaseTasks.isEmpty()) return@whenReady
+    if (uploadKeyPartlyConfigured) {
+        throw GradleException(
+            "The upload key is only partly configured; missing: ${missingUploadSettings.joinToString()}.",
+        )
+    }
+    // signReleaseBundle too, so signing a bundle directly cannot bypass the guard.
+    if (releaseTasks.any { it.name == "bundleRelease" || it.name == "signReleaseBundle" }) {
         throw GradleException("$missingUploadKeyMessage A Play bundle is never debug-signed.")
     }
     if (releaseTasks.any { it.name == "assembleRelease" }) {
