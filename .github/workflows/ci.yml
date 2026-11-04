@@ -44,7 +44,7 @@ jobs:
       - name: Flutter tests
         run: flutter test
 
-      # gradlew is not committed (Flutter's default .gitignore); this generates it without a build.
+      # android/local.properties (the Flutter SDK path) is not committed; this writes it without a build.
       - name: Android unit tests
         run: |
           flutter build apk --config-only

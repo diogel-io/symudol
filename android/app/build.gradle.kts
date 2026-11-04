@@ -101,6 +101,15 @@ kotlin {
     jvmToolchain(17)
 }
 
+// AGP 9 packages the merged assets for unit tests (isIncludeAndroidResources, above), and the
+// Flutter plugin copies its assets into the same directory without declaring it, which Gradle 9
+// rejects (#148). Run the copy first, for each variant that has one.
+tasks.configureEach {
+    val variant = Regex("package(\\w+)UnitTestForUnitTest").matchEntire(name)?.groupValues?.get(1)
+        ?: return@configureEach
+    dependsOn(tasks.matching { it.name == "copyFlutterAssets$variant" })
+}
+
 val missingUploadKeyMessage =
     "No upload key: create android/key.properties (see android/key.properties.example) or set " +
         "SYMUDOL_UPLOAD_STORE_FILE, SYMUDOL_UPLOAD_STORE_PASSWORD, SYMUDOL_UPLOAD_KEY_ALIAS and " +
