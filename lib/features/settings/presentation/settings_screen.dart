@@ -10,6 +10,7 @@ import '../../vault/domain/biometric_unlock_status.dart';
 import '../../vault/domain/biometric_vault.dart';
 import '../../vault/presentation/vault_failure_messages.dart';
 import 'change_pin_screen.dart';
+import 'privacy_policy_link.dart';
 import 'profile_network_screen.dart';
 import 'trusted_apps_screen.dart';
 import 'widgets/biometric_pin_dialog.dart';
@@ -218,6 +219,13 @@ class SettingsScreen extends ConsumerWidget {
               applicationName: 'Symudol',
               applicationLegalese: symudolLicenceLegalese,
             ),
+          ),
+          SettingsTile(
+            key: const Key('privacyPolicyTile'),
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy policy',
+            subtitle: 'What Symudol stores and sends; opens in your browser',
+            onTap: () => openPrivacyPolicy(context, ref),
           ),
           SettingsTile(
             icon: Icons.lock_open,
