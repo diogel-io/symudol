@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/diogel-io/symudol/compare/v1.0.0...v1.0.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **tools:** let the Zapstore script rerun after the wizard stops ([#89](https://github.com/diogel-io/symudol/issues/89)) ([ff61555](https://github.com/diogel-io/symudol/commit/ff61555369fc12624712ce7d9bbc4526fc50141a))
+* **tools:** let the Zapstore script rerun after the wizard stops ([#89](https://github.com/diogel-io/symudol/issues/89)) ([880257c](https://github.com/diogel-io/symudol/commit/880257c52980d0d97ab666bbd1c6e76c43d87e41))
+
 ## 1.0.0 (2026-11-05)
 
 
