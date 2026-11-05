@@ -78,13 +78,31 @@ upload_digest="$(grep -oE 'expected="[0-9a-f]{64}"' "$WORKFLOW" | head -n 1 | cu
 [ -n "$zsp_url" ] && [ -n "$zsp_sha" ] && [ -n "$upload_digest" ] \
   || die "could not read the zsp pin or the upload key digest from $WORKFLOW."
 
+# The build signs with the upload key only when all four settings are present, each from its
+# SYMUDOL_UPLOAD_* variable or android/key.properties (android/app/build.gradle.kts). Otherwise
+# it signs with the debug key and writes no symudol.apk, so check first. Only the presence of
+# each setting is tested; no value is read into this script or printed.
+upload_setting_present() { # <key.properties name> <variable>
+  [ -n "${!2:-}" ] || { [ -f android/key.properties ] && grep -qE "^$1=.+" android/key.properties; }
+}
+missing=()
+upload_setting_present storeFile SYMUDOL_UPLOAD_STORE_FILE || missing+=(storeFile/SYMUDOL_UPLOAD_STORE_FILE)
+upload_setting_present storePassword SYMUDOL_UPLOAD_STORE_PASSWORD || missing+=(storePassword/SYMUDOL_UPLOAD_STORE_PASSWORD)
+upload_setting_present keyAlias SYMUDOL_UPLOAD_KEY_ALIAS || missing+=(keyAlias/SYMUDOL_UPLOAD_KEY_ALIAS)
+upload_setting_present keyPassword SYMUDOL_UPLOAD_KEY_PASSWORD || missing+=(keyPassword/SYMUDOL_UPLOAD_KEY_PASSWORD)
+
 if [ "$BUILD" = 1 ]; then
+  [ "${#missing[@]}" -eq 0 ] || die "the upload key is not set up, so the build would be debug-signed.
+Missing: ${missing[*]}
+Create android/key.properties from android/key.properties.example (it is gitignored), or export
+the SYMUDOL_UPLOAD_* variables, as \"Building and signing a release\" in documentation/releasing.md
+describes. Then run this script again."
   step "Building symudol.apk with the upload key"
   command -v flutter >/dev/null || die "flutter is not on PATH."
   flutter build apk --release
 fi
-[ -f "$APK" ] || die "$APK is missing. Without the upload key no symudol.apk is written; set it up as \
-documentation/releasing.md describes, then rerun without --no-build."
+[ -f "$APK" ] || die "$APK is missing. Build it with the upload key: run this script without \
+--no-build."
 
 step "Checking symudol.apk is signed with the upload key"
 android_home="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
