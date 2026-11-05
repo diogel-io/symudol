@@ -135,6 +135,32 @@ gradle.taskGraph.whenReady {
     }
 }
 
+// The release APK to share is build/app/outputs/flutter-apk/symudol.apk (#153). The Flutter plugin
+// copies AGP's output there as app-release.apk, the name `flutter build apk` looks for, so this
+// copies that file after assembleRelease rather than renaming AGP's output. Only an APK signed
+// with the upload key gets the shareable name: a debug-signed one must never be distributed.
+val copySymudolReleaseApk = tasks.register("copySymudolReleaseApk") {
+    val apkDir = layout.buildDirectory.dir("outputs/flutter-apk")
+    val signedWithUploadKey = hasUploadKey
+    // It reads the Flutter plugin's copy, which Gradle does not track as an output.
+    doNotTrackState("Copies the Flutter plugin's untracked app-release.apk")
+    doLast {
+        val dir = apkDir.get()
+        val apk = dir.file("app-release.apk").asFile
+        val named = dir.file("symudol.apk").asFile
+        if (!signedWithUploadKey) {
+            // Never leave an earlier build's symudol.apk next to a debug-signed app-release.apk.
+            named.delete()
+            return@doLast
+        }
+        if (!apk.exists()) return@doLast
+        apk.copyTo(named, overwrite = true)
+        // Error level so `flutter build apk`, which hides Gradle's lifecycle output, shows it.
+        logger.error("Release APK for distribution: ${named.relativeTo(rootDir.parentFile)}")
+    }
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { finalizedBy(copySymudolReleaseApk) }
+
 flutter {
     source = "../.."
 }
