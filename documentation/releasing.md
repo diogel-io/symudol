@@ -128,14 +128,21 @@ in an issue, or copy them into the workspace. `android/.gitignore` ignores `key.
 
    ```bash
    flutter build apk --release
-   "$ANDROID_HOME"/build-tools/<version>/apksigner verify --print-certs \
-     build/app/outputs/flutter-apk/symudol.apk
+   # ANDROID_HOME is the Android SDK, for example ~/Android/Sdk; this picks its newest build tools.
+   BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+   "$BUILD_TOOLS"/apksigner verify --print-certs build/app/outputs/flutter-apk/symudol.apk
    ```
 
    With the upload key, the build also writes `build/app/outputs/flutter-apk/symudol.apk`, a copy of
    Flutter's `app-release.apk`; distribute that file. Its `certificate SHA-256 digest` must be the
    upload key's fingerprint above, in lower case without the colons. `keytool -printcert -jarfile`
    can't check it: with `minSdk` 24 the APK has only a v2 signature, not a JAR one.
+
+   `symudol.apk` is signed with the upload key, but Play signs the copies it installs with the app
+   signing key. Android won't update one with the other, so a phone that has Symudol from Play can't
+   install `symudol.apk` over it, and the reverse. Switching means uninstalling, which erases the
+   vault: tell people to save an encrypted vault backup first and restore it after reinstalling.
+   Resetting the upload key also stops `symudol.apk` installs from taking the next `symudol.apk`.
 7. Delete `android/key.properties` once the bundle is uploaded and the APK is built. Git ignores
    it, but it holds the upload key's passwords; the environment variables avoid writing them to
    disk at all.

@@ -142,19 +142,24 @@ gradle.taskGraph.whenReady {
 val copySymudolReleaseApk = tasks.register("copySymudolReleaseApk") {
     val apkDir = layout.buildDirectory.dir("outputs/flutter-apk")
     val signedWithUploadKey = hasUploadKey
+    // `flutter build apk --split-per-abi` writes app-<abi>-release.apk only, so any app-release.apk
+    // in the folder is from an earlier build, perhaps signed with another key.
+    val splitPerAbi = providers.gradleProperty("split-per-abi").orNull?.toBoolean() == true
+    // Set when the build starts: an app-release.apk older than this was not written by this build.
+    val buildStartedAt = System.currentTimeMillis()
     // It reads the Flutter plugin's copy, which Gradle does not track as an output.
     doNotTrackState("Copies the Flutter plugin's untracked app-release.apk")
     doLast {
         val dir = apkDir.get()
         val apk = dir.file("app-release.apk").asFile
         val named = dir.file("symudol.apk").asFile
-        if (!signedWithUploadKey) {
-            // Never leave an earlier build's symudol.apk next to a debug-signed app-release.apk.
-            named.delete()
-            return@doLast
+        // Never leave an earlier build's symudol.apk behind: it is replaced or removed every time.
+        if (named.exists() && !named.delete()) {
+            throw GradleException("Could not delete the earlier $named.")
         }
-        if (!apk.exists()) return@doLast
-        apk.copyTo(named, overwrite = true)
+        if (!signedWithUploadKey || splitPerAbi) return@doLast
+        if (!apk.exists() || apk.lastModified() < buildStartedAt) return@doLast
+        apk.copyTo(named)
         // Error level so `flutter build apk`, which hides Gradle's lifecycle output, shows it.
         logger.error("Release APK for distribution: ${named.relativeTo(rootDir.parentFile)}")
     }
