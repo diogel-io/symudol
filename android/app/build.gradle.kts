@@ -135,6 +135,43 @@ gradle.taskGraph.whenReady {
     }
 }
 
+// The release APK to share is build/app/outputs/flutter-apk/symudol.apk (#153). The Flutter plugin
+// copies AGP's output there as app-release.apk, the name `flutter build apk` looks for, so this
+// copies that file after assembleRelease rather than renaming AGP's output. Only an APK signed
+// with the upload key gets the shareable name: a debug-signed one must never be distributed.
+val copySymudolReleaseApk = tasks.register("copySymudolReleaseApk") {
+    val apkDir = layout.buildDirectory.dir("outputs/flutter-apk")
+    val signedWithUploadKey = hasUploadKey
+    // `flutter build apk --split-per-abi` writes app-<abi>-release.apk only, so any app-release.apk
+    // in the folder is from an earlier build, perhaps signed with another key.
+    val splitPerAbi = providers.gradleProperty("split-per-abi").orNull?.toBoolean() == true
+    // Set when the build starts: an app-release.apk older than this was not written by this build.
+    val buildStartedAt = System.currentTimeMillis()
+    // It reads the Flutter plugin's copy, which Gradle does not track as an output.
+    doNotTrackState("Copies the Flutter plugin's untracked app-release.apk")
+    doLast {
+        val dir = apkDir.get()
+        val apk = dir.file("app-release.apk").asFile
+        val named = dir.file("symudol.apk").asFile
+        // The earlier symudol.apk was removed before the build started (below).
+        if (!signedWithUploadKey || splitPerAbi) return@doLast
+        if (!apk.exists() || apk.lastModified() < buildStartedAt) return@doLast
+        apk.copyTo(named)
+        // Error level so `flutter build apk`, which hides Gradle's lifecycle output, shows it.
+        logger.error("Release APK for distribution: ${named.relativeTo(rootDir.parentFile)}")
+    }
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { finalizedBy(copySymudolReleaseApk) }
+// Remove the earlier symudol.apk before any release work runs, so a failed or partial release build
+// never leaves it next to a newer app-release.apk to be shared by mistake.
+gradle.taskGraph.whenReady {
+    if (allTasks.none { it.project == project && it.name == "assembleRelease" }) return@whenReady
+    val named = layout.buildDirectory.file("outputs/flutter-apk/symudol.apk").get().asFile
+    if (named.exists() && !named.delete()) {
+        throw GradleException("Could not delete the earlier $named.")
+    }
+}
+
 flutter {
     source = "../.."
 }

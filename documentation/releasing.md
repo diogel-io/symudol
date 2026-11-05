@@ -114,7 +114,8 @@ in an issue, or copy them into the workspace. `android/.gitignore` ignores `key.
    Without the upload key this fails with `No upload key`, so a bundle for Play is never
    debug-signed. `flutter build apk --release` still works without the key: it signs with the debug
    key and prints a warning, which is what the emulator and `nip55_device_check.sh --symudol-apk`
-   use. Never distribute that APK.
+   use. Never distribute that APK: it is `app-release.apk`, and no `symudol.apk` is written without
+   the key.
 4. Check the signer, which must be the upload key's fingerprint above:
 
    ```bash
@@ -123,8 +124,28 @@ in an issue, or copy them into the workspace. `android/.gitignore` ignores `key.
 
 5. Upload `build/app/outputs/bundle/release/app-release.aab` in the Play Console, to internal
    testing first.
-6. Delete `android/key.properties` once the bundle is uploaded. Git ignores it, but it holds the
-   upload key's passwords; the environment variables avoid writing them to disk at all.
+6. To share the app outside Play, build the release APK with the upload key still set:
+
+   ```bash
+   flutter build apk --release
+   # ANDROID_HOME is the Android SDK, for example ~/Android/Sdk; this picks its newest build tools.
+   BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+   "$BUILD_TOOLS"/apksigner verify --print-certs build/app/outputs/flutter-apk/symudol.apk
+   ```
+
+   With the upload key, the build also writes `build/app/outputs/flutter-apk/symudol.apk`, a copy of
+   Flutter's `app-release.apk`; distribute that file. Its `certificate SHA-256 digest` must be the
+   upload key's fingerprint above, in lower case without the colons. `keytool -printcert -jarfile`
+   can't check it: with `minSdk` 24 the APK has only a v2 signature, not a JAR one.
+
+   `symudol.apk` is signed with the upload key, but Play signs the copies it installs with the app
+   signing key. Android won't update one with the other, so a phone that has Symudol from Play can't
+   install `symudol.apk` over it, and the reverse. Switching means uninstalling, which erases the
+   vault: tell people to save an encrypted vault backup first and restore it after reinstalling.
+   Resetting the upload key also stops `symudol.apk` installs from taking the next `symudol.apk`.
+7. Delete `android/key.properties` once the bundle is uploaded and the APK is built. Git ignores
+   it, but it holds the upload key's passwords; the environment variables avoid writing them to
+   disk at all.
 
 `minSdk` (24), `targetSdk` (36) and `compileSdk` (36) are pinned in `android/app/build.gradle.kts`
 with the reason for each. A Flutter upgrade does not change them; raise them in a reviewed PR.
