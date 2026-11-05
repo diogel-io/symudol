@@ -153,10 +153,7 @@ val copySymudolReleaseApk = tasks.register("copySymudolReleaseApk") {
         val dir = apkDir.get()
         val apk = dir.file("app-release.apk").asFile
         val named = dir.file("symudol.apk").asFile
-        // Never leave an earlier build's symudol.apk behind: it is replaced or removed every time.
-        if (named.exists() && !named.delete()) {
-            throw GradleException("Could not delete the earlier $named.")
-        }
+        // The earlier symudol.apk was removed before the build started (below).
         if (!signedWithUploadKey || splitPerAbi) return@doLast
         if (!apk.exists() || apk.lastModified() < buildStartedAt) return@doLast
         apk.copyTo(named)
@@ -165,6 +162,15 @@ val copySymudolReleaseApk = tasks.register("copySymudolReleaseApk") {
     }
 }
 tasks.matching { it.name == "assembleRelease" }.configureEach { finalizedBy(copySymudolReleaseApk) }
+// Remove the earlier symudol.apk before any release work runs, so a failed or partial release build
+// never leaves it next to a newer app-release.apk to be shared by mistake.
+gradle.taskGraph.whenReady {
+    if (allTasks.none { it.project == project && it.name == "assembleRelease" }) return@whenReady
+    val named = layout.buildDirectory.file("outputs/flutter-apk/symudol.apk").get().asFile
+    if (named.exists() && !named.delete()) {
+        throw GradleException("Could not delete the earlier $named.")
+    }
+}
 
 flutter {
     source = "../.."
