@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets for local tools. zsp's setup wizard (tools/zapstore_c1_proof.sh) keeps the Zapstore
+# publisher nsec in .env as SIGN_WITH, so it must never be committed.
+.env
