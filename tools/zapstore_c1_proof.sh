@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # One-time Zapstore setup: prove the upload key belongs to the Diogel publisher (NIP-C1, #89).
 #
-# Run this once, by hand, on the release machine. It does the error-prone parts for you, then
-# hands over to zsp's interactive setup wizard, which is the only way zsp 2.0.1 makes the proof:
+# Run this by hand on the release machine, from a checkout of the release tag (v<version>). It
+# does the error-prone parts for you, then hands over to zsp's interactive setup wizard, which is
+# the only way zsp 2.0.1 makes the proof.
 #
-#   1. checks zapstore.yaml has the publisher's real npub;
+# When to run it:
+#   - First release: CI's `zsp publish` fails with "No active proof" until a proof exists, and
+#     for an app Zapstore doesn't list yet the wizard publishes the proof only together with the
+#     first release ("Publish now"). So after the first release is cut, run this from its tag and
+#     choose "Publish now"; that is Symudol's first Zapstore release.
+#   - Renewal: the proof lasts two years and CI cannot renew it. Run this again from the latest
+#     release tag in the 30 days before the expiry `zsp check` prints; the wizard renews it.
+#
+# What it does:
+#   1. checks HEAD is a release tag, and zapstore.yaml has the publisher's real npub;
 #   2. builds symudol.apk with the upload key (or reuses one with --no-build), and stops unless
 #      the APK's signer is the upload key the release workflow expects;
 #   3. downloads the zsp version the release workflow pins, and stops unless its SHA-256 matches;
@@ -33,7 +43,7 @@ step() { printf '\n==> %s\n' "$*"; }
 for arg in "$@"; do
   case "$arg" in
     --no-build) BUILD=0 ;;
-    -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $arg (see --help)" ;;
   esac
 done
@@ -42,6 +52,16 @@ done
 [ "$(uname -s)-$(uname -m)" = "Linux-x86_64" ] \
   || die "the release workflow pins zsp for linux-amd64 only; run this on the Linux release machine."
 cd "$ROOT"
+
+step "Checking the checkout"
+# The wizard can publish this build as Symudol's first Zapstore release, so it must be a release.
+tag="$(git describe --exact-match --tags --match 'v*' HEAD 2>/dev/null || true)"
+if [ -z "$tag" ]; then
+  die "HEAD is not a release tag. Check out the release first, for example: git checkout v1.0.0"
+fi
+[ -z "$(git status --porcelain --untracked-files=no)" ] \
+  || die "the checkout has uncommitted changes; the build must be exactly $tag."
+echo "Release: $tag"
 
 step "Checking zapstore.yaml"
 npub="$(awk '/^pubkey:/ {print $2}' zapstore.yaml)"
@@ -98,6 +118,8 @@ When the wizard asks, give it:
   APK:             $APK
   Keystore:        ${store_file:-the upload keystore, symudol-upload.p12}
   Key alias:       symudol-upload  (the upload key, not symudol-app-signing)
+If it offers "Publish Symudol ${tag#v} now?", Zapstore doesn't list Symudol yet: choose
+"Publish now". The proof goes out with this first release, and nothing else can publish it.
 The passwords and the nsec are typed into zsp only; this script never sees them.
 
 EOF
@@ -106,3 +128,6 @@ read -r -p "Press Enter to start the wizard, or Ctrl+C to stop. " _
 
 step "Checking the proof with zsp check"
 "$zsp" check
+echo
+echo "Note the proof's expiry above. CI cannot renew it: run this script again from the latest"
+echo "release tag in the 30 days before it expires."

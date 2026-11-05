@@ -107,7 +107,8 @@ there is work to put in it. The release workflow closes it when the release is c
 
 ## Publishing from CI (#89)
 
-Merging the release PR is the one manual step; the publish job does the rest. It checks out the
+Merging the release PR is the one manual step; the publish job does the rest (except for the
+first release on Zapstore, which needs the one-time C1 proof step below). It checks out the
 `v<version>` tag, builds the signed AAB and APK with the upload key, asserts the APK's signer is
 the upload key (the fingerprint below), uploads the AAB as a **draft** to the configured track,
 attaches `symudol.apk` to the GitHub release, and publishes the same APK to Zapstore with `zsp`
@@ -136,20 +137,35 @@ One-time setup, done once by hand:
 
 1. Play Console: create the service account, grant it release permission on the internal track,
    and store its JSON as `PLAY_SERVICE_ACCOUNT_JSON`.
-2. Zapstore: generate the publisher key (keep the `nsec` offline as well as in the secret), put its
-   `npub` in `zapstore.yaml`, then prove the upload key belongs to it (the NIP-C1 proof), so
-   Zapstore clients can verify the APK signature belongs to the publisher. Run, in a terminal on
-   the release machine with the upload key set up:
+2. Zapstore: generate the publisher key (keep the `nsec` offline as well as in the secret), and
+   put its `npub` in `zapstore.yaml`.
+3. Zapstore: prove the upload key belongs to the publisher (the NIP-C1 proof), so Zapstore
+   clients can verify the APK signature belongs to the publisher. The publish job cannot do this:
+   `zsp publish` stops with "No active proof found" until a proof exists, and it has no way to
+   make one. zsp 2.0.1 makes the proof only in its interactive wizard, and for an app Zapstore
+   doesn't list yet, the wizard publishes the proof only together with the first release. So the
+   first release reaches Zapstore by hand:
+   1. Cut the first release as usual. The publish job uploads to Play and the GitHub release, then
+      its Zapstore step fails with "No active proof found". That is expected for this release
+      only; don't rerun it.
+   2. In a terminal on the release machine, with the upload key set up, check out the release tag
+      and run the script:
 
-   ```bash
-   tools/zapstore_c1_proof.sh
-   ```
+      ```bash
+      git checkout v1.0.0 && tools/zapstore_c1_proof.sh
+      ```
 
-   It builds `symudol.apk` and checks its signer is the upload key, downloads the zsp version the
-   publish job pins and checks its SHA-256, then runs zsp's setup wizard (zsp 2.0.1 makes the proof
-   only through the wizard) and `zsp check`. It prints the APK path, keystore and alias to give the
-   wizard. Do it by hand: you type the keystore password and the `nsec` into zsp, and the script
-   never sees them.
+      It builds `symudol.apk` from the tag and checks its signer is the upload key, downloads the
+      zsp version the publish job pins and checks its SHA-256, prints the APK path, keystore and
+      alias to give the wizard, then runs zsp's wizard and `zsp check`.
+   3. When the wizard asks to publish the release now, choose **Publish now**. The release and the
+      proof go to Zapstore together. Later releases are published by the publish job.
+
+   You type the keystore password and the `nsec` into zsp; the script never sees them.
+
+   The proof lasts two years, and the publish job cannot renew it. Note the expiry that
+   `zsp check` prints, and in the 30 days before it run the script again from the latest release
+   tag: for a listed app the wizard renews the proof straight away, without a release.
 
 ### Rolling back a bad release
 
