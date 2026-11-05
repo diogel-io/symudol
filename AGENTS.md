@@ -8,6 +8,7 @@ This document provides project-specific information for advanced developers work
 - **Flutter SDK**: Ensure you have the Flutter SDK installed (compatible with version defined in `pubspec.yaml`).
 - **Dependencies**: Run `flutter pub get` to fetch all necessary packages.
 - **Android/iOS Setup**: Standard Flutter platform setup applies. Note that this project uses `flutter_secure_storage` which may require specific platform-level configurations for Keychain (iOS) or Keystore (Android).
+- **Android build toolchain**: Android Gradle Plugin 9.0.1 and Kotlin 2.3.20, the versions in the template of Flutter 3.44 (the version CI pins), and Gradle 9.3.1, the newest that Flutter 3.44 supports, through the wrapper committed in `android/` and `tools/nip55-test-client/`. Change them together, in both projects. The build runs on JDK 17 or newer.
 
 ### Key Dependencies
 - **Riverpod**: Used for state management and dependency injection.
