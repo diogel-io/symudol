@@ -13,7 +13,7 @@
 repository: https://github.com/diogel-io/symudol
 
 # npub of the Diogel Zapstore publisher identity (the ZAPSTORE_SIGNER_NSEC repository secret).
-pubkey: npub1PLACEHOLDER000000000000000000000000000000000000000000000000000000
+pubkey: npub12etye6h4cw7h865qjsm7mz9h50905f4cjlda69yj4w24h3j5pgxs0dsyj6
 
 # The freshly built, upload-key-signed APK the publish job produced. Always a local path here, so
 # Zapstore serves exactly what Play would install.
