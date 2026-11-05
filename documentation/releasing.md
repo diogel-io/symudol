@@ -78,13 +78,63 @@ there is work to put in it. The release workflow closes it when the release is c
 
    and the next run regenerates the release PR from it.
 5. Merge the release PR. The release workflow tags the merge commit `v<version>`, creates the
-   GitHub release with the changelog section as its notes, labels the PR `autorelease: tagged`, and
-   closes the milestone.
+   GitHub release with the changelog section as its notes, labels the PR `autorelease: tagged`,
+   closes the milestone, and runs the publish job (#89): the signed AAB is uploaded as a draft to
+   the Google Play track named by the `PLAY_TRACK` repository variable (default: `internal`), and
+   the signed APK is attached to the GitHub release and published to Zapstore. Publish the draft in
+   the Play Console to make the release installable.
 
-Building, signing and uploading are not automated: do them from the tag, as the next section
-describes. TestFlight is not set up yet.
+## Publishing from CI (#89)
+
+Merging the release PR is the one manual step; the publish job does the rest. It checks out the
+`v<version>` tag, builds the signed AAB and APK with the upload key, asserts the APK's signer is
+the upload key (the fingerprint below), uploads the AAB as a **draft** to the configured track,
+attaches `symudol.apk` to the GitHub release, and publishes the same APK to Zapstore with `zsp`
+(`zapstore.yaml`). A merge that creates no release builds nothing: every publish step sits behind
+`release_created == 'true'`.
+
+### Required secrets and variables
+
+Set these on the repository before the first release; the job fails visibly if one is missing or
+wrong, and the signer check runs before any upload.
+
+| Secret or variable | Contents |
+| --- | --- |
+| `SYMUDOL_UPLOAD_KEYSTORE_BASE64` (secret) | The upload keystore (`symudol-upload.p12`), base64-encoded (`base64 -w0 symudol-upload.p12`). Decoded to a job-local file the runner deletes on every outcome |
+| `SYMUDOL_UPLOAD_STORE_PASSWORD` (secret) | The upload keystore's password |
+| `SYMUDOL_UPLOAD_KEY_ALIAS` (secret) | `symudol-upload` |
+| `SYMUDOL_UPLOAD_KEY_PASSWORD` (secret) | The alias's password |
+| `PLAY_SERVICE_ACCOUNT_JSON` (secret) | The Google Play service account's JSON key. The account needs only the internal-testing release permission on the app |
+| `ZAPSTORE_SIGNER_NSEC` (secret) | The Diogel Zapstore publisher identity as an `nsec`; signs the catalog events only. It cannot sign Android updates |
+| `PLAY_TRACK` (variable, optional) | The Play track to draft-publish to. Defaults to `internal` |
+
+`zapstore.yaml` records the publisher's public half (`pubkey`); `zsp` refuses to publish when the
+secret resolves to a different key. Commit it with the real npub before the first release.
+
+One-time setup, done once by hand:
+
+1. Play Console: create the service account, grant it release permission on the internal track,
+   and store its JSON as `PLAY_SERVICE_ACCOUNT_JSON`.
+2. Zapstore: generate the publisher key (keep the `nsec` offline as well as in the secret), put its
+   `npub` in `zapstore.yaml`, and link the upload key's certificate to the identity with
+   `zsp identity --link-key`, so Zapstore clients can verify the APK signature belongs to the
+   publisher (NIP-C1).
+
+### Rolling back a bad release
+
+- **Draft not yet published in Play:** delete the draft in the Play Console. Nothing user-visible
+  happened. Remove the APK from the GitHub release and delete the Zapstore event that points at it
+  with `nak delete` signed with the publisher key.
+- **Published to the internal track:** halt or discard the release in the Play Console and cut a
+  new release with a higher build number (`Release-As:` never reuses a `versionCode`). Devices on
+  the draft can only be fixed by a newer, signed build.
+- **The upload key is leaked:** follow the reset procedure under *Building and signing a release*
+  below, then replace the `SYMUDOL_UPLOAD_*` secrets. The app signing key is unaffected.
 
 ## Building and signing a release
+
+> This section describes the manual path. Since #89 the release workflow's publish job does this
+> from CI: use this path only for a local build, a workflow fix, or if CI publishing is down.
 
 Google Play gets an Android App Bundle signed with Symudol's **upload key**. Play then signs what
 users install with the **app signing key**, through Play App Signing (#37). The two keys are

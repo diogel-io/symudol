@@ -1,0 +1,20 @@
+# Zapstore publish configuration for Symudol (diogel-io/symudol#89).
+#
+# The release workflow's publish job (`.github/workflows/release.yml`) runs
+# `zsp publish -y zapstore.yaml` after each release, signing the catalog events with the publisher
+# key held in the ZAPSTORE_SIGNER_NSEC repository secret. `pubkey` below is that secret's public
+# half: zsp refuses to publish when SIGN_WITH resolves to a different key, so a misconfigured
+# secret fails rather than publishing under the wrong identity.
+#
+# The relay whitelists the publisher through this file: on the first publish it fetches
+# zapstore.yaml from the repository and checks the pubkey matches, so this file must be committed
+# with the real pubkey before the first release goes out.
+
+repository: https://github.com/diogel-io/symudol
+
+# npub of the Diogel Zapstore publisher identity (the ZAPSTORE_SIGNER_NSEC repository secret).
+pubkey: npub1PLACEHOLDER000000000000000000000000000000000000000000000000000000
+
+# The freshly built, upload-key-signed APK the publish job produced. Always a local path here, so
+# Zapstore serves exactly what Play would install.
+release_source: build/app/outputs/flutter-apk/symudol.apk
