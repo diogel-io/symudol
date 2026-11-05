@@ -75,12 +75,15 @@ jobs:
     permissions:
       contents: write
     env:
-      # Non-secret configuration. The upload keystore's location is job-local and deleted below.
-      SYMUDOL_UPLOAD_STORE_FILE: ${{ runner.temp }}/symudol-upload.keystore
+      # Non-secret configuration. The upload keystore's path lands in $GITHUB_ENV below: the
+      # `runner` context is not available in job-level `env`, so it is computed in a step.
       SYMUDOL_UPLOAD_KEY_ALIAS: ${{ secrets.SYMUDOL_UPLOAD_KEY_ALIAS }}
       PLAY_TRACK: ${{ vars.PLAY_TRACK || 'internal' }}
       ZSP_SHA256: 1ef5373f8ecd9ba63d2c3fab98abb0d31b2244a2aac31b3749fb205c7d5f5b38
     steps:
+      - name: Set the keystore's job-local path
+        run: echo "SYMUDOL_UPLOAD_STORE_FILE=$RUNNER_TEMP/symudol-upload.keystore" >> "$GITHUB_ENV"
+
       - name: Checkout the tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
