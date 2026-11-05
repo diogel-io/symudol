@@ -5,8 +5,9 @@
 
 ## Screenshots
 
-`metadata/android/en-GB/images/phoneScreenshots/` holds six screens, captured 2026-11-04 on the
-`Pixel_Stable_API35` emulator (1080×2400) in dark mode, with the status bar in demo mode.
+`metadata/android/en-GB/images/phoneScreenshots/` holds six screens, captured 2026-11-05 (after #146
+removed the app-bar user icon) on a fresh Pixel 8 profile emulator with the API 35 Play image
+(1080×2400), in dark mode, with the status bar in demo mode.
 
 | File | Shows |
 | --- | --- |
