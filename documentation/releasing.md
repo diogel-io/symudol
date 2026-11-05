@@ -36,6 +36,27 @@ To force a version, merge a commit whose message has a `Release-As: <version>` f
 starts at `0.0.0`, and the commit that set up release-please carries `Release-As: 1.0.0`, so the
 first release is `1.0.0`.
 
+## Release notes
+
+A tag produces release notes automatically: release-please writes the GitHub release's body from
+the `CHANGELOG.md` section it generated, grouped by the changelog sections in
+`release-please-config.json`:
+
+| Section | Commit types shown |
+| --- | --- |
+| Features | `feat:` |
+| Bug Fixes | `fix:` |
+| Performance Improvements | `perf:` |
+
+Reverts get their own section; `docs:`, `chore:`, `refactor:`, `test:`, `build:` and `ci:` are
+hidden. Write commit messages for the person reading them, not the committer: they are what users
+see. To correct a release's notes after the fact, edit the GitHub release, and fix the source by
+amending the merged PR's body with a `BEGIN_COMMIT_OVERRIDE` block as described under
+*Cutting a release*.
+
+The tag also produces the signed artefacts the publish job attaches (#89): the AAB goes to the
+Google Play track as a draft, and `symudol.apk` goes onto the GitHub release and to Zapstore.
+
 ## Scope: the milestone
 
 Each planned release has a milestone named after its version without the `v`, for example `1.0.0`.
