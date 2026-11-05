@@ -2,8 +2,10 @@
 # "chore(release): <version>", open against master: it sets the version from the Conventional
 # Commits merged since the last tag, bumps pubspec.yaml (and its build number) and writes
 # CHANGELOG.md. Merging that PR is the release: this workflow then creates the v<version> tag and
-# the GitHub release, and closes the version's milestone. Nothing is built or published to a store
-# here yet.
+# the GitHub release, closes the version's milestone, and runs the publish job (#89), which builds
+# the signed AAB and APK, uploads a draft to Google Play, attaches the APK to the release, and
+# publishes it to Zapstore. The secrets the publish job needs are listed in
+# documentation/releasing.md.
 name: Release
 
 on:
@@ -59,3 +61,96 @@ jobs:
           fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/milestones/$number" -f state=closed --silent
           echo "Closed milestone $VERSION (#$number)"
+
+  # Builds the signed AAB and APK, uploads a draft to the Google Play track named by the PLAY_TRACK
+  # repository variable, attaches the signed APK to the GitHub release, and publishes the APK to
+  # Zapstore (diogel-io/symudol#89). Runs only for a push that created a release; the secrets it
+  # needs are scoped to this job and are cleaned up before any failure can leave them on disk.
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cirruslabs/flutter:3.44.0
+    permissions:
+      contents: write
+    env:
+      # Non-secret configuration. The upload keystore's location is job-local and deleted below.
+      SYMUDOL_UPLOAD_STORE_FILE: ${{ runner.temp }}/symudol-upload.keystore
+      SYMUDOL_UPLOAD_KEY_ALIAS: ${{ secrets.SYMUDOL_UPLOAD_KEY_ALIAS }}
+      PLAY_TRACK: ${{ vars.PLAY_TRACK || 'internal' }}
+      ZSP_SHA256: 1ef5373f8ecd9ba63d2c3fab98abb0d31b2244a2aac31b3749fb205c7d5f5b38
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: v${{ needs.release-please.outputs.version }}
+
+      - name: Write the upload keystore
+        env:
+          SYMUDOL_UPLOAD_KEYSTORE_BASE64: ${{ secrets.SYMUDOL_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$SYMUDOL_UPLOAD_KEYSTORE_BASE64" | base64 -d > "$SYMUDOL_UPLOAD_STORE_FILE"
+          chmod 600 "$SYMUDOL_UPLOAD_STORE_FILE"
+
+      - name: Build the signed AAB
+        env:
+          SYMUDOL_UPLOAD_STORE_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_STORE_PASSWORD }}
+          SYMUDOL_UPLOAD_KEY_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_KEY_PASSWORD }}
+        run: |
+          flutter pub get
+          flutter build appbundle --release
+
+      - name: Build the signed APK
+        env:
+          SYMUDOL_UPLOAD_STORE_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_STORE_PASSWORD }}
+          SYMUDOL_UPLOAD_KEY_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_KEY_PASSWORD }}
+        run: flutter build apk --release
+
+      # Writes android/local.properties for settings.gradle.kts without rebuilding.
+      - name: Prepare Gradle
+        run: flutter build apk --config-only
+
+      # The release bundle and APK must be signed with the upload key recorded in
+      # documentation/releasing.md; anything else stops here, before an upload is attempted.
+      - name: Check the signer is the upload key
+        run: |
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          APK="build/app/outputs/flutter-apk/symudol.apk"
+          digest="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ {print $2}')"
+          expected="e423ff9e656870f71d76c6033b441e0f00164b454b9d236ea2de38764a95aef9"
+          if [ "$digest" != "$expected" ]; then
+            echo "symudol.apk signer is not the upload key: $digest" >&2
+            exit 1
+          fi
+          echo "symudol.apk signer verified as the upload key"
+
+      - name: Upload the draft to Google Play
+        env:
+          ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          SYMUDOL_UPLOAD_STORE_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_STORE_PASSWORD }}
+          SYMUDOL_UPLOAD_KEY_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew publishReleaseBundle --console=plain
+        working-directory: android
+
+      - name: Attach the signed APK to the GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: v${{ needs.release-please.outputs.version }}
+          files: build/app/outputs/flutter-apk/symudol.apk
+
+      # zsp is pinned by version and checked against its released SHA-256 before it sees a secret.
+      - name: Publish the APK to Zapstore
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_SIGNER_NSEC }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL -o /tmp/zsp https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-linux-amd64
+          echo "$ZSP_SHA256  /tmp/zsp" | sha256sum -c - >/dev/null
+          chmod +x /tmp/zsp
+          /tmp/zsp publish -y zapstore.yaml
+
+      # Runner disks are ephemeral, but no run of this job leaves a keystore behind on any outcome.
+      - name: Delete the upload keystore
+        if: always()
+        run: rm -f "$SYMUDOL_UPLOAD_STORE_FILE"

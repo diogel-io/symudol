@@ -6,6 +6,9 @@ plugins {
     // false, the Flutter Gradle Plugin applies it, from the version in settings.gradle.kts (#150).
     // The Flutter Gradle Plugin must be applied after the Android Gradle plugin.
     id("dev.flutter.flutter-gradle-plugin")
+    // Google Play upload (#89). Disabled without its credential: it validates them at
+    // configuration time, so any build without the secret would fail.
+    id("com.github.triplet.play")
 }
 
 // The upload key signs release builds for Google Play (#37). It is read from android/key.properties
@@ -170,6 +173,17 @@ gradle.taskGraph.whenReady {
     if (named.exists() && !named.delete()) {
         throw GradleException("Could not delete the earlier $named.")
     }
+}
+
+// The Google Play upload configuration (#89). Enabled only in the release workflow's publish job,
+// which provides ANDROID_PUBLISHER_CREDENTIALS (a service-account JSON kept as a repository
+// secret); everywhere else the plugin stays off, so no build needs or sees the credentials. The
+// track comes from PLAY_TRACK (default `internal`), and an upload lands as a draft: it becomes an
+// installable release only by a person publishing it in the Play Console.
+play {
+    enabled.set(!System.getenv("ANDROID_PUBLISHER_CREDENTIALS").isNullOrBlank())
+    track.set(System.getenv("PLAY_TRACK")?.takeIf { it.isNotBlank() } ?: "internal")
+    releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.DRAFT)
 }
 
 flutter {
