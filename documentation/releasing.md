@@ -149,19 +149,37 @@ One-time setup, done once by hand:
       its Zapstore step fails with "No active proof found". That is expected for this release
       only; don't rerun it.
    2. In a terminal on the release machine, with the upload key set up, check out the release tag
-      and run the script:
+      and put the publisher `nsec` in `.env` as `SIGN_WITH`, which is where zsp's wizard reads it.
+      `.env` is gitignored. This command keeps the key out of your shell history:
 
       ```bash
-      git checkout v1.0.0 && tools/zapstore_c1_proof.sh
+      git checkout v1.0.0
+      (umask 077; read -rs -p 'Zapstore publisher nsec: ' N; echo; printf 'SIGN_WITH=%s\n' "$N" > .env)
       ```
 
-      It builds `symudol.apk` from the tag and checks its signer is the upload key, downloads the
-      zsp version the publish job pins and checks its SHA-256, prints the APK path, keystore and
-      alias to give the wizard, then runs zsp's wizard and `zsp check`.
-   3. When the wizard asks to publish the release now, choose **Publish now**. The release and the
-      proof go to Zapstore together. Later releases are published by the publish job.
+   3. Run the script:
 
-   You type the keystore password and the `nsec` into zsp; the script never sees them.
+      ```bash
+      tools/zapstore_c1_proof.sh
+      ```
+
+      It builds `symudol.apk` from the tag and checks its signer is the upload key, checks `.env`
+      has a `SIGN_WITH` line, downloads the zsp version the publish job pins and checks its
+      SHA-256, prints what to give the wizard, then runs zsp's wizard and `zsp check`. After a
+      first run, `--no-build` reuses the APK; the script still checks its signer.
+   4. In the wizard, choose **Use your nsec from .env**, then the upload keystore. When it asks to
+      publish the release now, choose **Publish now**. The release and the proof go to Zapstore
+      together. Later releases are published by the publish job.
+   5. Delete `.env` and keep the `nsec` offline.
+
+   You type the keystore password into zsp; the script never sees it, or the `nsec`.
+
+   **If an upload fails with "authenticated pubkey is not allowed",** Zapstore hasn't whitelisted
+   the publisher yet. Zapstore's docs say a committed `zapstore.yaml` whitelists a new publisher
+   automatically, but in November 2026 that wasn't working (zapstore/zsp#25). Nothing is published
+   when this happens. Ask for the key to be added with a "Whitelist request" issue in
+   zapstore/relay, as Symudol did in zapstore/relay#15, then run the script again with
+   `--no-build`.
 
    The proof lasts two years, and the publish job cannot renew it. Note the expiry that
    `zsp check` prints, and in the 30 days before it run the script again from the latest release

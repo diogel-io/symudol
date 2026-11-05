@@ -59,7 +59,9 @@ tag="$(git describe --exact-match --tags --match 'v*' HEAD 2>/dev/null || true)"
 if [ -z "$tag" ]; then
   die "HEAD is not a release tag. Check out the release first, for example: git checkout v1.0.0"
 fi
-[ -z "$(git status --porcelain --untracked-files=no)" ] \
+# zapstore.yaml is excluded: the wizard may add listing settings to it, which don't change the APK,
+# and a rerun after a stopped wizard must still be possible.
+[ -z "$(git status --porcelain --untracked-files=no -- . ':(exclude)zapstore.yaml')" ] \
   || die "the checkout has uncommitted changes; the build must be exactly $tag."
 echo "Release: $tag"
 
@@ -128,11 +130,26 @@ if [ -z "$store_file" ] && [ -f android/key.properties ]; then
   store_file="$(sed -n 's/^storeFile=//p' android/key.properties | head -n 1)"
 fi
 
+step "Checking .env for the publisher key"
+# zsp's wizard reads the publisher nsec from SIGN_WITH in .env and stops if it isn't there. Only
+# the line's presence is tested; the key is not read into this script or printed.
+git check-ignore -q .env || die ".env is not ignored by git here; it would hold the publisher nsec."
+if ! { [ -f .env ] && grep -qE '^SIGN_WITH=nsec1' .env; }; then
+  cat >&2 <<'EOF'
+error: .env has no SIGN_WITH=nsec1... line. Write it without the key reaching your shell history:
+
+  (umask 077; read -rs -p 'Zapstore publisher nsec: ' N; echo; printf 'SIGN_WITH=%s\n' "$N" > .env)
+
+then run this script again.
+EOF
+  exit 1
+fi
+echo ".env has SIGN_WITH."
+
 step "Starting zsp's setup wizard"
 cat <<EOF
 When the wizard asks, give it:
-  Nostr identity:  the Diogel Zapstore publisher, $npub
-                   (its nsec; never the app's or a personal key)
+  Nostr identity:  "Use your nsec from .env" (the Diogel Zapstore publisher, $npub)
   APK:             $APK
   Keystore:        ${store_file:-the upload keystore, symudol-upload.p12}
   Key alias:       symudol-upload  (the upload key, not symudol-app-signing)
@@ -146,6 +163,12 @@ read -r -p "Press Enter to start the wizard, or Ctrl+C to stop. " _
 
 step "Checking the proof with zsp check"
 "$zsp" check
-echo
-echo "Note the proof's expiry above. CI cannot renew it: run this script again from the latest"
-echo "release tag in the 30 days before it expires."
+cat <<'EOF'
+
+If zsp check shows a proof, note its expiry: CI cannot renew it, so run this script again from
+the latest release tag in the 30 days before it expires.
+If it says "No proof yet", nothing was published. If the wizard stopped at an upload with
+"authenticated pubkey is not allowed", Zapstore hasn't whitelisted the publisher yet; see
+documentation/releasing.md.
+When you're done, delete .env (rm .env) and keep the nsec offline.
+EOF
