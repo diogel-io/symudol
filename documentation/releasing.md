@@ -137,13 +137,19 @@ One-time setup, done once by hand:
 1. Play Console: create the service account, grant it release permission on the internal track,
    and store its JSON as `PLAY_SERVICE_ACCOUNT_JSON`.
 2. Zapstore: generate the publisher key (keep the `nsec` offline as well as in the secret), put its
-   `npub` in `zapstore.yaml`, and link the upload key's certificate to the identity, so Zapstore
-   clients can verify the APK signature belongs to the publisher (the NIP-C1 proof). With zsp
-   2.0.1, the version the publish job pins, run `zsp` with no command from the repository root: its
-   setup wizard creates the proof. Give it the publisher identity and the upload keystore
-   (`symudol-upload.p12`, alias `symudol-upload`), not the app signing key, because Zapstore serves
-   `symudol.apk`. Then run `zsp check` to confirm the proof. Do it by hand: the wizard needs the
-   keystore, its password and the `nsec`, which no agent or script should be given.
+   `npub` in `zapstore.yaml`, then prove the upload key belongs to it (the NIP-C1 proof), so
+   Zapstore clients can verify the APK signature belongs to the publisher. Run, in a terminal on
+   the release machine with the upload key set up:
+
+   ```bash
+   tools/zapstore_c1_proof.sh
+   ```
+
+   It builds `symudol.apk` and checks its signer is the upload key, downloads the zsp version the
+   publish job pins and checks its SHA-256, then runs zsp's setup wizard (zsp 2.0.1 makes the proof
+   only through the wizard) and `zsp check`. It prints the APK path, keystore and alias to give the
+   wizard. Do it by hand: you type the keystore password and the `nsec` into zsp, and the script
+   never sees them.
 
 ### Rolling back a bad release
 

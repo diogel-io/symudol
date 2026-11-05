@@ -120,7 +120,7 @@ jobs:
         run: |
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
           APK="build/app/outputs/flutter-apk/symudol.apk"
-          digest="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ {print $2}')"
+          digest="$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" | awk '/certificate SHA-256 digest/ {print $NF; exit}')"
           expected="e423ff9e656870f71d76c6033b441e0f00164b454b9d236ea2de38764a95aef9"
           if [ "$digest" != "$expected" ]; then
             echo "symudol.apk signer is not the upload key: $digest" >&2
