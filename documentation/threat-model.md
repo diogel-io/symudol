@@ -129,7 +129,7 @@ the Diogel workspace. Each requirement names the threats it answers.
 
 ## 6. Findings In Current Code
 
-These are conditions in `master` at `5057dca`, not hypotheticals. Findings already owned by an open
+These are conditions in `v1.0.0`, not hypotheticals. Findings already owned by an open
 issue are listed in section 4 and not repeated here unless more detail is needed.
 
 ### Open
