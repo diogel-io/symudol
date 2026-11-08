@@ -84,6 +84,12 @@ private fun columnProblem(method: String, answer: ProviderAnswer): String? {
         missing.isNotEmpty() -> "$method is missing ${missing.sorted().joinToString()}"
         method == "sign_event" && answer.columns["signature"] != answer.columns["result"] ->
             "sign_event signature and result differ"
+        // The hex key in result and event, its npub in signature for Fountain (#165).
+        method == "get_public_key" && answer.columns["event"] != answer.columns["result"] ->
+            "get_public_key result and event differ"
+        method == "get_public_key" && answer.columns["result"]?.let(Nostr::npub) != answer.columns["signature"] ->
+            "get_public_key signature is not the npub of result"
+        method == "get_public_key" -> null
         method != "sign_event" && RESULT_COLUMNS.map { answer.columns[it] }.toSet().size != 1 ->
             "$method result columns differ"
         else -> null
@@ -318,7 +324,7 @@ object Scenarios {
                 providerRoundTrip("nip44_encrypt", "nip44_decrypt", pubkey, { columnProblem("nip44_decrypt", it) }) { nip44 ->
                     providerRoundTrip("nip04_encrypt", "nip04_decrypt", pubkey, { columnProblem("nip04_decrypt", it) }) { nip04 ->
                         val all = problems + listOfNotNull(nip44, nip04)
-                        if (all.isEmpty()) pass("signature, result and event on every method; package on get_public_key")
+                        if (all.isEmpty()) pass("signature, result and event on every method; package and the npub in signature on get_public_key")
                         else fail(all.joinToString("; "))
                     }
                 }

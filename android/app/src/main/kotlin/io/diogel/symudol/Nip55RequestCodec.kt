@@ -36,10 +36,9 @@ object Nip55RequestCodec {
         val encoded = lower.substring(5) // drop "npub1"
         if (encoded.length < 7) return null // need at least some data + 6 checksum
 
-        val charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
         val decoded5 = mutableListOf<Int>()
         for (ch in encoded) {
-            val idx = charset.indexOf(ch)
+            val idx = BECH32_CHARSET.indexOf(ch)
             if (idx < 0) return null
             decoded5.add(idx)
         }
@@ -68,13 +67,18 @@ object Nip55RequestCodec {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun bech32VerifyChecksum(hrp: String, data: List<Int>): Boolean {
-        val values = buildList {
-            hrp.forEach { add(it.code ushr 5) }
-            add(0)
-            hrp.forEach { add(it.code and 31) }
-            addAll(data)
-        }
+    private const val BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+    private fun bech32VerifyChecksum(hrp: String, data: List<Int>): Boolean =
+        bech32Polymod(bech32HrpExpand(hrp) + data) == 1
+
+    private fun bech32HrpExpand(hrp: String): List<Int> = buildList {
+        hrp.forEach { add(it.code ushr 5) }
+        add(0)
+        hrp.forEach { add(it.code and 31) }
+    }
+
+    private fun bech32Polymod(values: List<Int>): Int {
         val gen = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
         var c = 1
         for (v in values) {
@@ -84,7 +88,31 @@ object Nip55RequestCodec {
                 if ((b ushr i) and 1 != 0) c = c xor gen[i]
             }
         }
-        return c == 1
+        return c
+    }
+
+    /**
+     * Encode a 64-char hex public key as a NIP-19 npub. Returns null when the input is not
+     * 32 bytes of hex.
+     */
+    fun encodeNpub(hex: String): String? {
+        val lower = hex.trim().lowercase()
+        if (lower.length != 64 || !lower.all { it in '0'..'9' || it in 'a'..'f' }) return null
+        val data = mutableListOf<Int>()
+        var acc = 0
+        var bits = 0
+        for (i in 0 until 64 step 2) {
+            acc = (acc shl 8) or lower.substring(i, i + 2).toInt(16)
+            bits += 8
+            while (bits >= 5) {
+                bits -= 5
+                data.add((acc shr bits) and 31)
+            }
+        }
+        if (bits > 0) data.add((acc shl (5 - bits)) and 31)
+        val polymod = bech32Polymod(bech32HrpExpand("npub") + data + List(6) { 0 }) xor 1
+        val checksum = (0 until 6).map { (polymod shr (5 * (5 - it))) and 31 }
+        return "npub1" + (data + checksum).joinToString("") { BECH32_CHARSET[it].toString() }
     }
 
     // Authorities are derived from the installed application id so that debug,
@@ -241,13 +269,16 @@ object Nip55RequestCodec {
     }
 
     /**
-     * The `get_public_key` answer: the pubkey in every result column, plus the signer's
-     * `package`, which NIP-55 lists for this method (diogel-io/symudol#19). Permission `results`
-     * are not sent: no target client depends on them.
+     * The `get_public_key` answer: the hex pubkey in `result` and `event`, the npub in
+     * `signature`, plus the signer's `package`, which NIP-55 lists for this method
+     * (diogel-io/symudol#19). Fountain reads the key from `signature` as an npub, as older Amber
+     * builds sent it (diogel-io/symudol#165); clients that follow NIP-55 read the hex `result`.
+     * Permission `results` are not sent: no target client depends on them.
      */
     fun publicKeyCursor(pubkey: String, signerPackage: String): MatrixCursor {
+        val npub = encodeNpub(pubkey) ?: pubkey
         return MatrixCursor(arrayOf("signature", "result", "event", "package")).apply {
-            addRow(arrayOf(pubkey, pubkey, pubkey, signerPackage))
+            addRow(arrayOf(npub, pubkey, pubkey, signerPackage))
         }
     }
 }

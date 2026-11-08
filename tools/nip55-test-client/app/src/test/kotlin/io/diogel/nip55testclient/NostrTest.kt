@@ -107,4 +107,13 @@ class NostrTest {
         assertEquals(6, message.length())
         assertEquals(0, message.getInt(0))
     }
+
+    @Test
+    fun npubEncodesTheNip19TestVector() {
+        assertEquals(
+            "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
+            Nostr.npub("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"),
+        )
+        assertNull(Nostr.npub("not hex"))
+    }
 }

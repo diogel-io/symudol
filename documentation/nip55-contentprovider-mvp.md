@@ -88,7 +88,7 @@ them (diogel-io/symudol#19, REQ-NIP55-003):
 | Method | Columns |
 |--------|---------|
 | `sign_event` | `signature` and `result` (the signature), `event` (the signed event JSON) |
-| `get_public_key` | `signature`, `result` and `event` (the pubkey), `package` (Symudol's package name) |
+| `get_public_key` | `result` and `event` (the hex pubkey), `signature` (the same key as an npub, which Fountain reads; diogel-io/symudol#165), `package` (Symudol's package name) |
 | Every other method | `signature`, `result` and `event`, all the same value |
 
 Symudol does not send permission `results` on `get_public_key` in 1.0.0. No

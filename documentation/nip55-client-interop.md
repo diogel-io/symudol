@@ -4,8 +4,8 @@ Status: active
 
 Tracking issue: diogel-io/symudol#87
 
-Symudol 1.0.0 must sign for the three Android Nostr clients it targets: Amethyst, Dark Wisp and
-Nostria. This is the repeatable procedure for checking that on an emulator, and the record of the
+Symudol must sign for the Android Nostr clients it targets: Amethyst, Dark Wisp and Nostria
+since 1.0.0, and Fountain since 1.0.1 (diogel-io/symudol#165). This is the repeatable procedure for checking that on an emulator, and the record of the
 latest run.
 
 The test client (`nip55-device-checks.md`) checks Symudol's side of the protocol and runs first.
@@ -16,13 +16,13 @@ and handles a rejection the way it is written.
 
 From each client's source, at the versions below:
 
-| | Amethyst | Dark Wisp | Nostria |
-|---|---|---|---|
-| Methods | `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` | `get_public_key`, `sign_event`, `nip44_encrypt`, `nip44_decrypt` | `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt` |
-| Path | provider first, intent when it returns `null` | provider first, intent when it returns `null` | provider first, intent when it returns `null` |
-| `current_user` | hex | npub | hex |
-| Reads | `result`, `event`, `package`, `id`, `rejected` | `event`, then `signature`, then `result` | `result`, `event`, `package`, `id` |
-| On a rejection | expects `RESULT_OK` with `rejected` | reads `RESULT_OK` with `rejected` as success with an empty signature | treats any non-OK result as rejected |
+| | Amethyst | Dark Wisp | Nostria | Fountain |
+|---|---|---|---|---|
+| Methods | `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt`, `decrypt_zap_event` | `get_public_key`, `sign_event`, `nip44_encrypt`, `nip44_decrypt` | `get_public_key`, `sign_event`, `nip04_encrypt`, `nip04_decrypt`, `nip44_encrypt`, `nip44_decrypt` | `get_public_key`, `sign_event` at login (asks for kind 22242 and `nip44_decrypt` permissions) |
+| Path | provider first, intent when it returns `null` | provider first, intent when it returns `null`; login is intent only | provider first, intent when it returns `null` | provider first, intent when it returns `null` |
+| `current_user` | hex | npub | hex | |
+| Reads | `result`, `event`, `package`, `id`, `rejected` | login: `result` (hex or npub); signing: `event`, then `signature`, then `result` | `result`, `event`, `package`, `id` | `get_public_key`: `signature`, decoded as an npub; on the provider, needs a `signature` column |
+| On a rejection | expects `RESULT_OK` with `rejected` | reads `RESULT_OK` with `rejected` as success with an empty signature | treats any non-OK result as rejected | |
 
 None of them uses `sign_message`, batch `results` or `callbackUrl`. Where a client never calls a
 method, the matrix records "not used".
@@ -30,7 +30,13 @@ method, the matrix records "not used".
 Symudol answers a user rejection with NIP-55's `RESULT_OK` and a Boolean `rejected` extra, and a
 signer failure (busy, malformed request, timeout) with `RESULT_CANCELED`. Every provider answer
 carries `signature`, `result` and `event`, and `get_public_key` adds `package`
-(`nip55-contentprovider-mvp.md`).
+(`nip55-contentprovider-mvp.md`). For `get_public_key`, `result` and `event` hold the hex key and
+`signature` holds its npub, on both the intent and the provider, because Fountain reads the key
+there as an npub, as older Amber builds sent it (diogel-io/symudol#165).
+
+Fountain is closed source. Its row comes from logcat and from inspecting its APK for
+interoperability. Its **Log in** also needs the identity to have a published kind 0 profile;
+without one it fails with `MISSING_PROFILE` after the signer step.
 
 ## Set Up
 
@@ -59,7 +65,8 @@ Create or import an identity, and unlock the vault.
 
 ### The Clients
 
-Download each APK from the project's own GitHub releases. Record its SHA-256 in the matrix, and
+Download each APK from the project's own GitHub releases, or Fountain's from its Zapstore
+listing. Record its SHA-256 in the matrix, and
 never commit the files.
 
 | Client | Version | Release | APK |
@@ -67,6 +74,7 @@ never commit the files.
 | Amethyst | 1.19.0 | <https://github.com/vitorpamplona/amethyst/releases> | `amethyst-fdroid-x86_64-v1.19.0.apk` |
 | Dark Wisp | 1.2.5 | <https://github.com/barrydeen/dark-wisp-android/releases> | `app-release.apk` |
 | Nostria | 4.1.77 | <https://github.com/nostria-app/nostria/releases> | `Nostria_4.1.77.apk` |
+| Fountain | 1.5.9 | <https://zapstore.dev/apps/fm.fountain.apps> | `fountain-1.5.9.apk` |
 
 ```bash
 sha256sum <apk>
@@ -103,6 +111,7 @@ review screen.
 | Amethyst | post a note; react to a note; send and read a NIP-04 direct message; send and read a NIP-17 direct message (NIP-44); open a private zap (`decrypt_zap_event`) |
 | Dark Wisp | post a note; react to a note; send and read a direct message (NIP-44) |
 | Nostria | post a note; react to a note; send and read a direct message in each scheme it offers (NIP-04 and NIP-44) |
+| Fountain | log in (Log in → Log in with Nostr → Connect via Android Signer), with an identity that has a kind 0 profile |
 
 Nostria asks for an untyped `sign_event` permission at login. Symudol never remembers that
 (diogel-io/symudol#5), so each new event kind prompts once until it is remembered. That is
@@ -115,6 +124,31 @@ client versions and their SHA-256. Fix each failure in Symudol, or link the issu
 in the 1.0.0 milestone. Raise a client's own defect upstream on that client and link it.
 
 ### Latest Run
+
+A login run for diogel-io/symudol#165, on the fix's build, with a test identity that has a kind 0
+profile. Rejections and the other actions were not run.
+
+| Symudol build | Device | Date |
+|---------------|--------|------|
+| `issue-165-fountain-signin` (based on d27eb14) | Pixel 6 AVD, Android 14 (google_apis x86_64) | 2026-11-08 |
+
+| Client | Version | SHA-256 |
+|--------|---------|---------|
+| Fountain | 1.5.9 | `6d8dd18f54f1f414daabb960033201288ff5d7c4b3d78c3e7dc1624b77dcbc4a` |
+| Amethyst | 1.19.0 | `c8c0c10b60e4ba13c016cf54e5e21b71b03de051f068ef40abfa2cb35baafaed` |
+
+| Method | Path | Fountain | Amethyst |
+|--------|------|----------|----------|
+| `get_public_key` (login) | intent | pass | pass |
+| `get_public_key` | provider | pass (remembered for 8 hours; read `signature` as the npub) | |
+| `sign_event` | intent | pass (kind 27235, twice) | pass (kind 22242) |
+
+Fountain on `master` before the fix failed at the public key with `ANDROID_SIGNER_MISSING_PUBKEY`.
+Dark Wisp was not rerun: its login reads only `result` (`AuthScreen.kt` at v1.2.5) and it never
+asks the provider for `get_public_key`, so the npub in `signature` does not reach it. Nostria
+reads `result` and was not rerun.
+
+### Run for diogel-io/symudol#19
 
 A partial run for diogel-io/symudol#19: login, and the result columns on the intent and provider
 paths for the actions below. Dark Wisp, the direct messages, private zaps and rejections are not

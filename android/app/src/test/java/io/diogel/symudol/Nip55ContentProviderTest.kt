@@ -293,7 +293,18 @@ class Nip55ContentProviderTest {
 
         val row = query("GET_PUBLIC_KEY", "login")!!.row()
 
-        assertEquals(mapOf("signature" to pubKey, "result" to pubKey, "event" to pubKey, "package" to appId), row)
+        assertEquals(mapOf("signature" to npub, "result" to pubKey, "event" to pubKey, "package" to appId), row)
+    }
+
+    @Test
+    fun aRememberedGetPublicKeyPutsTheNpubInSignatureForFountain() {
+        // Fountain decodes `signature` as an npub; NIP-55 clients read the hex `result` (#165).
+        grants(grant("get_public_key"))
+
+        val row = query("GET_PUBLIC_KEY", "login")!!.row()
+
+        assertEquals(npub, row["signature"])
+        assertEquals(pubKey, Nip55RequestCodec.normalizeHexOrNpub(row["signature"]))
     }
 
     @Test
