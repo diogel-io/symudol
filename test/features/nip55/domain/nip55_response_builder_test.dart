@@ -173,8 +173,29 @@ void main() {
 
     expect(extras, {
       'result': identity.publicKey,
+      'signature': 'npub1424242424242424242424242424242424242424242424242424qamrcaj',
       'package': 'io.diogel.symudol',
     });
+  });
+
+  test('get_public_key puts the npub in signature for Fountain (#165)', () {
+    // NIP-19 test vector: Fountain decodes `signature` as an npub, while
+    // NIP-55 clients read the hex `result`.
+    final identity = VaultIdentity(
+      localId: 'local',
+      publicKey:
+          '3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d',
+      createdAt: DateTime.utc(2026, 5, 1),
+      origin: IdentityOrigin.generated,
+    );
+
+    final extras = builder.getPublicKeyExtras(identity);
+
+    expect(extras['result'], identity.publicKey);
+    expect(
+      extras['signature'],
+      'npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6',
+    );
   });
 
   test('get_public_key package field uses signerPackage constructor param', () {

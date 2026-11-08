@@ -12,6 +12,40 @@ object Nostr {
     fun isHex(value: String?, length: Int): Boolean =
         value != null && value.length == length && value.all { it in '0'..'9' || it in 'a'..'f' }
 
+    /** The NIP-19 npub of a 64-hex public key, or null when the input is not 32 bytes of hex. */
+    fun npub(hex: String): String? {
+        if (!isHex(hex, 64)) return null
+        val data = mutableListOf<Int>()
+        var acc = 0
+        var bits = 0
+        for (i in 0 until 64 step 2) {
+            acc = (acc shl 8) or hex.substring(i, i + 2).toInt(16)
+            bits += 8
+            while (bits >= 5) {
+                bits -= 5
+                data.add((acc shr bits) and 31)
+            }
+        }
+        if (bits > 0) data.add((acc shl (5 - bits)) and 31)
+        val hrp = "npub".map { it.code ushr 5 } + 0 + "npub".map { it.code and 31 }
+        val polymod = bech32Polymod(hrp + data + List(6) { 0 }) xor 1
+        val checksum = (0 until 6).map { (polymod shr (5 * (5 - it))) and 31 }
+        return "npub1" + (data + checksum).joinToString("") { BECH32[it].toString() }
+    }
+
+    private const val BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+    private fun bech32Polymod(values: List<Int>): Int {
+        val gen = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
+        var c = 1
+        for (v in values) {
+            val b = c ushr 25
+            c = (c and 0x1ffffff) shl 5 xor v
+            for (i in 0..4) if ((b ushr i) and 1 != 0) c = c xor gen[i]
+        }
+        return c
+    }
+
     /** An unsigned event for Symudol to complete and sign. */
     fun unsignedEvent(kind: Int, content: String, createdAt: Long): String =
         JSONObject()

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dart_nostr/dart_nostr.dart';
+
 import 'package:symudol/features/identity/domain/vault_identity.dart';
 import 'package:symudol/features/requests/domain/signed_nostr_event.dart';
 
@@ -37,8 +39,12 @@ class Nip55ResponseBuilder {
     };
   }
 
-  /// Permission `results` are not sent in 1.0.0: no target client
-  /// (Amethyst, Dark Wisp, Nostria) depends on them (diogel-io/symudol#19).
+  /// `result` is the hex public key, as NIP-55 specifies. `signature` carries
+  /// the same key as an npub: Fountain reads it there, as older Amber builds
+  /// sent it (diogel-io/symudol#165).
+  ///
+  /// Permission `results` are not sent: no target client depends on them
+  /// (diogel-io/symudol#19).
   Map<String, Object?> getPublicKeyExtras(
     VaultIdentity identity, {
     Nip55IncomingRequest? incoming,
@@ -46,6 +52,9 @@ class Nip55ResponseBuilder {
     final options = incoming?.webReturnOptions;
     final extras = <String, Object?>{
       'result': identity.publicKey,
+      'signature': Nostr.instance.services.bech32.encodePublicKeyToNpub(
+        identity.publicKey,
+      ),
       if (incoming?.externalId != null) 'id': incoming!.externalId,
       'package': signerPackage,
       if (options?.callbackUrl case final callbackUrl?)

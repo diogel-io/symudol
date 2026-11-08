@@ -273,4 +273,32 @@ class Nip55RequestCodecTest {
         assertNull(Nip55RequestCodec.integerKind("not json"))
         assertNull(Nip55RequestCodec.integerKind(null))
     }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  encodeNpub (#165)
+    // ════════════════════════════════════════════════════════════════════
+
+    @Test
+    fun encodeNpub_knownVector() {
+        assertEquals(knownNpub, Nip55RequestCodec.encodeNpub(knownHexPubkey))
+    }
+
+    @Test
+    fun encodeNpub_upperCaseHex_encodesTheSameKey() {
+        assertEquals(knownNpub, Nip55RequestCodec.encodeNpub(knownHexPubkey.uppercase()))
+    }
+
+    @Test
+    fun encodeNpub_roundTripsThroughNormalize() {
+        val hex = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        assertEquals(hex, Nip55RequestCodec.normalizeHexOrNpub(Nip55RequestCodec.encodeNpub(hex)))
+    }
+
+    @Test
+    fun encodeNpub_rejectsInputThatIsNot32BytesOfHex() {
+        assertNull(Nip55RequestCodec.encodeNpub(""))
+        assertNull(Nip55RequestCodec.encodeNpub("ab".repeat(31)))
+        assertNull(Nip55RequestCodec.encodeNpub("zz".repeat(32)))
+        assertNull(Nip55RequestCodec.encodeNpub(knownNpub))
+    }
 }
