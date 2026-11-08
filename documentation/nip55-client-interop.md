@@ -30,9 +30,10 @@ method, the matrix records "not used".
 Symudol answers a user rejection with NIP-55's `RESULT_OK` and a Boolean `rejected` extra, and a
 signer failure (busy, malformed request, timeout) with `RESULT_CANCELED`. Every provider answer
 carries `signature`, `result` and `event`, and `get_public_key` adds `package`
-(`nip55-contentprovider-mvp.md`). For `get_public_key`, `result` and `event` hold the hex key and
+(`nip55-contentprovider-mvp.md`). For `get_public_key`, `result` holds the hex key and
 `signature` holds its npub, on both the intent and the provider, because Fountain reads the key
-there as an npub, as older Amber builds sent it (diogel-io/symudol#165).
+there as an npub, as older Amber builds sent it (diogel-io/symudol#165). Only the provider answer
+also has `event`, holding the hex key; the intent answer has no `event`.
 
 Fountain is closed source. Its row comes from logcat and from inspecting its APK for
 interoperability. Its **Log in** also needs the identity to have a published kind 0 profile;

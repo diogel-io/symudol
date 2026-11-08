@@ -85,6 +85,8 @@ private fun columnProblem(method: String, answer: ProviderAnswer): String? {
         method == "sign_event" && answer.columns["signature"] != answer.columns["result"] ->
             "sign_event signature and result differ"
         // The hex key in result and event, its npub in signature for Fountain (#165).
+        method == "get_public_key" && !Nostr.isHex(answer.columns["result"], 64) ->
+            "get_public_key result is not a 64-hex public key"
         method == "get_public_key" && answer.columns["event"] != answer.columns["result"] ->
             "get_public_key result and event differ"
         method == "get_public_key" && answer.columns["result"]?.let(Nostr::npub) != answer.columns["signature"] ->
