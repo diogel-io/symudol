@@ -126,6 +126,16 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
 
+      # The publisher check's helper comes from the commit this workflow runs from, not the tag:
+      # a manual run publishes an older tag that may not have it (v1.0.1 doesn't).
+      - name: Checkout the publisher check
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: tools/zapstore_publisher_npub.dart
+          sparse-checkout-cone-mode: false
+
       - name: Write the upload keystore
         env:
           SYMUDOL_UPLOAD_KEYSTORE_BASE64: ${{ secrets.SYMUDOL_UPLOAD_KEYSTORE_BASE64 }}
@@ -202,7 +212,7 @@ jobs:
           # zsp 2 ignores zapstore.yaml's pubkey, so check here that the secret is the publisher
           # key it records; another key in the secret would otherwise publish under that key.
           expected="$(sed -n 's/^pubkey: *//p' zapstore.yaml)"
-          actual="$(dart run --verbosity=error tools/zapstore_publisher_npub.dart)"
+          actual="$(dart run --verbosity=error .release-tools/tools/zapstore_publisher_npub.dart)"
           if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
             echo "::error::ZAPSTORE_SIGNER_NSEC is not the publisher key in zapstore.yaml ($expected); it is $actual."
             exit 1
