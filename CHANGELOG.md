@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.1](https://github.com/diogel-io/symudol/compare/v1.0.0...v1.0.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **nip55:** check the hex key and scope event to the provider answer ([22929a4](https://github.com/diogel-io/symudol/commit/22929a41e224d118148a8eb92ef034c3bafb9ae0))
+* **nip55:** return the npub in signature for get_public_key ([9930650](https://github.com/diogel-io/symudol/commit/9930650a1d1df628cd3bd2c48f2b0a10db8cd039))
+* **nip55:** return the npub in signature for get_public_key ([bd01245](https://github.com/diogel-io/symudol/commit/bd012452c25def76190217a54ed36edc6a23e742)), closes [#165](https://github.com/diogel-io/symudol/issues/165)
+* **tools:** let the Zapstore script rerun after the wizard stops ([#89](https://github.com/diogel-io/symudol/issues/89)) ([ff61555](https://github.com/diogel-io/symudol/commit/ff61555369fc12624712ce7d9bbc4526fc50141a))
+* **tools:** let the Zapstore script rerun after the wizard stops ([#89](https://github.com/diogel-io/symudol/issues/89)) ([880257c](https://github.com/diogel-io/symudol/commit/880257c52980d0d97ab666bbd1c6e76c43d87e41))
+
 ## 1.0.0 (2026-11-05)
 
 
