@@ -162,8 +162,9 @@ wrong, and the signer check runs before any upload.
 | `ZAPSTORE_SIGNER_NSEC` (secret) | The Diogel Zapstore publisher identity as an `nsec`; signs the catalog events only. It cannot sign Android updates |
 | `PLAY_TRACK` (variable, optional) | The Play track to draft-publish to. Defaults to `internal` |
 
-`zapstore.yaml` records the publisher's public half (`pubkey`); `zsp` refuses to publish when the
-secret resolves to a different key. Commit it with the real npub before the first release.
+`zapstore.yaml` records the publisher's public half (`pubkey`). zsp 2 ignores that field, so the
+publish job derives the npub from the secret (`tools/zapstore_publisher_npub.dart`) and stops before
+`zsp publish` when it differs. Commit it with the real npub before the first release.
 
 One-time setup, done once by hand:
 

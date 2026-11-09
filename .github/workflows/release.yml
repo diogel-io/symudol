@@ -199,6 +199,15 @@ jobs:
           SIGN_WITH: ${{ secrets.ZAPSTORE_SIGNER_NSEC }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # zsp 2 ignores zapstore.yaml's pubkey, so check here that the secret is the publisher
+          # key it records; another key in the secret would otherwise publish under that key.
+          expected="$(sed -n 's/^pubkey: *//p' zapstore.yaml)"
+          actual="$(dart run --verbosity=error tools/zapstore_publisher_npub.dart)"
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+            echo "::error::ZAPSTORE_SIGNER_NSEC is not the publisher key in zapstore.yaml ($expected); it is $actual."
+            exit 1
+          fi
+          echo "Zapstore publisher verified as $expected"
           curl -fsSL -o /tmp/zsp https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-linux-amd64
           echo "$ZSP_SHA256  /tmp/zsp" | sha256sum -c - >/dev/null
           chmod +x /tmp/zsp
