@@ -2,10 +2,11 @@
 # "chore(release): <version>", open against master: it sets the version from the Conventional
 # Commits merged since the last tag, bumps pubspec.yaml (and its build number) and writes
 # CHANGELOG.md. Merging that PR is the release: this workflow then creates the v<version> tag and
-# the GitHub release, closes the version's milestone, and runs the publish job (#89), which builds
-# the signed AAB and APK, uploads a draft to Google Play, attaches the APK to the release, and
-# publishes it to Zapstore. The secrets the publish job needs are listed in
-# documentation/releasing.md.
+# a draft GitHub release, closes the version's milestone, and runs the publish job (#89), which
+# builds the signed AAB and APK, uploads a draft to Google Play and publishes the APK to Zapstore.
+# The publish-release job then attaches the APK to the draft release and publishes it. Releases
+# are immutable once published, so the APK has to go on while the release is still a draft. The
+# secrets the publish job needs are listed in documentation/releasing.md.
 name: Release
 
 on:
@@ -63,9 +64,10 @@ jobs:
           echo "Closed milestone $VERSION (#$number)"
 
   # Builds the signed AAB and APK, uploads a draft to the Google Play track named by the PLAY_TRACK
-  # repository variable, attaches the signed APK to the GitHub release, and publishes the APK to
-  # Zapstore (diogel-io/symudol#89). Runs only for a push that created a release; the secrets it
-  # needs are scoped to this job and are cleaned up before any failure can leave them on disk.
+  # repository variable, publishes the APK to Zapstore (diogel-io/symudol#89), and hands the APK
+  # and its SHA-256 to the publish-release job. Runs only for a push that created a release; the
+  # secrets it needs are scoped to this job and are cleaned up before any failure can leave them
+  # on disk.
   publish:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
@@ -74,6 +76,8 @@ jobs:
       image: ghcr.io/cirruslabs/flutter:3.44.0
     permissions:
       contents: write
+    outputs:
+      apk_sha256: ${{ steps.apk-digest.outputs.sha256 }}
     env:
       # Non-secret configuration. The upload keystore's path lands in $GITHUB_ENV below: the
       # `runner` context is not available in job-level `env`, so it is computed in a step.
@@ -128,6 +132,14 @@ jobs:
           fi
           echo "symudol.apk signer verified as the upload key"
 
+      # The publish-release job checks the APK it downloads against this digest.
+      - name: Record the APK's SHA-256
+        id: apk-digest
+        run: |
+          sha256="$(sha256sum build/app/outputs/flutter-apk/symudol.apk | awk '{print $1}')"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "symudol.apk SHA-256: $sha256"
+
       - name: Upload the draft to Google Play
         env:
           ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -136,11 +148,15 @@ jobs:
         run: ./gradlew publishReleaseBundle --console=plain
         working-directory: android
 
-      - name: Attach the signed APK to the GitHub release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - name: Hand the signed APK to the publish-release job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          tag_name: v${{ needs.release-please.outputs.version }}
-          files: build/app/outputs/flutter-apk/symudol.apk
+          name: symudol-apk
+          path: build/app/outputs/flutter-apk/symudol.apk
+          # A re-run of this job replaces the earlier attempt's artifact instead of failing on it.
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
 
       # zsp is pinned by version and checked against its released SHA-256 before it sees a secret.
       - name: Publish the APK to Zapstore
@@ -157,3 +173,42 @@ jobs:
       - name: Delete the upload keystore
         if: always()
         run: rm -f "$SYMUDOL_UPLOAD_STORE_FILE"
+
+  # release-please creates the release as a draft (release-please-config.json), because a published
+  # release is immutable and refuses new assets. This job runs last, after the Play and Zapstore
+  # uploads: it attaches the signed APK to the draft and then publishes the release. If an earlier
+  # step fails, the release stays a draft that only maintainers see; re-run the failed jobs.
+  publish-release:
+    needs: [release-please, publish]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v${{ needs.release-please.outputs.version }}
+    steps:
+      - name: Download the signed APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: symudol-apk
+
+      - name: Check the APK is the one the publish job built
+        env:
+          EXPECTED_SHA256: ${{ needs.publish.outputs.apk_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "$EXPECTED_SHA256  symudol.apk" | sha256sum -c -
+
+      - name: Attach the signed APK to the draft release
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+            echo "::error::Release $TAG is already published, and published releases are immutable, so symudol.apk cannot be attached."
+            exit 1
+          fi
+          gh release upload "$TAG" symudol.apk --clobber
+
+      - name: Publish the GitHub release
+        run: gh release edit "$TAG" --draft=false

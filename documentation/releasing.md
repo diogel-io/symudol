@@ -98,12 +98,13 @@ there is work to put in it. The release workflow closes it when the release is c
    ```
 
    and the next run regenerates the release PR from it.
-5. Merge the release PR. The release workflow tags the merge commit `v<version>`, creates the
-   GitHub release with the changelog section as its notes, labels the PR `autorelease: tagged`,
-   closes the milestone, and runs the publish job (#89): the signed AAB is uploaded as a draft to
-   the Google Play track named by the `PLAY_TRACK` repository variable (default: `internal`), and
-   the signed APK is attached to the GitHub release and published to Zapstore. Publish the draft in
-   the Play Console to make the release installable.
+5. Merge the release PR. The release workflow tags the merge commit `v<version>`, creates a
+   draft GitHub release with the changelog section as its notes, labels the PR
+   `autorelease: tagged`, closes the milestone, and runs the publish job (#89): the signed AAB is
+   uploaded as a draft to the Google Play track named by the `PLAY_TRACK` repository variable
+   (default: `internal`), and the signed APK is published to Zapstore. The publish-release job then
+   attaches the APK to the draft GitHub release and publishes the release. Publish the draft in the
+   Play Console to make the release installable.
 
 ## Publishing from CI (#89)
 
@@ -111,9 +112,18 @@ Merging the release PR is the one manual step; the publish job does the rest (ex
 first release on Zapstore, which needs the one-time C1 proof step below). It checks out the
 `v<version>` tag, builds the signed AAB and APK with the upload key, asserts the APK's signer is
 the upload key (the fingerprint below), uploads the AAB as a **draft** to the configured track,
-attaches `symudol.apk` to the GitHub release, and publishes the same APK to Zapstore with `zsp`
-(`zapstore.yaml`). A merge that creates no release builds nothing: every publish step sits behind
-`release_created == 'true'`.
+and publishes the same APK to Zapstore with `zsp` (`zapstore.yaml`). The publish-release job runs
+last: it checks the APK against the SHA-256 the publish job recorded, attaches `symudol.apk` to the
+GitHub release, and publishes the release. A merge that creates no release builds nothing: every
+publish step sits behind `release_created == 'true'`.
+
+The repository has immutable releases turned on, so a published release refuses new assets. That is
+why `release-please-config.json` sets `"draft": true`: release-please creates the release as a
+draft, and the APK goes on before the release is published. It also sets
+`"force-tag-creation": true`, because GitHub creates a draft release's tag only when the release is
+published, and the publish job checks out the tag. If a job fails, the release stays a draft that
+only maintainers can see; fix the cause and re-run the failed jobs. `v1.0.0` was published before
+this change, so it has no APK attached; its APK is on Zapstore.
 
 ### Required secrets and variables
 
@@ -187,9 +197,10 @@ One-time setup, done once by hand:
 
 ### Rolling back a bad release
 
-- **Draft not yet published in Play:** delete the draft in the Play Console. Nothing user-visible
-  happened. Remove the APK from the GitHub release and delete the Zapstore event that points at it
-  with `nak delete` signed with the publisher key.
+- **Draft not yet published in Play:** delete the draft in the Play Console. Nothing reached Play
+  users. Delete the Zapstore event that points at the APK with `nak delete` signed with the
+  publisher key. The GitHub release is immutable once published, so its APK cannot be removed: say
+  in the release notes that the build is withdrawn.
 - **Published to the internal track:** halt or discard the release in the Play Console and cut a
   new release with a higher build number (`Release-As:` never reuses a `versionCode`). Devices on
   the draft can only be fixed by a newer, signed build.
