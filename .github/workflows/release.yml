@@ -153,6 +153,8 @@ jobs:
         with:
           name: symudol-apk
           path: build/app/outputs/flutter-apk/symudol.apk
+          # A re-run of this job replaces the earlier attempt's artifact instead of failing on it.
+          overwrite: true
           if-no-files-found: error
           retention-days: 7
 
