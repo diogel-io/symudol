@@ -115,15 +115,37 @@ the upload key (the fingerprint below), uploads the AAB as a **draft** to the co
 and publishes the same APK to Zapstore with `zsp` (`zapstore.yaml`). The publish-release job runs
 last: it checks the APK against the SHA-256 the publish job recorded, attaches `symudol.apk` to the
 GitHub release, and publishes the release. A merge that creates no release builds nothing: every
-publish step sits behind `release_created == 'true'`.
+publish step sits behind `release_created == 'true'`, or a manual run (below).
 
 The repository has immutable releases turned on, so a published release refuses new assets. That is
 why `release-please-config.json` sets `"draft": true`: release-please creates the release as a
 draft, and the APK goes on before the release is published. It also sets
 `"force-tag-creation": true`, because GitHub creates a draft release's tag only when the release is
 published, and the publish job checks out the tag. If a job fails, the release stays a draft that
-only maintainers can see; fix the cause and re-run the failed jobs. `v1.0.0` was published before
-this change, so it has no APK attached; its APK is on Zapstore.
+only maintainers can see. `v1.0.0` was published before this change, so it has no APK attached;
+its APK is on Zapstore.
+
+### When a publish step fails
+
+Fix the cause first. If the fix is outside the workflow (a secret, a Play or Zapstore setting),
+re-run the failed jobs. If the fix is in the workflow itself, a re-run doesn't help: it uses the
+workflow file at the tag, which still has the fault. Merge the fix to `master` instead, then run
+the workflow by hand for the existing tag: **Actions → Release → Run workflow**, from `master`, or
+
+```bash
+gh workflow run release.yml --repo diogel-io/symudol --ref master -f tag=v1.0.1 -f play=false -f zapstore=true
+```
+
+A manual run skips release-please and the milestone. It builds the tag, checks the signer and
+records the APK's SHA-256 exactly as a release does, then:
+
+- uploads a Play draft only when `play` is on. Leave it off if the version already reached Play,
+  which refuses a version code it already has;
+- publishes to Zapstore only when `zapstore` is on;
+- attaches the APK to the release and publishes it if the release is still a draft, and leaves a
+  published release alone.
+
+It runs only from `master` and accepts only a `v<major>.<minor>.<patch>` tag.
 
 ### Required secrets and variables
 
