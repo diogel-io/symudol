@@ -167,7 +167,8 @@ jobs:
           curl -fsSL -o /tmp/zsp https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-linux-amd64
           echo "$ZSP_SHA256  /tmp/zsp" | sha256sum -c - >/dev/null
           chmod +x /tmp/zsp
-          /tmp/zsp publish -y zapstore.yaml
+          # zsp 2 has no -y; --quiet runs it without prompts or the browser preview.
+          /tmp/zsp publish --quiet zapstore.yaml
 
       # Runner disks are ephemeral, but no run of this job leaves a keystore behind on any outcome.
       - name: Delete the upload keystore
