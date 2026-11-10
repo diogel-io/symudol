@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/diogel-io/symudol/compare/v1.0.1...v1.0.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* **ci:** publish to Zapstore with --quiet, and allow a manual publish of an existing tag ([eb20e15](https://github.com/diogel-io/symudol/commit/eb20e159b1869f8e9dd3bf3bc79f3317a77663af))
+* **ci:** run zsp publish with --quiet, which zsp 2 accepts ([70ba708](https://github.com/diogel-io/symudol/commit/70ba708a8e786c57e3545853b0657d0ce0a4c5ff))
+
 ## [1.0.1](https://github.com/diogel-io/symudol/compare/v1.0.0...v1.0.1) (2026-11-09)
 
 
