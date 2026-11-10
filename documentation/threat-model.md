@@ -210,8 +210,9 @@ Accounts screen fetches no profile", "cancelling the confirmation fetches nothin
   reset through Play without touching the app signing key. The app signing key itself stays offline
   and is never in CI.
 - **The Zapstore publisher key lives in GitHub secrets (#89).** It signs only the Zapstore catalog
-  events; it cannot sign Android updates. `zapstore.yaml` records its public half, so a wrongly
-  configured secret fails the publish rather than publishing under the wrong identity.
+  events; it cannot sign Android updates. `zapstore.yaml` records its public half, and the publish
+  job checks the secret's npub against it before `zsp publish` runs (zsp 2 ignores the field), so a
+  wrongly configured secret fails the publish rather than publishing under the wrong identity.
 
 ## 8. Verification Hooks
 

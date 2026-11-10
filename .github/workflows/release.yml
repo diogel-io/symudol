@@ -7,11 +7,31 @@
 # The publish-release job then attaches the APK to the draft release and publishes it. Releases
 # are immutable once published, so the APK has to go on while the release is still a draft. The
 # secrets the publish job needs are listed in documentation/releasing.md.
+#
+# Run it by hand (workflow_dispatch, from master) to publish a tag that already exists, when a
+# publish step failed after the tag was created. A re-run would use the workflow at the tag; this
+# uses master's. release-please and the milestone are skipped; choose which stores to upload to.
 name: Release
 
 on:
   push:
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, for example v1.0.1
+        required: true
+        type: string
+      play:
+        description: Upload a draft to Google Play (leave off if this version is already there)
+        required: true
+        type: boolean
+        default: false
+      zapstore:
+        description: Publish the APK to Zapstore
+        required: true
+        type: boolean
+        default: true
 
 # One release run at a time, queued rather than cancelled, so two quick merges to master cannot
 # race each other into duplicate tags or releases.
@@ -26,6 +46,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -67,10 +88,12 @@ jobs:
   # repository variable, publishes the APK to Zapstore (diogel-io/symudol#89), and hands the APK
   # and its SHA-256 to the publish-release job. Runs only for a push that created a release; the
   # secrets it needs are scoped to this job and are cleaned up before any failure can leave them
-  # on disk.
+  # on disk. A manual run publishes the given tag instead, and only from master.
   publish:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: >-
+      ${{ !cancelled() && (needs.release-please.outputs.release_created == 'true' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')) }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/cirruslabs/flutter:3.44.0
@@ -84,14 +107,34 @@ jobs:
       SYMUDOL_UPLOAD_KEY_ALIAS: ${{ secrets.SYMUDOL_UPLOAD_KEY_ALIAS }}
       PLAY_TRACK: ${{ vars.PLAY_TRACK || 'internal' }}
       ZSP_SHA256: 1ef5373f8ecd9ba63d2c3fab98abb0d31b2244a2aac31b3749fb205c7d5f5b38
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || format('v{0}', needs.release-please.outputs.version) }}
     steps:
+      # A manual run's tag is typed by hand: refuse anything but v<major>.<minor>.<patch> before
+      # it reaches a command or a secret is decoded.
+      - name: Check the tag
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::$TAG is not a release tag like v1.0.1"
+            exit 1
+          fi
+
       - name: Set the keystore's job-local path
         run: echo "SYMUDOL_UPLOAD_STORE_FILE=$RUNNER_TEMP/symudol-upload.keystore" >> "$GITHUB_ENV"
 
       - name: Checkout the tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: v${{ needs.release-please.outputs.version }}
+          ref: refs/tags/${{ env.TAG }}
+
+      # The publisher check's helper comes from the commit this workflow runs from, not the tag:
+      # a manual run publishes an older tag that may not have it (v1.0.1 doesn't).
+      - name: Checkout the publisher check
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: tools/zapstore_publisher_npub.dart
+          sparse-checkout-cone-mode: false
 
       - name: Write the upload keystore
         env:
@@ -141,6 +184,7 @@ jobs:
           echo "symudol.apk SHA-256: $sha256"
 
       - name: Upload the draft to Google Play
+        if: github.event_name == 'push' || inputs.play
         env:
           ANDROID_PUBLISHER_CREDENTIALS: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           SYMUDOL_UPLOAD_STORE_PASSWORD: ${{ secrets.SYMUDOL_UPLOAD_STORE_PASSWORD }}
@@ -160,14 +204,25 @@ jobs:
 
       # zsp is pinned by version and checked against its released SHA-256 before it sees a secret.
       - name: Publish the APK to Zapstore
+        if: github.event_name == 'push' || inputs.zapstore
         env:
           SIGN_WITH: ${{ secrets.ZAPSTORE_SIGNER_NSEC }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # zsp 2 ignores zapstore.yaml's pubkey, so check here that the secret is the publisher
+          # key it records; another key in the secret would otherwise publish under that key.
+          expected="$(sed -n 's/^pubkey: *//p' zapstore.yaml)"
+          actual="$(dart run --verbosity=error .release-tools/tools/zapstore_publisher_npub.dart)"
+          if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+            echo "::error::ZAPSTORE_SIGNER_NSEC is not the publisher key in zapstore.yaml ($expected); it is $actual."
+            exit 1
+          fi
+          echo "Zapstore publisher verified as $expected"
           curl -fsSL -o /tmp/zsp https://github.com/zapstore/zsp/releases/download/v2.0.1/zsp-2.0.1-linux-amd64
           echo "$ZSP_SHA256  /tmp/zsp" | sha256sum -c - >/dev/null
           chmod +x /tmp/zsp
-          /tmp/zsp publish -y zapstore.yaml
+          # zsp 2 has no -y; --quiet runs it without prompts or the browser preview.
+          /tmp/zsp publish --quiet zapstore.yaml
 
       # Runner disks are ephemeral, but no run of this job leaves a keystore behind on any outcome.
       - name: Delete the upload keystore
@@ -177,17 +232,18 @@ jobs:
   # release-please creates the release as a draft (release-please-config.json), because a published
   # release is immutable and refuses new assets. This job runs last, after the Play and Zapstore
   # uploads: it attaches the signed APK to the draft and then publishes the release. If an earlier
-  # step fails, the release stays a draft that only maintainers see; re-run the failed jobs.
+  # step fails, the release stays a draft that only maintainers see; re-run the failed jobs, or
+  # run this workflow by hand for the tag.
   publish-release:
     needs: [release-please, publish]
-    if: needs.release-please.outputs.release_created == 'true'
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      TAG: v${{ needs.release-please.outputs.version }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || format('v{0}', needs.release-please.outputs.version) }}
     steps:
       - name: Download the signed APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -201,14 +257,28 @@ jobs:
           set -euo pipefail
           echo "$EXPECTED_SHA256  symudol.apk" | sha256sum -c -
 
-      - name: Attach the signed APK to the draft release
+      # A manual run for a release that is already published (to retry only a store upload, say)
+      # leaves the release alone. On a push, a published release means the APK can never go on.
+      - name: Check the release is still a draft
+        id: draft
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "true" ]; then
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "::notice::Release $TAG is already published; leaving it as it is."
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          else
             echo "::error::Release $TAG is already published, and published releases are immutable, so symudol.apk cannot be attached."
             exit 1
           fi
-          gh release upload "$TAG" symudol.apk --clobber
+
+      - name: Attach the signed APK to the draft release
+        if: steps.draft.outputs.draft == 'true'
+        run: gh release upload "$TAG" symudol.apk --clobber
 
       - name: Publish the GitHub release
+        if: steps.draft.outputs.draft == 'true'
         run: gh release edit "$TAG" --draft=false
